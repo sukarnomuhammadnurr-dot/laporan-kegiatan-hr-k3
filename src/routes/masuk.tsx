@@ -186,6 +186,24 @@ function Masuk() {
                 autoComplete={mode === "masuk" ? "current-password" : "new-password"}
               />
             </div>
+            {mode === "daftar" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="konfirmasi">Konfirmasi kata sandi</Label>
+                <Input
+                  id="konfirmasi"
+                  type="password"
+                  value={konfirmasi}
+                  onChange={(e) => setKonfirmasi(e.target.value)}
+                  required
+                  autoComplete="new-password"
+                />
+              </div>
+            )}
+            {pesanError && (
+              <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {pesanError}
+              </p>
+            )}
             <Button type="submit" size="lg" className="w-full" disabled={busy}>
               {busy ? "Memproses…" : mode === "masuk" ? "Masuk" : "Daftar"}
             </Button>
@@ -206,7 +224,10 @@ function Masuk() {
             <button
               type="button"
               className="font-medium text-primary underline-offset-4 hover:underline"
-              onClick={() => setMode(mode === "masuk" ? "daftar" : "masuk")}
+              onClick={() => {
+                setMode(mode === "masuk" ? "daftar" : "masuk");
+                setPesanError(null);
+              }}
             >
               {mode === "masuk" ? "Daftar" : "Masuk"}
             </button>
@@ -214,7 +235,7 @@ function Masuk() {
         </div>
 
         <p className="mt-4 text-center text-[11px] text-muted-foreground">
-          Akun pertama yang mendaftar otomatis menjadi Admin sistem.
+          Akun baru terdaftar sebagai Trainer. Peran Admin/Supervisor ditetapkan oleh pengelola sistem.
         </p>
       </div>
     </div>

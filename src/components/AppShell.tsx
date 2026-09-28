@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Menu } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -101,6 +102,7 @@ export function AppShell({
 }) {
   const { nama, roles } = useCurrentUser();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
 
   const inisial =
@@ -112,6 +114,8 @@ export function AppShell({
       .join("") || "??";
 
   async function keluar() {
+    await queryClient.cancelQueries();
+    queryClient.clear();
     await supabase.auth.signOut();
     navigate({ to: "/masuk", replace: true });
   }
