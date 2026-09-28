@@ -8,47 +8,58 @@ import { useCurrentUser } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 
-type NavItem = { to: string; label: string };
+/** `to` hanya diisi untuk halaman yang sudah tersedia. */
+type NavItem = { to?: "/dashboard"; label: string };
 
 const NAV_TRAINER: NavItem[] = [
   { to: "/dashboard", label: "Dashboard" },
-  { to: "/laporan/baru", label: "Buat Laporan" },
-  { to: "/laporan", label: "Laporan Saya" },
-  { to: "/kalender", label: "Kalender Kegiatan" },
-  { to: "/bulanan", label: "Laporan Bulanan" },
-  { to: "/profil", label: "Profil" },
+  { label: "Buat Laporan" },
+  { label: "Laporan Saya" },
+  { label: "Kalender Kegiatan" },
+  { label: "Laporan Bulanan" },
 ];
 
 const NAV_STAFF: NavItem[] = [
   { to: "/dashboard", label: "Dashboard" },
-  { to: "/laporan", label: "Semua Laporan" },
-  { to: "/laporan/baru", label: "Buat Laporan" },
-  { to: "/monitoring", label: "Monitoring Laporan" },
-  { to: "/kalender", label: "Kalender Kegiatan" },
-  { to: "/bulanan", label: "Laporan Bulanan & Export" },
+  { label: "Semua Laporan" },
+  { label: "Buat Laporan" },
+  { label: "Monitoring Laporan" },
+  { label: "Kalender Kegiatan" },
+  { label: "Laporan Bulanan & Export" },
 ];
 
 const NAV_MASTER: NavItem[] = [
-  { to: "/master/trainer", label: "Master Trainer" },
-  { to: "/master/materi", label: "Master Materi" },
-  { to: "/master/kegiatan", label: "Master Kegiatan" },
-  { to: "/master/jadwal", label: "Master Jadwal" },
-  { to: "/whatsapp", label: "Pesan WhatsApp" },
-  { to: "/audit", label: "Riwayat Perubahan" },
-  { to: "/pengaturan", label: "Pengaturan Sistem" },
+  { label: "Master Trainer" },
+  { label: "Master Materi" },
+  { label: "Master Kegiatan" },
+  { label: "Master Jadwal" },
+  { label: "Pesan WhatsApp" },
+  { label: "Riwayat Perubahan" },
+  { label: "Pengaturan Sistem" },
 ];
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
-  const { isStaff, isAdmin } = useCurrentUser();
+  const { isStaff } = useCurrentUser();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const main = isStaff ? NAV_STAFF : NAV_TRAINER;
 
   const render = (items: NavItem[]) =>
     items.map((item) => {
+      if (!item.to) {
+        return (
+          <div
+            key={item.label}
+            className="flex items-center justify-between rounded-lg px-3 py-2.5 text-[13px] font-medium text-muted-foreground/60"
+          >
+            <span>{item.label}</span>
+            <span className="eyebrow text-muted-foreground/60">segera</span>
+          </div>
+        );
+      }
       const active = pathname === item.to || pathname.startsWith(item.to + "/");
       return (
         <Link
-          key={item.to}
+          key={item.label}
           to={item.to}
           onClick={onNavigate}
           className={cn(
@@ -70,13 +81,7 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
       {isStaff && (
         <>
           <p className="eyebrow px-3 pt-4 pb-1 text-muted-foreground">Data & Sistem</p>
-          {render(isAdmin ? NAV_MASTER : NAV_MASTER.filter((i) => i.to !== "/pengaturan"))}
-        </>
-      )}
-      {!isStaff && (
-        <>
-          <p className="eyebrow px-3 pt-4 pb-1 text-muted-foreground">Informasi</p>
-          {render([{ to: "/master/jadwal", label: "Jadwal Kegiatan" }])}
+          {render(NAV_MASTER)}
         </>
       )}
     </nav>
@@ -116,7 +121,6 @@ export function AppShell({
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-40 -left-32 size-[520px] rounded-full bg-primary/20 blur-[120px]" />
         <div className="absolute top-1/3 -right-40 size-[460px] rounded-full bg-status-sent/20 blur-[120px]" />
-        <div className="absolute -bottom-44 left-1/3 size-[420px] rounded-full bg-card/70 blur-[110px]" />
       </div>
 
       <div className="relative mx-auto max-w-[1440px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
@@ -190,13 +194,7 @@ export function AppShell({
   );
 }
 
-export function Panel({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
+export function Panel({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <section className={cn("glass rounded-2xl p-4 ring-1 ring-foreground/5 sm:p-5", className)}>
       {children}
