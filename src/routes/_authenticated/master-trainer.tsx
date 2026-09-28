@@ -317,7 +317,7 @@ function FormTrainer({
   onClose,
 }: {
   initial: FormState;
-  selfUserId?: string;
+  selfUserId?: string | undefined;
   trainerUserId: string | null;
   onClose: () => void;
 }) {
