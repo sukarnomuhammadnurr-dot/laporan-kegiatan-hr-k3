@@ -504,6 +504,7 @@ export type Database = {
           nama_lengkap: string
           nomor_id_trainer: string
           nomor_whatsapp: string | null
+          role: Database["public"]["Enums"]["app_role"]
           status_trainer: string
           updated_at: string
           user_id: string | null
@@ -519,6 +520,7 @@ export type Database = {
           nama_lengkap: string
           nomor_id_trainer: string
           nomor_whatsapp?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
           status_trainer?: string
           updated_at?: string
           user_id?: string | null
@@ -534,6 +536,7 @@ export type Database = {
           nama_lengkap?: string
           nomor_id_trainer?: string
           nomor_whatsapp?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
           status_trainer?: string
           updated_at?: string
           user_id?: string | null

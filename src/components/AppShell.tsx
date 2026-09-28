@@ -10,7 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 
 /** `to` hanya diisi untuk halaman yang sudah tersedia. */
-type NavItem = { to?: "/dashboard"; label: string };
+type NavItem = { to?: "/dashboard" | "/master-trainer"; label: string };
 
 const NAV_TRAINER: NavItem[] = [
   { to: "/dashboard", label: "Dashboard" },
@@ -30,7 +30,7 @@ const NAV_STAFF: NavItem[] = [
 ];
 
 const NAV_MASTER: NavItem[] = [
-  { label: "Master Trainer" },
+  { to: "/master-trainer", label: "Master Trainer" },
   { label: "Master Materi" },
   { label: "Master Kegiatan" },
   { label: "Master Jadwal" },

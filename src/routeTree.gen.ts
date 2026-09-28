@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as MasukRouteImport } from './routes/masuk'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedMasterTrainerRouteImport } from './routes/_authenticated/master-trainer'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -33,16 +34,24 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedMasterTrainerRoute =
+  AuthenticatedMasterTrainerRouteImport.update({
+    id: '/master-trainer',
+    path: '/master-trainer',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/masuk': typeof MasukRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/master-trainer': typeof AuthenticatedMasterTrainerRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/masuk': typeof MasukRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/master-trainer': typeof AuthenticatedMasterTrainerRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -50,18 +59,20 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/masuk': typeof MasukRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/master-trainer': typeof AuthenticatedMasterTrainerRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/masuk' | '/dashboard'
+  fullPaths: '/' | '/masuk' | '/dashboard' | '/master-trainer'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/masuk' | '/dashboard'
+  to: '/' | '/masuk' | '/dashboard' | '/master-trainer'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/masuk'
     | '/_authenticated/dashboard'
+    | '/_authenticated/master-trainer'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -100,15 +111,24 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/master-trainer': {
+      id: '/_authenticated/master-trainer'
+      path: '/master-trainer'
+      fullPath: '/master-trainer'
+      preLoaderRoute: typeof AuthenticatedMasterTrainerRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedMasterTrainerRoute: typeof AuthenticatedMasterTrainerRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedMasterTrainerRoute: AuthenticatedMasterTrainerRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
