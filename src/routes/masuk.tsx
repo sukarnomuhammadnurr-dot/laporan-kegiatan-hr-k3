@@ -30,36 +30,82 @@ function Masuk() {
   const [mode, setMode] = useState<"masuk" | "daftar">("masuk");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [konfirmasi, setKonfirmasi] = useState("");
   const [nama, setNama] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pesanError, setPesanError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && session) navigate({ to: "/dashboard", replace: true });
   }, [session, loading, navigate]);
 
+  function terjemahkan(err: unknown, daftar: boolean): string {
+    const msg = err instanceof Error ? err.message.toLowerCase() : "";
+    if (msg.includes("invalid login credentials")) return "Email atau kata sandi salah.";
+    if (msg.includes("email not confirmed"))
+      return "Email belum aktif. Hubungi admin untuk mengaktifkan akun.";
+    if (msg.includes("already registered") || msg.includes("already exists"))
+      return "Email sudah terdaftar.";
+    if (msg.includes("password should be") || msg.includes("weak"))
+      return "Kata sandi terlalu lemah. Gunakan minimal 6 karakter.";
+    if (msg.includes("invalid") && msg.includes("email")) return "Format email tidak valid.";
+    if (msg.includes("rate limit")) return "Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.";
+    if (msg.includes("fetch") || msg.includes("network"))
+      return "Tidak dapat terhubung ke server. Periksa koneksi internet.";
+    return daftar ? "Registrasi gagal. Silakan coba lagi." : "Gagal masuk. Silakan coba lagi.";
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    setPesanError(null);
+    const emailBersih = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailBersih)) {
+      setPesanError("Format email tidak valid.");
+      return;
+    }
+    if (!password) {
+      setPesanError("Kata sandi wajib diisi.");
+      return;
+    }
+    if (mode === "daftar") {
+      if (!nama.trim()) return setPesanError("Nama wajib diisi.");
+      if (password.length < 6) return setPesanError("Kata sandi minimal 6 karakter.");
+      if (password !== konfirmasi) return setPesanError("Konfirmasi kata sandi tidak sama.");
+    }
     setBusy(true);
     try {
       if (mode === "masuk") {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({
+          email: emailBersih,
+          password,
+        });
         if (error) throw error;
         navigate({ to: "/dashboard", replace: true });
       } else {
         const { data, error } = await supabase.auth.signUp({
-          email,
+          email: emailBersih,
           password,
           options: {
             emailRedirectTo: window.location.origin,
-            data: { nama_lengkap: nama },
+            data: { nama_lengkap: nama.trim() },
           },
         });
         if (error) throw error;
-        if (data.session) navigate({ to: "/dashboard", replace: true });
-        else toast.success("Akun dibuat. Silakan cek email untuk konfirmasi.");
+        // Email yang sudah terdaftar dikembalikan tanpa identitas.
+        if (data.user && (data.user.identities?.length ?? 0) === 0) {
+          throw new Error("already registered");
+        }
+        let sesi = data.session;
+        if (!sesi) {
+          const r = await supabase.auth.signInWithPassword({ email: emailBersih, password });
+          if (r.error) throw r.error;
+          sesi = r.data.session;
+        }
+        toast.success("Akun berhasil dibuat.");
+        navigate({ to: "/dashboard", replace: true });
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal memproses permintaan.");
+      setPesanError(terjemahkan(err, mode === "daftar"));
     } finally {
       setBusy(false);
     }
@@ -140,6 +186,24 @@ function Masuk() {
                 autoComplete={mode === "masuk" ? "current-password" : "new-password"}
               />
             </div>
+            {mode === "daftar" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="konfirmasi">Konfirmasi kata sandi</Label>
+                <Input
+                  id="konfirmasi"
+                  type="password"
+                  value={konfirmasi}
+                  onChange={(e) => setKonfirmasi(e.target.value)}
+                  required
+                  autoComplete="new-password"
+                />
+              </div>
+            )}
+            {pesanError && (
+              <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {pesanError}
+              </p>
+            )}
             <Button type="submit" size="lg" className="w-full" disabled={busy}>
               {busy ? "Memproses…" : mode === "masuk" ? "Masuk" : "Daftar"}
             </Button>
@@ -160,7 +224,10 @@ function Masuk() {
             <button
               type="button"
               className="font-medium text-primary underline-offset-4 hover:underline"
-              onClick={() => setMode(mode === "masuk" ? "daftar" : "masuk")}
+              onClick={() => {
+                setMode(mode === "masuk" ? "daftar" : "masuk");
+                setPesanError(null);
+              }}
             >
               {mode === "masuk" ? "Daftar" : "Masuk"}
             </button>
@@ -168,7 +235,7 @@ function Masuk() {
         </div>
 
         <p className="mt-4 text-center text-[11px] text-muted-foreground">
-          Akun pertama yang mendaftar otomatis menjadi Admin sistem.
+          Akun baru terdaftar sebagai Trainer. Peran Admin/Supervisor ditetapkan oleh pengelola sistem.
         </p>
       </div>
     </div>
