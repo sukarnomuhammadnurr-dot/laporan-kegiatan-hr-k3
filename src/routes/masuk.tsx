@@ -1,4 +1,5 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { PasswordInput } from "@/components/PasswordInput";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -42,10 +43,11 @@ function Masuk() {
   function terjemahkan(err: unknown, daftar: boolean): string {
     const msg = err instanceof Error ? err.message.toLowerCase() : "";
     if (msg.includes("invalid login credentials")) return "Email atau kata sandi salah.";
+    if (msg.includes("banned")) return "Akun Anda dinonaktifkan. Hubungi Admin.";
     if (msg.includes("email not confirmed"))
       return "Email belum aktif. Hubungi admin untuk mengaktifkan akun.";
     if (msg.includes("already registered") || msg.includes("already exists"))
-      return "Email sudah terdaftar.";
+      return "Email sudah terdaftar. Silakan login menggunakan akun tersebut.";
     if (msg.includes("password should be") || msg.includes("weak"))
       return "Kata sandi terlalu lemah. Gunakan minimal 6 karakter.";
     if (msg.includes("invalid") && msg.includes("email")) return "Format email tidak valid.";
@@ -175,10 +177,16 @@ function Masuk() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="password">Kata sandi</Label>
-              <Input
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Kata sandi</Label>
+                {mode === "masuk" && (
+                  <Link to="/lupa-password" className="text-xs font-medium text-primary underline-offset-4 hover:underline">
+                    Lupa password?
+                  </Link>
+                )}
+              </div>
+              <PasswordInput
                 id="password"
-                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -189,9 +197,8 @@ function Masuk() {
             {mode === "daftar" && (
               <div className="space-y-1.5">
                 <Label htmlFor="konfirmasi">Konfirmasi kata sandi</Label>
-                <Input
+                <PasswordInput
                   id="konfirmasi"
-                  type="password"
                   value={konfirmasi}
                   onChange={(e) => setKonfirmasi(e.target.value)}
                   required
@@ -200,9 +207,23 @@ function Masuk() {
               </div>
             )}
             {pesanError && (
-              <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {pesanError}
-              </p>
+              <div role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <p>{pesanError}</p>
+                {mode === "daftar" && pesanError.startsWith("Email sudah terdaftar") && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-2"
+                    onClick={() => {
+                      setMode("masuk");
+                      setPesanError(null);
+                    }}
+                  >
+                    Login
+                  </Button>
+                )}
+              </div>
             )}
             <Button type="submit" size="lg" className="w-full" disabled={busy}>
               {busy ? "Memproses…" : mode === "masuk" ? "Masuk" : "Daftar"}
