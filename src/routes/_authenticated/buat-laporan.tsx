@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, CheckCircle2, Eye, Send } from "lucide-react";
+import {
+  ArrowLeft,
+  Camera,
+  Eye,
+  Send,
+  X,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -20,7 +26,9 @@ import {
 export const Route = createFileRoute("/_authenticated/buat-laporan")({
   head: () => ({
     meta: [
-      { title: "Buat Laporan · Laporan Kegiatan Trainer K3 PT IWIP" },
+      {
+        title: "Buat Laporan · Laporan Kegiatan Trainer K3 PT IWIP",
+      },
       {
         name: "description",
         content: "Form laporan kegiatan trainer K3 PT IWIP.",
@@ -85,22 +93,34 @@ function formatTanggalIndonesia(value: string) {
 function BuatLaporan() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
   const { trainer, nama, loading } = useCurrentUser();
 
   const [form, setForm] = useState<FormState>(FORM_AWAL);
   const [preview, setPreview] = useState(false);
+
+  const [fotoFiles, setFotoFiles] = useState<File[]>([]);
+
+  const [penanggungJawabOption, setPenanggungJawabOption] =
+    useState("");
 
   const { data: materials = [], isLoading: loadingMaterials } = useQuery({
     queryKey: ["materials", "buat-laporan"],
     queryFn: fetchMaterials,
   });
 
-  const { data: activityTypes = [], isLoading: loadingActivities } = useQuery({
+  const {
+    data: activityTypes = [],
+    isLoading: loadingActivities,
+  } = useQuery({
     queryKey: ["activity-types", "buat-laporan"],
     queryFn: fetchActivityTypes,
   });
 
-  const { data: schedules = [], isLoading: loadingSchedules } = useQuery({
+  const {
+    data: schedules = [],
+    isLoading: loadingSchedules,
+  } = useQuery({
     queryKey: ["schedules", "buat-laporan"],
     queryFn: fetchSchedules,
   });
@@ -121,7 +141,9 @@ function BuatLaporan() {
   };
 
   function pilihMaterial(materialId: string) {
-    const material = materials.find((item) => item.id === materialId);
+    const material = materials.find(
+      (item) => item.id === materialId,
+    );
 
     setForm((current) => ({
       ...current,
@@ -131,7 +153,9 @@ function BuatLaporan() {
   }
 
   function pilihJadwal(scheduleId: string) {
-    const schedule = schedules.find((item) => item.id === scheduleId);
+    const schedule = schedules.find(
+      (item) => item.id === scheduleId,
+    );
 
     if (!schedule) {
       updateField("schedule_id", "");
@@ -141,15 +165,50 @@ function BuatLaporan() {
     setForm((current) => ({
       ...current,
       schedule_id: scheduleId,
-      jam_mulai: schedule.jam_mulai?.slice(0, 5) ?? current.jam_mulai,
-      jam_selesai: schedule.jam_selesai?.slice(0, 5) ?? current.jam_selesai,
-      kelas: schedule.kelas ?? current.kelas,
-      jenis_kegiatan: schedule.kategori ?? current.jenis_kegiatan,
+      jam_mulai:
+        schedule.jam_mulai?.slice(0, 5) ??
+        current.jam_mulai,
+      jam_selesai:
+        schedule.jam_selesai?.slice(0, 5) ??
+        current.jam_selesai,
+      kelas:
+        schedule.kelas ??
+        current.kelas,
+      jenis_kegiatan:
+        schedule.kategori ??
+        current.jenis_kegiatan,
       materi:
         schedule.nama_kegiatan ||
         current.materi,
-      material_id: schedule.material_id ?? current.material_id,
+      material_id:
+        schedule.material_id ??
+        current.material_id,
     }));
+  }
+
+  function tambahFoto(files: FileList | null) {
+    if (!files) return;
+
+    const selected = Array.from(files).filter((file) =>
+      file.type.startsWith("image/"),
+    );
+
+    if (selected.length === 0) {
+      toast.error(
+        "File yang dipilih harus berupa foto.",
+      );
+      return;
+    }
+
+    setFotoFiles((current) =>
+      [...current, ...selected].slice(0, 5),
+    );
+  }
+
+  function hapusFoto(index: number) {
+    setFotoFiles((current) =>
+      current.filter((_, i) => i !== index),
+    );
   }
 
   function validasiForm() {
@@ -169,21 +228,39 @@ function BuatLaporan() {
       return "Jumlah peserta tidak boleh negatif.";
     }
 
-    if (form.jumlah_hadir < 0 || form.jumlah_tidak_hadir < 0) {
+    if (
+      form.jumlah_hadir < 0 ||
+      form.jumlah_tidak_hadir < 0
+    ) {
       return "Jumlah hadir dan tidak hadir tidak boleh negatif.";
     }
 
     if (
-      form.jumlah_hadir + form.jumlah_tidak_hadir >
+      form.jumlah_hadir +
+        form.jumlah_tidak_hadir >
       form.jumlah_peserta
     ) {
       return "Jumlah hadir + tidak hadir tidak boleh melebihi jumlah peserta.";
     }
 
-    if (form.jam_mulai && form.jam_selesai) {
-      if (form.jam_selesai <= form.jam_mulai) {
+    if (
+      form.jam_mulai &&
+      form.jam_selesai
+    ) {
+      if (
+        form.jam_selesai <=
+        form.jam_mulai
+      ) {
         return "Jam selesai harus lebih besar dari jam mulai.";
       }
+    }
+
+    if (
+      penanggungJawabOption ===
+        "Lainnya" &&
+      !form.penanggung_jawab.trim()
+    ) {
+      return "Nama penanggung jawab lainnya wajib diisi.";
     }
 
     return null;
@@ -192,56 +269,165 @@ function BuatLaporan() {
   const kirimLaporan = useMutation({
     mutationFn: async () => {
       if (!trainer?.id) {
-        throw new Error("Data trainer tidak ditemukan.");
+        throw new Error(
+          "Data trainer tidak ditemukan.",
+        );
       }
 
-      const errorValidasi = validasiForm();
+      const errorValidasi =
+        validasiForm();
 
       if (errorValidasi) {
-        throw new Error(errorValidasi);
+        throw new Error(
+          errorValidasi,
+        );
       }
 
       const {
         data: sessionData,
-      } = await supabase.auth.getSession();
+      } =
+        await supabase.auth.getSession();
 
-      const userId = sessionData.session?.user.id;
+      const userId =
+        sessionData.session?.user.id;
 
       if (!userId) {
-        throw new Error("Sesi login tidak ditemukan. Silakan login kembali.");
+        throw new Error(
+          "Sesi login tidak ditemukan. Silakan login kembali.",
+        );
       }
 
       const payload = {
         trainer_id: trainer.id,
-        schedule_id: form.schedule_id || null,
-        material_id: form.material_id || null,
-        tanggal_kegiatan: form.tanggal_kegiatan,
-        jam_mulai: form.jam_mulai || null,
-        jam_selesai: form.jam_selesai || null,
-        jam_perlu_konfirmasi: !form.jam_mulai || !form.jam_selesai,
-        jenis_kegiatan: form.jenis_kegiatan || null,
-        materi: form.materi.trim(),
-        kelas: form.kelas.trim() || null,
-        lokasi: form.lokasi.trim() || null,
-        penanggung_jawab: form.penanggung_jawab.trim() || null,
-        jumlah_peserta: form.jumlah_peserta,
-        jumlah_hadir: form.jumlah_hadir,
-        jumlah_tidak_hadir: form.jumlah_tidak_hadir,
-        jumlah_tambahan: form.jumlah_tambahan,
-        keterangan: form.keterangan.trim() || null,
-        sumber_laporan: "manual" as const,
-        waktu_laporan_dikirim: new Date().toISOString(),
-        status_laporan: "terkirim" as const,
+        schedule_id:
+          form.schedule_id || null,
+        material_id:
+          form.material_id || null,
+        tanggal_kegiatan:
+          form.tanggal_kegiatan,
+        jam_mulai:
+          form.jam_mulai || null,
+        jam_selesai:
+          form.jam_selesai || null,
+        jam_perlu_konfirmasi:
+          !form.jam_mulai ||
+          !form.jam_selesai,
+        jenis_kegiatan:
+          form.jenis_kegiatan || null,
+        materi:
+          form.materi.trim(),
+        kelas:
+          form.kelas.trim() || null,
+        lokasi:
+          form.lokasi.trim() || null,
+        penanggung_jawab:
+          form.penanggung_jawab.trim() ||
+          null,
+        jumlah_peserta:
+          form.jumlah_peserta,
+        jumlah_hadir:
+          form.jumlah_hadir,
+        jumlah_tidak_hadir:
+          form.jumlah_tidak_hadir,
+        jumlah_tambahan:
+          form.jumlah_tambahan,
+        keterangan:
+          form.keterangan.trim() ||
+          null,
+        sumber_laporan:
+          "manual" as const,
+        waktu_laporan_dikirim:
+          new Date().toISOString(),
+        status_laporan:
+          "terkirim" as const,
         created_by: userId,
       };
 
-      const { data, error } = await supabase
+      const {
+        data,
+        error,
+      } = await supabase
         .from("reports")
         .insert(payload)
         .select("id")
         .single();
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
+
+      /*
+       * Upload foto dokumentasi.
+       *
+       * Struktur storage:
+       * trainer_id / report_id / nama-file
+       *
+       * Foto juga dicatat ke tabel report_photos.
+       */
+      if (fotoFiles.length > 0) {
+        for (const file of fotoFiles) {
+          const safeName =
+            file.name.replace(
+              /[^a-zA-Z0-9._-]/g,
+              "_",
+            );
+
+          const storagePath =
+            `${trainer.id}/${data.id}/${crypto.randomUUID()}-${safeName}`;
+
+          const {
+            error: uploadError,
+          } = await supabase.storage
+            .from("report-photos")
+            .upload(
+              storagePath,
+              file,
+              {
+                cacheControl: "3600",
+                upsert: false,
+                contentType:
+                  file.type ||
+                  "image/jpeg",
+              },
+            );
+
+          if (uploadError) {
+            toast.warning(
+              "Laporan tersimpan, tetapi foto belum berhasil diunggah.",
+              {
+                description:
+                  uploadError.message,
+              },
+            );
+
+            continue;
+          }
+
+          const {
+            error: photoRowError,
+          } = await supabase
+            .from("report_photos")
+            .insert({
+              report_id: data.id,
+              storage_path:
+                storagePath,
+              nama_file:
+                file.name,
+              uploaded_by:
+                userId,
+            });
+
+          if (photoRowError) {
+            toast.warning(
+              "Laporan tersimpan, tetapi data foto belum tercatat.",
+              {
+                description:
+                  photoRowError.message,
+              },
+            );
+          }
+        }
+      }
 
       return data;
     },
@@ -251,12 +437,18 @@ function BuatLaporan() {
         queryKey: ["reports"],
       });
 
-      toast.success("Laporan berhasil dikirim.", {
-        description: "Laporan masuk ke daftar untuk proses verifikasi.",
-      });
+      toast.success(
+        "Laporan berhasil dikirim.",
+        {
+          description:
+            "Laporan masuk ke daftar untuk proses verifikasi.",
+        },
+      );
 
       setPreview(false);
       setForm(FORM_AWAL);
+      setFotoFiles([]);
+      setPenanggungJawabOption("");
 
       navigate({
         to: "/dashboard",
@@ -264,32 +456,48 @@ function BuatLaporan() {
     },
 
     onError: (error) => {
-      toast.error("Laporan belum berhasil dikirim.", {
-        description:
-          error instanceof Error
-            ? error.message
-            : "Terjadi kesalahan saat menyimpan laporan.",
-      });
+      toast.error(
+        "Laporan belum berhasil dikirim.",
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : "Terjadi kesalahan saat menyimpan laporan.",
+        },
+      );
     },
   });
 
   function bukaPreview() {
-    const errorValidasi = validasiForm();
+    const errorValidasi =
+      validasiForm();
 
     if (errorValidasi) {
-      toast.error("Periksa kembali laporan.", {
-        description: errorValidasi,
-      });
+      toast.error(
+        "Periksa kembali laporan.",
+        {
+          description:
+            errorValidasi,
+        },
+      );
+
       return;
     }
 
     setPreview(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
   }
 
   if (loading) {
     return (
-      <AppShell title="Buat Laporan" eyebrow="Laporan Kegiatan Trainer">
+      <AppShell
+        title="Buat Laporan"
+        eyebrow="Laporan Kegiatan Trainer"
+      >
         <Panel>
           <p className="py-8 text-center text-sm text-muted-foreground">
             Memuat data trainer…
@@ -301,12 +509,16 @@ function BuatLaporan() {
 
   if (!trainer) {
     return (
-      <AppShell title="Buat Laporan" eyebrow="Laporan Kegiatan Trainer">
+      <AppShell
+        title="Buat Laporan"
+        eyebrow="Laporan Kegiatan Trainer"
+      >
         <Panel>
           <div className="py-8 text-center">
             <p className="text-sm font-medium">
               Akun ini belum tertaut ke data trainer.
             </p>
+
             <p className="mt-2 text-sm text-muted-foreground">
               Hubungi Admin untuk menautkan akun ke Master Trainer.
             </p>
@@ -316,6 +528,11 @@ function BuatLaporan() {
     );
   }
 
+  /*
+   * =========================
+   * PREVIEW
+   * =========================
+   */
   if (preview) {
     return (
       <AppShell
@@ -324,8 +541,12 @@ function BuatLaporan() {
         actions={
           <Button
             variant="outline"
-            onClick={() => setPreview(false)}
-            disabled={kirimLaporan.isPending}
+            onClick={() =>
+              setPreview(false)
+            }
+            disabled={
+              kirimLaporan.isPending
+            }
           >
             <ArrowLeft className="mr-2 size-4" />
             Kembali Edit
@@ -335,11 +556,17 @@ function BuatLaporan() {
         <Panel>
           <div className="mb-5 flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
             <Eye className="mt-0.5 size-5 shrink-0 text-primary" />
+
             <div>
-              <p className="text-sm font-semibold">Preview sebelum dikirim</p>
+              <p className="text-sm font-semibold">
+                Preview sebelum dikirim
+              </p>
+
               <p className="mt-1 text-sm text-muted-foreground">
-                Periksa seluruh data di bawah. Data belum disimpan sampai lu
-                menekan tombol <b>Konfirmasi & Kirim</b>.
+                Periksa seluruh data di bawah.
+                Data belum disimpan sampai lu
+                menekan tombol{" "}
+                <b>Konfirmasi & Kirim</b>.
               </p>
             </div>
           </div>
@@ -347,30 +574,63 @@ function BuatLaporan() {
           <div className="grid gap-4 md:grid-cols-2">
             <PreviewItem
               label="Trainer"
-              value={trainer.nama_lengkap || nama || "-"}
+              value={
+                trainer.nama_lengkap ||
+                nama ||
+                "-"
+              }
             />
+
             <PreviewItem
               label="Tanggal Kegiatan"
-              value={formatTanggalIndonesia(form.tanggal_kegiatan)}
+              value={formatTanggalIndonesia(
+                form.tanggal_kegiatan,
+              )}
             />
+
             <PreviewItem
               label="Jam Kegiatan"
               value={
-                form.jam_mulai && form.jam_selesai
+                form.jam_mulai &&
+                form.jam_selesai
                   ? `${form.jam_mulai} – ${form.jam_selesai}`
                   : "Belum lengkap / perlu konfirmasi"
               }
             />
+
             <PreviewItem
               label="Jenis Kegiatan"
-              value={form.jenis_kegiatan || "-"}
+              value={
+                form.jenis_kegiatan ||
+                "-"
+              }
             />
-            <PreviewItem label="Materi / Kegiatan" value={form.materi} />
-            <PreviewItem label="Kelas" value={form.kelas || "-"} />
-            <PreviewItem label="Lokasi" value={form.lokasi || "-"} />
+
+            <PreviewItem
+              label="Materi / Kegiatan"
+              value={form.materi}
+            />
+
+            <PreviewItem
+              label="Kelas"
+              value={
+                form.kelas || "-"
+              }
+            />
+
+            <PreviewItem
+              label="Lokasi"
+              value={
+                form.lokasi || "-"
+              }
+            />
+
             <PreviewItem
               label="Penanggung Jawab"
-              value={form.penanggung_jawab || "-"}
+              value={
+                form.penanggung_jawab ||
+                "-"
+              }
             />
           </div>
 
@@ -382,16 +642,30 @@ function BuatLaporan() {
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <PreviewNumber
                 label="Jumlah Peserta"
-                value={form.jumlah_peserta}
+                value={
+                  form.jumlah_peserta
+                }
               />
-              <PreviewNumber label="Hadir" value={form.jumlah_hadir} />
+
+              <PreviewNumber
+                label="Hadir"
+                value={
+                  form.jumlah_hadir
+                }
+              />
+
               <PreviewNumber
                 label="Tidak Hadir"
-                value={form.jumlah_tidak_hadir}
+                value={
+                  form.jumlah_tidak_hadir
+                }
               />
+
               <PreviewNumber
                 label="Tambahan"
-                value={form.jumlah_tambahan}
+                value={
+                  form.jumlah_tambahan
+                }
               />
             </div>
           </div>
@@ -400,25 +674,72 @@ function BuatLaporan() {
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Keterangan
             </p>
+
             <p className="mt-2 whitespace-pre-wrap text-sm">
-              {form.keterangan || "-"}
+              {form.keterangan ||
+                "-"}
             </p>
+          </div>
+
+          {/* FOTO PREVIEW */}
+          <div className="mt-4 rounded-xl border border-border/70 bg-card/40 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Dokumentasi Foto
+            </p>
+
+            {fotoFiles.length > 0 ? (
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+                {fotoFiles.map(
+                  (file, index) => (
+                    <div
+                      key={`${file.name}-${index}`}
+                      className="overflow-hidden rounded-lg border"
+                    >
+                      <img
+                        src={URL.createObjectURL(
+                          file,
+                        )}
+                        alt={file.name}
+                        className="aspect-square w-full object-cover"
+                      />
+
+                      <p className="truncate px-2 py-1.5 text-xs text-muted-foreground">
+                        {file.name}
+                      </p>
+                    </div>
+                  ),
+                )}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">
+                Tidak ada foto dokumentasi yang dipilih.
+              </p>
+            )}
           </div>
 
           <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
             <Button
               variant="outline"
-              onClick={() => setPreview(false)}
-              disabled={kirimLaporan.isPending}
+              onClick={() =>
+                setPreview(false)
+              }
+              disabled={
+                kirimLaporan.isPending
+              }
             >
               Kembali Edit
             </Button>
 
             <Button
-              onClick={() => kirimLaporan.mutate()}
-              disabled={kirimLaporan.isPending}
+              onClick={() =>
+                kirimLaporan.mutate()
+              }
+              disabled={
+                kirimLaporan.isPending
+              }
             >
               <Send className="mr-2 size-4" />
+
               {kirimLaporan.isPending
                 ? "Mengirim…"
                 : "Konfirmasi & Kirim"}
@@ -429,88 +750,150 @@ function BuatLaporan() {
     );
   }
 
+  /*
+   * =========================
+   * FORM UTAMA
+   * =========================
+   */
+
   return (
     <AppShell
       title="Buat Laporan"
       eyebrow="Laporan Kegiatan Trainer"
       actions={
-        <Button variant="outline" onClick={() => navigate({ to: "/dashboard" })}>
+        <Button
+          variant="outline"
+          onClick={() =>
+            navigate({
+              to: "/dashboard",
+            })
+          }
+        >
           <ArrowLeft className="mr-2 size-4" />
           Kembali
         </Button>
       }
     >
       <Panel>
+        {/* TRAINER */}
         <div className="mb-5 rounded-xl border border-border/70 bg-card/40 p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Trainer
           </p>
+
           <p className="mt-1 text-sm font-semibold">
-            {trainer.nama_lengkap || nama}
+            {trainer.nama_lengkap ||
+              nama}
           </p>
+
           <p className="mt-1 text-xs text-muted-foreground">
-            ID Trainer: {trainer.nomor_id_trainer}
+            ID Trainer:{" "}
+            {trainer.nomor_id_trainer}
           </p>
         </div>
 
         <div className="space-y-6">
+
+          {/* WAKTU */}
           <section>
-            <h2 className="text-sm font-semibold">Waktu Kegiatan</h2>
+            <h2 className="text-sm font-semibold">
+              Waktu Kegiatan
+            </h2>
 
             <div className="mt-3 grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label htmlFor="tanggal">Tanggal kegiatan *</Label>
+                <Label htmlFor="tanggal">
+                  Tanggal kegiatan *
+                </Label>
+
                 <Input
                   id="tanggal"
                   type="date"
-                  value={form.tanggal_kegiatan}
+                  value={
+                    form.tanggal_kegiatan
+                  }
                   onChange={(e) =>
-                    updateField("tanggal_kegiatan", e.target.value)
+                    updateField(
+                      "tanggal_kegiatan",
+                      e.target.value,
+                    )
                   }
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="jam-mulai">Jam mulai</Label>
+                <Label htmlFor="jam-mulai">
+                  Jam mulai
+                </Label>
+
                 <Input
                   id="jam-mulai"
                   type="time"
-                  value={form.jam_mulai}
+                  value={
+                    form.jam_mulai
+                  }
                   onChange={(e) =>
-                    updateField("jam_mulai", e.target.value)
+                    updateField(
+                      "jam_mulai",
+                      e.target.value,
+                    )
                   }
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="jam-selesai">Jam selesai</Label>
+                <Label htmlFor="jam-selesai">
+                  Jam selesai
+                </Label>
+
                 <Input
                   id="jam-selesai"
                   type="time"
-                  value={form.jam_selesai}
+                  value={
+                    form.jam_selesai
+                  }
                   onChange={(e) =>
-                    updateField("jam_selesai", e.target.value)
+                    updateField(
+                      "jam_selesai",
+                      e.target.value,
+                    )
                   }
                 />
               </div>
             </div>
 
             <p className="mt-2 text-xs text-muted-foreground">
-              Jika jam belum diketahui, boleh dikosongkan. Sistem akan menandai
-              waktu tersebut untuk konfirmasi.
+              Jika jam belum diketahui,
+              boleh dikosongkan. Sistem
+              akan menandai waktu tersebut
+              untuk konfirmasi.
             </p>
           </section>
 
+          {/* KEGIATAN */}
           <section>
-            <h2 className="text-sm font-semibold">Kegiatan</h2>
+            <h2 className="text-sm font-semibold">
+              Kegiatan
+            </h2>
 
             <div className="mt-3 grid gap-4 md:grid-cols-2">
+
+              {/* JADWAL */}
               <div className="space-y-2">
-                <Label htmlFor="jadwal">Gunakan jadwal master</Label>
+                <Label htmlFor="jadwal">
+                  Gunakan jadwal master
+                </Label>
+
                 <select
                   id="jadwal"
-                  value={form.schedule_id}
-                  onChange={(e) => pilihJadwal(e.target.value)}
+                  value={
+                    form.schedule_id
+                  }
+                  onChange={(e) =>
+                    pilihJadwal(
+                      e.target.value,
+                    )
+                  }
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="">
@@ -519,25 +902,50 @@ function BuatLaporan() {
                       : "Pilih jadwal (opsional)"}
                   </option>
 
-                  {scheduleAktif.map((schedule) => (
-                    <option key={schedule.id} value={schedule.id}>
-                      {schedule.jam_mulai && schedule.jam_selesai
-                        ? `${schedule.jam_mulai.slice(0, 5)}–${schedule.jam_selesai.slice(0, 5)} · `
-                        : ""}
-                      {schedule.nama_kegiatan}
-                      {schedule.kelas ? ` · ${schedule.kelas}` : ""}
-                    </option>
-                  ))}
+                  {scheduleAktif.map(
+                    (schedule) => (
+                      <option
+                        key={schedule.id}
+                        value={schedule.id}
+                      >
+                        {schedule.jam_mulai &&
+                        schedule.jam_selesai
+                          ? `${schedule.jam_mulai.slice(
+                              0,
+                              5,
+                            )}–${schedule.jam_selesai.slice(
+                              0,
+                              5,
+                            )} · `
+                          : ""}
+                        {
+                          schedule.nama_kegiatan
+                        }
+                        {schedule.kelas
+                          ? ` · ${schedule.kelas}`
+                          : ""}
+                      </option>
+                    ),
+                  )}
                 </select>
               </div>
 
+              {/* JENIS */}
               <div className="space-y-2">
-                <Label htmlFor="jenis-kegiatan">Jenis kegiatan</Label>
+                <Label htmlFor="jenis-kegiatan">
+                  Jenis kegiatan
+                </Label>
+
                 <select
                   id="jenis-kegiatan"
-                  value={form.jenis_kegiatan}
+                  value={
+                    form.jenis_kegiatan
+                  }
                   onChange={(e) =>
-                    updateField("jenis_kegiatan", e.target.value)
+                    updateField(
+                      "jenis_kegiatan",
+                      e.target.value,
+                    )
                   }
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
@@ -548,9 +956,15 @@ function BuatLaporan() {
                   </option>
 
                   {activityTypes
-                    .filter((item) => item.aktif)
+                    .filter(
+                      (item) =>
+                        item.aktif,
+                    )
                     .map((item) => (
-                      <option key={item.id} value={item.nama}>
+                      <option
+                        key={item.id}
+                        value={item.nama}
+                      >
                         {item.nama}
                       </option>
                     ))}
@@ -558,13 +972,24 @@ function BuatLaporan() {
               </div>
             </div>
 
+            {/* MATERIAL + KELAS */}
             <div className="mt-4 grid gap-4 md:grid-cols-2">
+
               <div className="space-y-2">
-                <Label htmlFor="master-materi">Materi dari master</Label>
+                <Label htmlFor="master-materi">
+                  Materi dari master
+                </Label>
+
                 <select
                   id="master-materi"
-                  value={form.material_id}
-                  onChange={(e) => pilihMaterial(e.target.value)}
+                  value={
+                    form.material_id
+                  }
+                  onChange={(e) =>
+                    pilihMaterial(
+                      e.target.value,
+                    )
+                  }
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="">
@@ -574,9 +999,15 @@ function BuatLaporan() {
                   </option>
 
                   {materials
-                    .filter((item) => item.aktif)
+                    .filter(
+                      (item) =>
+                        item.aktif,
+                    )
                     .map((item) => (
-                      <option key={item.id} value={item.id}>
+                      <option
+                        key={item.id}
+                        value={item.id}
+                      >
                         {item.nama}
                       </option>
                     ))}
@@ -584,139 +1015,356 @@ function BuatLaporan() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="kelas">Kelas</Label>
+                <Label htmlFor="kelas">
+                  Kelas
+                </Label>
+
                 <Input
                   id="kelas"
                   placeholder="Contoh: Kelas A / Kelas B"
                   value={form.kelas}
-                  onChange={(e) => updateField("kelas", e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-2">
-              <Label htmlFor="materi">Materi / kegiatan *</Label>
-              <Input
-                id="materi"
-                placeholder="Contoh: K3 Umum"
-                value={form.materi}
-                onChange={(e) => updateField("materi", e.target.value)}
-              />
-            </div>
-
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="lokasi">Lokasi</Label>
-                <Input
-                  id="lokasi"
-                  placeholder="Contoh: Ruang Training K3"
-                  value={form.lokasi}
-                  onChange={(e) => updateField("lokasi", e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="penanggung-jawab">
-                  Penanggung jawab
-                </Label>
-                <Input
-                  id="penanggung-jawab"
-                  placeholder="Nama penanggung jawab"
-                  value={form.penanggung_jawab}
                   onChange={(e) =>
-                    updateField("penanggung_jawab", e.target.value)
+                    updateField(
+                      "kelas",
+                      e.target.value,
+                    )
                   }
                 />
               </div>
             </div>
+
+            {/* MATERI */}
+            <div className="mt-4 space-y-2">
+              <Label htmlFor="materi">
+                Materi / kegiatan *
+              </Label>
+
+              <Input
+                id="materi"
+                placeholder="Contoh: K3 Umum"
+                value={form.materi}
+                onChange={(e) =>
+                  updateField(
+                    "materi",
+                    e.target.value,
+                  )
+                }
+              />
+            </div>
+
+            {/* LOKASI + PJ */}
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+
+              {/* LOKASI */}
+              <div className="space-y-2">
+                <Label htmlFor="lokasi">
+                  Lokasi
+                </Label>
+
+                <select
+                  id="lokasi"
+                  value={form.lokasi}
+                  onChange={(e) =>
+                    updateField(
+                      "lokasi",
+                      e.target.value,
+                    )
+                  }
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">
+                    Pilih lokasi
+                  </option>
+
+                  <option value="Dalam Ruangan">
+                    Dalam Ruangan
+                  </option>
+
+                  <option value="Luar Ruangan">
+                    Luar Ruangan
+                  </option>
+                </select>
+              </div>
+
+              {/* PENANGGUNG JAWAB */}
+              <div className="space-y-2">
+                <Label htmlFor="penanggung-jawab">
+                  Penanggung jawab
+                </Label>
+
+                <select
+                  id="penanggung-jawab"
+                  value={
+                    penanggungJawabOption
+                  }
+                  onChange={(e) => {
+                    const value =
+                      e.target.value;
+
+                    setPenanggungJawabOption(
+                      value,
+                    );
+
+                    updateField(
+                      "penanggung_jawab",
+                      value ===
+                        "Muhammad Halid (Superintendent)"
+                        ? value
+                        : "",
+                    );
+                  }}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">
+                    Pilih penanggung jawab
+                  </option>
+
+                  <option value="Muhammad Halid (Superintendent)">
+                    Muhammad Halid (Superintendent)
+                  </option>
+
+                  <option value="Lainnya">
+                    Lainnya
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            {/* PJ LAINNYA */}
+            {penanggungJawabOption ===
+              "Lainnya" && (
+              <div className="mt-4 space-y-2">
+                <Label htmlFor="penanggung-jawab-lainnya">
+                  Nama penanggung jawab
+                  lainnya
+                </Label>
+
+                <Input
+                  id="penanggung-jawab-lainnya"
+                  placeholder="Tulis nama penanggung jawab"
+                  value={
+                    form.penanggung_jawab
+                  }
+                  onChange={(e) =>
+                    updateField(
+                      "penanggung_jawab",
+                      e.target.value,
+                    )
+                  }
+                />
+              </div>
+            )}
           </section>
 
+          {/* PESERTA */}
           <section>
-            <h2 className="text-sm font-semibold">Jumlah Peserta</h2>
+            <h2 className="text-sm font-semibold">
+              Jumlah Peserta
+            </h2>
 
             <div className="mt-3 grid grid-cols-2 gap-4 md:grid-cols-4">
+
               <NumberField
                 id="jumlah-peserta"
                 label="Jumlah peserta"
-                value={form.jumlah_peserta}
+                value={
+                  form.jumlah_peserta
+                }
                 onChange={(value) =>
-                  updateField("jumlah_peserta", value)
+                  updateField(
+                    "jumlah_peserta",
+                    value,
+                  )
                 }
               />
 
               <NumberField
                 id="jumlah-hadir"
                 label="Hadir"
-                value={form.jumlah_hadir}
+                value={
+                  form.jumlah_hadir
+                }
                 onChange={(value) =>
-                  updateField("jumlah_hadir", value)
+                  updateField(
+                    "jumlah_hadir",
+                    value,
+                  )
                 }
               />
 
               <NumberField
                 id="jumlah-tidak-hadir"
                 label="Tidak hadir"
-                value={form.jumlah_tidak_hadir}
+                value={
+                  form.jumlah_tidak_hadir
+                }
                 onChange={(value) =>
-                  updateField("jumlah_tidak_hadir", value)
+                  updateField(
+                    "jumlah_tidak_hadir",
+                    value,
+                  )
                 }
               />
 
               <NumberField
                 id="jumlah-tambahan"
                 label="Tambahan"
-                value={form.jumlah_tambahan}
+                value={
+                  form.jumlah_tambahan
+                }
                 onChange={(value) =>
-                  updateField("jumlah_tambahan", value)
+                  updateField(
+                    "jumlah_tambahan",
+                    value,
+                  )
                 }
               />
             </div>
 
             <p className="mt-2 text-xs text-muted-foreground">
-              Jumlah tambahan dicatat sebagai data terpisah dan tidak otomatis
-              ditambahkan ke jumlah peserta.
+              Jumlah tambahan dicatat
+              sebagai data terpisah dan
+              tidak otomatis ditambahkan
+              ke jumlah peserta.
             </p>
           </section>
 
+          {/* KETERANGAN */}
           <section>
-            <h2 className="text-sm font-semibold">Keterangan</h2>
+            <h2 className="text-sm font-semibold">
+              Keterangan
+            </h2>
 
             <div className="mt-3 space-y-2">
-              <Label htmlFor="keterangan">Catatan / keterangan tambahan</Label>
+              <Label htmlFor="keterangan">
+                Catatan / keterangan tambahan
+              </Label>
+
               <Textarea
                 id="keterangan"
                 rows={5}
                 placeholder="Tulis keterangan kegiatan jika diperlukan…"
-                value={form.keterangan}
+                value={
+                  form.keterangan
+                }
                 onChange={(e) =>
-                  updateField("keterangan", e.target.value)
+                  updateField(
+                    "keterangan",
+                    e.target.value,
+                  )
                 }
               />
             </div>
           </section>
 
+          {/* FOTO */}
           <section className="rounded-xl border border-border/70 bg-card/30 p-4">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-primary" />
 
-              <div>
+            <div className="flex items-start gap-3">
+
+              <Camera className="mt-0.5 size-5 shrink-0 text-primary" />
+
+              <div className="min-w-0 flex-1">
+
                 <p className="text-sm font-semibold">
                   Dokumentasi foto
                 </p>
+
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Upload foto dokumentasi akan kita sambungkan pada tahap
-                  berikutnya setelah alur laporan manual ini stabil.
+                  Upload foto dokumentasi
+                  langsung dari sini.
+                  Maksimal 5 foto per
+                  laporan.
                 </p>
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Foto dari WhatsApp Bot
+                  nantinya juga akan masuk
+                  otomatis ke laporan.
+                </p>
+
+                <div className="mt-4">
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => {
+                      tambahFoto(
+                        e.target.files,
+                      );
+
+                      e.currentTarget.value =
+                        "";
+                    }}
+                  />
+                </div>
+
+                {/* FOTO YANG DIPILIH */}
+                {fotoFiles.length >
+                  0 && (
+                  <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+
+                    {fotoFiles.map(
+                      (
+                        file,
+                        index,
+                      ) => (
+                        <div
+                          key={`${file.name}-${index}`}
+                          className="relative overflow-hidden rounded-lg border"
+                        >
+                          <img
+                            src={URL.createObjectURL(
+                              file,
+                            )}
+                            alt={
+                              file.name
+                            }
+                            className="aspect-square w-full object-cover"
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              hapusFoto(
+                                index,
+                              )
+                            }
+                            className="absolute right-1 top-1 rounded-full bg-black/70 p-1 text-white"
+                            title="Hapus foto"
+                          >
+                            <X className="size-3" />
+                          </button>
+
+                          <p className="truncate px-2 py-1.5 text-xs text-muted-foreground">
+                            {
+                              file.name
+                            }
+                          </p>
+                        </div>
+                      ),
+                    )}
+
+                  </div>
+                )}
+
               </div>
             </div>
           </section>
 
+          {/* PREVIEW BUTTON */}
           <div className="flex justify-end">
-            <Button onClick={bukaPreview} size="lg">
+
+            <Button
+              onClick={bukaPreview}
+              size="lg"
+            >
               <Eye className="mr-2 size-4" />
               Preview Laporan
             </Button>
+
           </div>
+
         </div>
       </Panel>
     </AppShell>
@@ -732,11 +1380,17 @@ function NumberField({
   id: string;
   label: string;
   value: number;
-  onChange: (value: number) => void;
+  onChange: (
+    value: number,
+  ) => void;
 }) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
+
+      <Label htmlFor={id}>
+        {label}
+      </Label>
+
       <Input
         id={id}
         type="number"
@@ -744,10 +1398,22 @@ function NumberField({
         step={1}
         value={value}
         onChange={(e) => {
-          const parsed = Number(e.target.value);
-          onChange(Number.isFinite(parsed) && parsed >= 0 ? parsed : 0);
+          const parsed =
+            Number(
+              e.target.value,
+            );
+
+          onChange(
+            Number.isFinite(
+              parsed,
+            ) &&
+              parsed >= 0
+              ? parsed
+              : 0,
+          );
         }}
       />
+
     </div>
   );
 }
@@ -761,8 +1427,15 @@ function PreviewItem({
 }) {
   return (
     <div className="rounded-xl border border-border/60 bg-card/30 p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm font-medium">{value}</p>
+
+      <p className="text-xs text-muted-foreground">
+        {label}
+      </p>
+
+      <p className="mt-1 text-sm font-medium">
+        {value}
+      </p>
+
     </div>
   );
 }
@@ -776,8 +1449,15 @@ function PreviewNumber({
 }) {
   return (
     <div className="rounded-xl border border-border/60 bg-background/40 p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="num mt-1 text-lg font-semibold">{value}</p>
+
+      <p className="text-xs text-muted-foreground">
+        {label}
+      </p>
+
+      <p className="num mt-1 text-lg font-semibold">
+        {value}
+      </p>
+
     </div>
   );
 }
