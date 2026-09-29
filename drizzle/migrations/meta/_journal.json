@@ -29,6 +29,13 @@
       "when": 1790587035422,
       "tag": "0003_master_trainer_role_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790645552331,
+      "tag": "0004_trainer_account_status",
+      "breakpoints": true
     }
   ]
 }

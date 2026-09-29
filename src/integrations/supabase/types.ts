@@ -495,6 +495,7 @@ export type Database = {
       trainers: {
         Row: {
           aktif: boolean
+          akun_aktif: boolean
           created_at: string
           departemen: string
           email: string | null
@@ -511,6 +512,7 @@ export type Database = {
         }
         Insert: {
           aktif?: boolean
+          akun_aktif?: boolean
           created_at?: string
           departemen?: string
           email?: string | null
@@ -527,6 +529,7 @@ export type Database = {
         }
         Update: {
           aktif?: boolean
+          akun_aktif?: boolean
           created_at?: string
           departemen?: string
           email?: string | null
