@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Download, Eye } from "lucide-react";
 
 import { AppShell, Panel } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -41,11 +42,20 @@ type FilterStatus =
 function formatTanggal(tanggal: string | null | undefined) {
   if (!tanggal) return "—";
 
-  const d = new Date(`${tanggal}T00:00:00`);
-
-  return d.toLocaleDateString("id-ID", {
+  return new Date(`${tanggal}T00:00:00`).toLocaleDateString("id-ID", {
     day: "2-digit",
     month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function formatTanggalPanjang(tanggal: string | null | undefined) {
+  if (!tanggal) return "—";
+
+  return new Date(`${tanggal}T00:00:00`).toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
     year: "numeric",
   });
 }
@@ -92,15 +102,314 @@ function StatusPill({
   );
 }
 
+/**
+ * Membuat halaman laporan yang siap dicetak.
+ * Browser akan membuka Print Preview,
+ * lalu user dapat memilih "Save as PDF".
+ */
+function downloadLaporan(report: ReportWithTrainer) {
+  const namaTrainer = report.trainers?.nama_lengkap || "Trainer";
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="id">
+    <head>
+      <meta charset="UTF-8" />
+      <title>Laporan Kegiatan - ${namaTrainer}</title>
+
+      <style>
+        * {
+          box-sizing: border-box;
+        }
+
+        body {
+          font-family: Arial, Helvetica, sans-serif;
+          color: #111827;
+          margin: 0;
+          padding: 35px;
+          background: white;
+          line-height: 1.5;
+        }
+
+        .header {
+          text-align: center;
+          margin-bottom: 28px;
+          padding-bottom: 18px;
+          border-bottom: 2px solid #111827;
+        }
+
+        .header h1 {
+          margin: 0;
+          font-size: 24px;
+          letter-spacing: .5px;
+        }
+
+        .header p {
+          margin: 5px 0 0;
+          color: #6b7280;
+          font-size: 13px;
+        }
+
+        .section {
+          border: 1px solid #d1d5db;
+          border-radius: 8px;
+          padding: 18px;
+          margin-bottom: 16px;
+          page-break-inside: avoid;
+        }
+
+        .section-title {
+          font-size: 13px;
+          font-weight: bold;
+          text-transform: uppercase;
+          margin-bottom: 12px;
+          color: #374151;
+        }
+
+        .row {
+          display: grid;
+          grid-template-columns: 180px 1fr;
+          padding: 7px 0;
+          border-bottom: 1px solid #e5e7eb;
+        }
+
+        .row:last-child {
+          border-bottom: none;
+        }
+
+        .label {
+          font-weight: bold;
+          color: #4b5563;
+        }
+
+        .value {
+          color: #111827;
+        }
+
+        .materi {
+          font-size: 19px;
+          font-weight: bold;
+          color: #111827;
+        }
+
+        .stats {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 10px;
+        }
+
+        .stat {
+          border: 1px solid #d1d5db;
+          border-radius: 8px;
+          padding: 14px;
+          text-align: center;
+        }
+
+        .stat-label {
+          font-size: 12px;
+          color: #6b7280;
+        }
+
+        .stat-number {
+          margin-top: 4px;
+          font-size: 22px;
+          font-weight: bold;
+        }
+
+        .footer {
+          margin-top: 35px;
+          padding-top: 12px;
+          border-top: 1px solid #d1d5db;
+          font-size: 11px;
+          color: #6b7280;
+          text-align: center;
+        }
+
+        @media print {
+          body {
+            padding: 20px;
+          }
+
+          @page {
+            size: A4;
+            margin: 12mm;
+          }
+        }
+      </style>
+    </head>
+
+    <body>
+
+      <div class="header">
+        <h1>LAPORAN KEGIATAN TRAINER</h1>
+        <p>Laporan Kegiatan HR K3 PT IWIP</p>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Informasi Kegiatan</div>
+
+        <div class="row">
+          <div class="label">Tanggal</div>
+          <div class="value">
+            ${formatTanggalPanjang(report.tanggal_kegiatan)}
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label">Trainer</div>
+          <div class="value">
+            ${namaTrainer}
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label">Jam Kegiatan</div>
+          <div class="value">
+            ${report.jam_mulai || "—"}
+            ${report.jam_selesai ? ` - ${report.jam_selesai}` : ""}
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label">Kelas</div>
+          <div class="value">
+            ${report.kelas || "—"}
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label">Jenis Kegiatan</div>
+          <div class="value">
+            ${report.jenis_kegiatan || "—"}
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label">Lokasi</div>
+          <div class="value">
+            ${report.lokasi || "—"}
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label">Penanggung Jawab</div>
+          <div class="value">
+            ${report.penanggung_jawab || "—"}
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Materi / Kegiatan</div>
+
+        <div class="materi">
+          ${report.materi || "—"}
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Data Peserta</div>
+
+        <div class="stats">
+
+          <div class="stat">
+            <div class="stat-label">Total Peserta</div>
+            <div class="stat-number">
+              ${report.jumlah_peserta ?? "—"}
+            </div>
+          </div>
+
+          <div class="stat">
+            <div class="stat-label">Hadir</div>
+            <div class="stat-number">
+              ${report.jumlah_hadir ?? "—"}
+            </div>
+          </div>
+
+          <div class="stat">
+            <div class="stat-label">Tidak Hadir</div>
+            <div class="stat-number">
+              ${report.jumlah_tidak_hadir ?? "—"}
+            </div>
+          </div>
+
+          <div class="stat">
+            <div class="stat-label">Tambahan</div>
+            <div class="stat-number">
+              ${report.tambahan ?? "—"}
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Keterangan</div>
+
+        <div class="value">
+          ${report.keterangan || "Tidak ada keterangan."}
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Status Laporan</div>
+
+        <div class="row">
+          <div class="label">Status</div>
+          <div class="value">
+            ${report.status_laporan || "—"}
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        Dokumen laporan kegiatan trainer · PT IWIP
+      </div>
+
+    </body>
+    </html>
+  `;
+
+  const win = window.open(
+    "",
+    "_blank",
+    "width=1000,height=800",
+  );
+
+  if (!win) {
+    alert(
+      "Popup diblokir browser. Silakan izinkan popup untuk membuka Preview PDF.",
+    );
+    return;
+  }
+
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+
+  win.focus();
+
+  setTimeout(() => {
+    win.print();
+  }, 500);
+}
+
 function LaporanPage() {
-  const { isStaff, isTrainer, trainer, loading } = useCurrentUser();
+  const {
+    isStaff,
+    isTrainer,
+    trainer,
+    loading,
+  } = useCurrentUser();
 
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
   const [trainerFilter, setTrainerFilter] = useState("semua");
   const [status, setStatus] = useState<FilterStatus>("semua");
   const [cari, setCari] = useState("");
-  const [preview, setPreview] = useState<ReportWithTrainer | null>(null);
+
+  const [preview, setPreview] =
+    useState<ReportWithTrainer | null>(null);
 
   const { data: trainers = [] } = useQuery({
     queryKey: ["trainers", "laporan-filter"],
@@ -108,7 +417,11 @@ function LaporanPage() {
     queryFn: fetchTrainers,
   });
 
-  const { data: reports = [], isLoading, isError } = useQuery({
+  const {
+    data: reports = [],
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: [
       "reports",
       "laporan",
@@ -119,7 +432,11 @@ function LaporanPage() {
       status,
       cari,
     ],
-    enabled: !loading && (isStaff || isTrainer),
+
+    enabled:
+      !loading &&
+      (isStaff || isTrainer),
+
     queryFn: () =>
       fetchReports({
         trainerId:
@@ -128,16 +445,21 @@ function LaporanPage() {
             : trainerFilter !== "semua"
               ? trainerFilter
               : null,
+
         dari: dari || null,
         sampai: sampai || null,
-        status: status !== "semua" ? status : null,
-        cari: cari.trim() || null,
+
+        status:
+          status !== "semua"
+            ? status
+            : null,
+
+        cari:
+          cari.trim()
+            ? cari.trim()
+            : null,
       }),
   });
-
-  const tampil = useMemo(() => {
-    return reports;
-  }, [reports]);
 
   if (!loading && !isStaff && !isTrainer) {
     return (
@@ -154,25 +476,33 @@ function LaporanPage() {
   return (
     <AppShell
       eyebrow="Laporan Kegiatan"
-      title={isTrainer ? "Laporan Saya" : "Semua Laporan"}
+      title={
+        isTrainer
+          ? "Laporan Saya"
+          : "Semua Laporan"
+      }
     >
       <p className="-mt-2 mb-4 text-sm text-muted-foreground">
         {isTrainer
-          ? "Daftar seluruh laporan kegiatan yang Anda kirim."
-          : "Daftar seluruh laporan kegiatan trainer."}
+          ? "Lihat, preview, dan download laporan kegiatan Anda."
+          : "Lihat, preview, dan download laporan seluruh trainer."}
       </p>
 
       {/* FILTER */}
       <Panel className="mb-4">
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+
           <div>
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Dari tanggal
             </p>
+
             <Input
               type="date"
               value={dari}
-              onChange={(e) => setDari(e.target.value)}
+              onChange={(e) =>
+                setDari(e.target.value)
+              }
             />
           </div>
 
@@ -180,10 +510,13 @@ function LaporanPage() {
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Sampai tanggal
             </p>
+
             <Input
               type="date"
               value={sampai}
-              onChange={(e) => setSampai(e.target.value)}
+              onChange={(e) =>
+                setSampai(e.target.value)
+              }
             />
           </div>
 
@@ -195,7 +528,9 @@ function LaporanPage() {
 
               <Select
                 value={trainerFilter}
-                onValueChange={setTrainerFilter}
+                onValueChange={
+                  setTrainerFilter
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Semua trainer" />
@@ -207,7 +542,10 @@ function LaporanPage() {
                   </SelectItem>
 
                   {trainers.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
+                    <SelectItem
+                      key={t.id}
+                      value={t.id}
+                    >
                       {t.nama_lengkap}
                     </SelectItem>
                   ))}
@@ -223,8 +561,10 @@ function LaporanPage() {
 
             <Select
               value={status}
-              onValueChange={(v) =>
-                setStatus(v as FilterStatus)
+              onValueChange={(value) =>
+                setStatus(
+                  value as FilterStatus,
+                )
               }
             >
               <SelectTrigger>
@@ -235,15 +575,19 @@ function LaporanPage() {
                 <SelectItem value="semua">
                   Semua Status
                 </SelectItem>
+
                 <SelectItem value="terkirim">
                   Terkirim
                 </SelectItem>
+
                 <SelectItem value="menunggu_verifikasi">
                   Menunggu Verifikasi
                 </SelectItem>
+
                 <SelectItem value="terverifikasi">
                   Terverifikasi
                 </SelectItem>
+
                 <SelectItem value="perlu_revisi">
                   Perlu Revisi
                 </SelectItem>
@@ -258,25 +602,36 @@ function LaporanPage() {
 
             <Input
               value={cari}
-              onChange={(e) => setCari(e.target.value)}
+              onChange={(e) =>
+                setCari(e.target.value)
+              }
               placeholder="Materi, kegiatan, kelas..."
             />
           </div>
+
         </div>
       </Panel>
 
-      {/* HASIL */}
+      {/* DAFTAR LAPORAN */}
       <Panel className="p-0 sm:p-0">
+
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
+
           <div>
-            <p className="font-semibold">Daftar Laporan</p>
+            <p className="font-semibold">
+              Daftar Laporan
+            </p>
+
             <p className="text-xs text-muted-foreground">
-              {tampil.length} laporan ditemukan
+              {reports.length} laporan ditemukan
             </p>
           </div>
 
-          {(dari || sampai || trainerFilter !== "semua" ||
-            status !== "semua" || cari) && (
+          {(dari ||
+            sampai ||
+            trainerFilter !== "semua" ||
+            status !== "semua" ||
+            cari) && (
             <Button
               size="sm"
               variant="outline"
@@ -291,6 +646,7 @@ function LaporanPage() {
               Reset Filter
             </Button>
           )}
+
         </div>
 
         {isLoading ? (
@@ -301,9 +657,12 @@ function LaporanPage() {
           <p className="p-5 text-sm text-destructive">
             Gagal mengambil data laporan.
           </p>
-        ) : tampil.length === 0 ? (
+        ) : reports.length === 0 ? (
           <div className="p-8 text-center">
-            <p className="font-medium">Belum ada laporan</p>
+            <p className="font-medium">
+              Belum ada laporan
+            </p>
+
             <p className="mt-1 text-sm text-muted-foreground">
               Tidak ada laporan yang sesuai dengan filter.
             </p>
@@ -312,65 +671,85 @@ function LaporanPage() {
           <>
             {/* DESKTOP */}
             <div className="hidden overflow-x-auto md:block">
+
               <table className="w-full text-sm">
+
                 <thead>
                   <tr className="border-b border-border text-left">
+
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       No
                     </th>
+
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Tanggal
                     </th>
+
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Jam
                     </th>
+
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Trainer
                     </th>
+
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Materi
                     </th>
+
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Kelas
                     </th>
+
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Peserta
                     </th>
+
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Status
                     </th>
+
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Aksi
                     </th>
+
                   </tr>
                 </thead>
 
                 <tbody>
-                  {tampil.map((r, index) => (
+
+                  {reports.map((r, index) => (
                     <tr
                       key={r.id}
                       className="border-b border-border/60 last:border-0"
                     >
+
                       <td className="num px-4 py-3 text-muted-foreground">
                         {index + 1}
                       </td>
 
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {formatTanggal(r.tanggal_kegiatan)}
+                        {formatTanggal(
+                          r.tanggal_kegiatan,
+                        )}
                       </td>
 
                       <td className="num px-4 py-3 whitespace-nowrap">
                         {r.jam_mulai || "—"}
+
                         {r.jam_selesai
                           ? ` - ${r.jam_selesai}`
                           : ""}
                       </td>
 
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {r.trainers?.nama_lengkap || "—"}
+                        {r.trainers
+                          ?.nama_lengkap ||
+                          "—"}
                       </td>
 
                       <td className="max-w-[280px] px-4 py-3">
+
                         <p className="font-medium">
                           {r.materi || "—"}
                         </p>
@@ -380,6 +759,7 @@ function LaporanPage() {
                             {r.jenis_kegiatan}
                           </p>
                         )}
+
                       </td>
 
                       <td className="px-4 py-3">
@@ -387,64 +767,91 @@ function LaporanPage() {
                       </td>
 
                       <td className="num px-4 py-3">
-                        {r.jumlah_peserta ?? "—"}
+                        {r.jumlah_peserta ??
+                          "—"}
                       </td>
 
                       <td className="px-4 py-3">
                         <StatusPill
-                          status={r.status_laporan}
+                          status={
+                            r.status_laporan
+                          }
                         />
                       </td>
 
                       <td className="px-4 py-3">
+
                         <Button
-                          size="sm"
+                          size="icon"
                           variant="outline"
-                          onClick={() => setPreview(r)}
+                          title="Preview laporan"
+                          onClick={() =>
+                            setPreview(r)
+                          }
                         >
-                          Preview
+                          <Eye className="size-4" />
                         </Button>
+
                       </td>
+
                     </tr>
                   ))}
+
                 </tbody>
+
               </table>
+
             </div>
 
             {/* MOBILE */}
             <div className="divide-y divide-border md:hidden">
-              {tampil.map((r, index) => (
+
+              {reports.map((r, index) => (
                 <div
                   key={r.id}
                   className="space-y-3 p-4"
                 >
+
                   <div className="flex items-start justify-between gap-3">
+
                     <div>
+
                       <p className="text-xs text-muted-foreground">
                         No. {index + 1}
                       </p>
 
                       <p className="mt-1 font-semibold">
-                        {r.materi || "Tanpa materi"}
+                        {r.materi ||
+                          "Tanpa materi"}
                       </p>
 
                       <p className="text-xs text-muted-foreground">
-                        {r.trainers?.nama_lengkap || "—"}
+                        {r.trainers
+                          ?.nama_lengkap ||
+                          "—"}
                       </p>
+
                     </div>
 
                     <StatusPill
-                      status={r.status_laporan}
+                      status={
+                        r.status_laporan
+                      }
                     />
+
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 text-sm">
+
                     <div>
                       <p className="text-xs text-muted-foreground">
                         Tanggal
                       </p>
+
                       <p>
-                        {formatTanggal(r.tanggal_kegiatan)}
+                        {formatTanggal(
+                          r.tanggal_kegiatan,
+                        )}
                       </p>
                     </div>
 
@@ -452,8 +859,11 @@ function LaporanPage() {
                       <p className="text-xs text-muted-foreground">
                         Jam
                       </p>
+
                       <p>
-                        {r.jam_mulai || "—"}
+                        {r.jam_mulai ||
+                          "—"}
+
                         {r.jam_selesai
                           ? ` - ${r.jam_selesai}`
                           : ""}
@@ -464,38 +874,55 @@ function LaporanPage() {
                       <p className="text-xs text-muted-foreground">
                         Kelas
                       </p>
-                      <p>{r.kelas || "—"}</p>
+
+                      <p>
+                        {r.kelas || "—"}
+                      </p>
                     </div>
 
                     <div>
                       <p className="text-xs text-muted-foreground">
                         Peserta
                       </p>
-                      <p>{r.jumlah_peserta ?? "—"}</p>
+
+                      <p>
+                        {r.jumlah_peserta ??
+                          "—"}
+                      </p>
                     </div>
+
                   </div>
 
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => setPreview(r)}
+                    onClick={() =>
+                      setPreview(r)
+                    }
                   >
-                    Preview Laporan
+                    <Eye className="mr-2 size-4" />
+                    Preview
                   </Button>
+
                 </div>
               ))}
+
             </div>
           </>
         )}
+
       </Panel>
 
       {/* PREVIEW */}
       {preview && (
         <PreviewLaporan
           report={preview}
-          onClose={() => setPreview(null)}
+          onClose={() =>
+            setPreview(null)
+          }
         />
       )}
+
     </AppShell>
   );
 }
@@ -509,14 +936,19 @@ function PreviewLaporan({
 }) {
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4">
+
       <div className="mx-auto my-8 max-w-3xl rounded-xl bg-background shadow-xl">
+
+        {/* HEADER */}
         <div className="flex items-center justify-between border-b px-5 py-4">
+
           <div>
             <p className="text-lg font-semibold">
               Preview Laporan
             </p>
+
             <p className="text-xs text-muted-foreground">
-              Periksa data sebelum digunakan untuk rekap/export.
+              Periksa data terlebih dahulu sebelum download.
             </p>
           </div>
 
@@ -526,18 +958,35 @@ function PreviewLaporan({
           >
             Tutup
           </Button>
+
         </div>
 
+        {/* CONTENT */}
         <div className="space-y-5 p-5">
+
           <div className="grid gap-4 sm:grid-cols-2">
+
             <Info
               label="Tanggal Kegiatan"
-              value={formatTanggal(report.tanggal_kegiatan)}
+              value={formatTanggalPanjang(
+                report.tanggal_kegiatan,
+              )}
             />
 
             <Info
               label="Trainer"
-              value={report.trainers?.nama_lengkap || "—"}
+              value={
+                report.trainers
+                  ?.nama_lengkap || "—"
+              }
+            />
+
+            <Info
+              label="Nomor ID Trainer"
+              value={
+                report.trainers
+                  ?.nomor_id_trainer || "—"
+              }
             />
 
             <Info
@@ -551,21 +1000,39 @@ function PreviewLaporan({
 
             <Info
               label="Kelas"
-              value={report.kelas || "—"}
-            />
-
-            <Info
-              label="Jenis Kegiatan"
-              value={report.jenis_kegiatan || "—"}
+              value={
+                report.kelas || "—"
+              }
             />
 
             <Info
               label="Lokasi"
-              value={report.lokasi || "—"}
+              value={
+                report.lokasi || "—"
+              }
             />
+
+            <Info
+              label="Jenis Kegiatan"
+              value={
+                report.jenis_kegiatan ||
+                "—"
+              }
+            />
+
+            <Info
+              label="Penanggung Jawab"
+              value={
+                report.penanggung_jawab ||
+                "—"
+              }
+            />
+
           </div>
 
+          {/* MATERI */}
           <div className="rounded-xl border p-4">
+
             <p className="text-xs font-medium text-muted-foreground">
               Materi / Kegiatan
             </p>
@@ -573,63 +1040,111 @@ function PreviewLaporan({
             <p className="mt-1 text-base font-semibold">
               {report.materi || "—"}
             </p>
+
           </div>
 
+          {/* PESERTA */}
           <div className="grid gap-3 sm:grid-cols-4">
+
             <Stat
               label="Peserta"
-              value={report.jumlah_peserta}
+              value={
+                report.jumlah_peserta
+              }
             />
 
             <Stat
               label="Hadir"
-              value={report.jumlah_hadir}
+              value={
+                report.jumlah_hadir
+              }
             />
 
             <Stat
               label="Tidak Hadir"
-              value={report.jumlah_tidak_hadir}
+              value={
+                report.jumlah_tidak_hadir
+              }
             />
 
             <Stat
               label="Tambahan"
-              value={report.tambahan}
+              value={
+                report.tambahan
+              }
             />
+
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Info
-              label="Penanggung Jawab"
-              value={report.penanggung_jawab || "—"}
-            />
+          {/* STATUS */}
+          <div className="rounded-xl border p-4">
 
-            <Info
-              label="Status"
-              value={report.status_laporan || "—"}
-            />
+            <p className="text-xs font-medium text-muted-foreground">
+              Status Laporan
+            </p>
+
+            <div className="mt-2">
+              <StatusPill
+                status={
+                  report.status_laporan
+                }
+              />
+            </div>
+
           </div>
 
+          {/* KETERANGAN */}
           <div>
+
             <p className="text-xs font-medium text-muted-foreground">
               Keterangan
             </p>
 
             <div className="mt-1 rounded-lg border p-3 text-sm whitespace-pre-wrap">
-              {report.keterangan || "—"}
+              {report.keterangan ||
+                "Tidak ada keterangan."}
             </div>
+
           </div>
 
+          {/* FOTO */}
           <div className="rounded-xl border border-dashed p-5 text-center">
+
             <p className="font-medium">
               Dokumentasi Foto
             </p>
+
             <p className="mt-1 text-xs text-muted-foreground">
-              Penyimpanan dan tampilan foto kita sambungkan pada
-              tahap berikutnya.
+              Foto dokumentasi akan kita sambungkan pada tahap upload foto.
             </p>
+
           </div>
+
         </div>
+
+        {/* FOOTER ACTION */}
+        <div className="flex flex-col-reverse gap-2 border-t bg-muted/20 px-5 py-4 sm:flex-row sm:justify-end">
+
+          <Button
+            variant="outline"
+            onClick={onClose}
+          >
+            Tutup
+          </Button>
+
+          <Button
+            onClick={() =>
+              downloadLaporan(report)
+            }
+          >
+            <Download className="mr-2 size-4" />
+            Download PDF
+          </Button>
+
+        </div>
+
       </div>
+
     </div>
   );
 }
@@ -639,19 +1154,27 @@ function Info({
   value,
 }: {
   label: string;
-  value: string | number | null | undefined;
+  value:
+    | string
+    | number
+    | null
+    | undefined;
 }) {
   return (
     <div>
+
       <p className="text-xs font-medium text-muted-foreground">
         {label}
       </p>
 
       <p className="mt-1 text-sm font-medium">
-        {value === null || value === undefined || value === ""
+        {value === null ||
+        value === undefined ||
+        value === ""
           ? "—"
           : value}
       </p>
+
     </div>
   );
 }
@@ -661,10 +1184,14 @@ function Stat({
   value,
 }: {
   label: string;
-  value: number | null | undefined;
+  value:
+    | number
+    | null
+    | undefined;
 }) {
   return (
     <div className="rounded-lg border p-3">
+
       <p className="text-xs text-muted-foreground">
         {label}
       </p>
@@ -672,6 +1199,7 @@ function Stat({
       <p className="num mt-1 text-lg font-semibold">
         {value ?? "—"}
       </p>
+
     </div>
   );
 }
