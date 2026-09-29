@@ -11,9 +11,12 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as LupaPasswordRouteImport } from './routes/lupa-password'
 import { Route as MasukRouteImport } from './routes/masuk'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedMasterTrainerRouteImport } from './routes/_authenticated/master-trainer'
+import { Route as AuthenticatedUbahPasswordRouteImport } from './routes/_authenticated/ubah-password'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -24,9 +27,19 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LupaPasswordRoute = LupaPasswordRouteImport.update({
+  id: '/lupa-password',
+  path: '/lupa-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MasukRoute = MasukRouteImport.update({
   id: '/masuk',
   path: '/masuk',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
@@ -40,45 +53,79 @@ const AuthenticatedMasterTrainerRoute =
     path: '/master-trainer',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedUbahPasswordRoute =
+  AuthenticatedUbahPasswordRouteImport.update({
+    id: '/ubah-password',
+    path: '/ubah-password',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/lupa-password': typeof LupaPasswordRoute
   '/masuk': typeof MasukRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/master-trainer': typeof AuthenticatedMasterTrainerRoute
+  '/ubah-password': typeof AuthenticatedUbahPasswordRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/lupa-password': typeof LupaPasswordRoute
   '/masuk': typeof MasukRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/master-trainer': typeof AuthenticatedMasterTrainerRoute
+  '/ubah-password': typeof AuthenticatedUbahPasswordRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/lupa-password': typeof LupaPasswordRoute
   '/masuk': typeof MasukRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/master-trainer': typeof AuthenticatedMasterTrainerRoute
+  '/_authenticated/ubah-password': typeof AuthenticatedUbahPasswordRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/masuk' | '/dashboard' | '/master-trainer'
+  fullPaths:
+    | '/'
+    | '/lupa-password'
+    | '/masuk'
+    | '/reset-password'
+    | '/dashboard'
+    | '/master-trainer'
+    | '/ubah-password'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/masuk' | '/dashboard' | '/master-trainer'
+  to:
+    | '/'
+    | '/lupa-password'
+    | '/masuk'
+    | '/reset-password'
+    | '/dashboard'
+    | '/master-trainer'
+    | '/ubah-password'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/lupa-password'
     | '/masuk'
+    | '/reset-password'
     | '/_authenticated/dashboard'
     | '/_authenticated/master-trainer'
+    | '/_authenticated/ubah-password'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  LupaPasswordRoute: typeof LupaPasswordRoute
   MasukRoute: typeof MasukRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -97,11 +144,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/lupa-password': {
+      id: '/lupa-password'
+      path: '/lupa-password'
+      fullPath: '/lupa-password'
+      preLoaderRoute: typeof LupaPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/masuk': {
       id: '/masuk'
       path: '/masuk'
       fullPath: '/masuk'
       preLoaderRoute: typeof MasukRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/dashboard': {
@@ -118,17 +179,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMasterTrainerRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/ubah-password': {
+      id: '/_authenticated/ubah-password'
+      path: '/ubah-password'
+      fullPath: '/ubah-password'
+      preLoaderRoute: typeof AuthenticatedUbahPasswordRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedMasterTrainerRoute: typeof AuthenticatedMasterTrainerRoute
+  AuthenticatedUbahPasswordRoute: typeof AuthenticatedUbahPasswordRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedMasterTrainerRoute: AuthenticatedMasterTrainerRoute,
+  AuthenticatedUbahPasswordRoute: AuthenticatedUbahPasswordRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
@@ -137,7 +207,9 @@ const AuthenticatedRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  LupaPasswordRoute: LupaPasswordRoute,
   MasukRoute: MasukRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

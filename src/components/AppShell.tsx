@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Menu } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -10,7 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 
 /** `to` hanya diisi untuk halaman yang sudah tersedia. */
-type NavItem = { to?: "/dashboard" | "/master-trainer"; label: string };
+type NavItem = { to?: "/dashboard" | "/master-trainer" | "/ubah-password"; label: string };
 
 const NAV_TRAINER: NavItem[] = [
   { to: "/dashboard", label: "Dashboard" },
@@ -85,6 +85,8 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
           {render(NAV_MASTER)}
         </>
       )}
+      <p className="eyebrow px-3 pt-4 pb-1 text-muted-foreground">Akun</p>
+      {render([{ to: "/ubah-password", label: "Ubah Password" }])}
     </nav>
   );
 }
@@ -100,10 +102,16 @@ export function AppShell({
   actions?: ReactNode;
   children: ReactNode;
 }) {
-  const { nama, roles } = useCurrentUser();
+  const { nama, roles, user } = useCurrentUser();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const wajibGanti = !!user?.user_metadata?.["wajib_ganti_password"];
+
+  useEffect(() => {
+    if (wajibGanti && pathname !== "/ubah-password") navigate({ to: "/ubah-password", replace: true });
+  }, [wajibGanti, pathname, navigate]);
 
   const inisial =
     nama

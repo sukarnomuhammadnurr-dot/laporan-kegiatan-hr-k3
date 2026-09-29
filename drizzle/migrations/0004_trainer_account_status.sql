@@ -1,0 +1,2 @@
+ALTER TABLE public.trainers ADD COLUMN IF NOT EXISTS akun_aktif boolean NOT NULL DEFAULT true;
+CREATE UNIQUE INDEX IF NOT EXISTS trainers_user_id_unique ON public.trainers(user_id) WHERE user_id IS NOT NULL;
