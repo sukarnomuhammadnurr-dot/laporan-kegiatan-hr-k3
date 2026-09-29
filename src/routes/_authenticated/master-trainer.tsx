@@ -24,6 +24,11 @@ import {
 } from "@/components/ui/select";
 import { useCurrentUser, type AppRole, type Trainer } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  buatAkunTrainer,
+  setPasswordSementara,
+  ubahStatusAkun,
+} from "@/lib/trainer-accounts.functions";
 import { formatTanggal } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
@@ -82,6 +87,35 @@ function StatusPill({ aktif }: { aktif: boolean }) {
   );
 }
 
+function AccountPill({ trainer }: { trainer: Trainer }) {
+  if (!trainer.user_id) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+        Belum ada akun
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium",
+        trainer.akun_aktif === false
+          ? "bg-muted text-muted-foreground"
+          : "bg-status-verified/15 text-status-verified",
+      )}
+    >
+      <span
+        className={cn(
+          "size-1.5 rounded-full",
+          trainer.akun_aktif === false ? "bg-muted-foreground" : "bg-status-verified",
+        )}
+      />
+      {trainer.akun_aktif === false ? "Akun nonaktif" : "Akun aktif"}
+    </span>
+  );
+}
+
 function MasterTrainer() {
   const { isAdmin, isStaff, loading, user } = useCurrentUser();
   const qc = useQueryClient();
@@ -90,6 +124,9 @@ function MasterTrainer() {
   const [form, setForm] = useState<FormState | null>(null);
   const [detail, setDetail] = useState<Trainer | null>(null);
   const [ubahStatus, setUbahStatus] = useState<Trainer | null>(null);
+  const [akun, setAkun] = useState<Trainer | null>(null);
+  const [resetAkun, setResetAkun] = useState<Trainer | null>(null);
+  const [statusAkun, setStatusAkun] = useState<Trainer | null>(null);
 
   const { data: trainers = [], isLoading } = useQuery({
     queryKey: ["trainers", "master"],
@@ -128,6 +165,21 @@ function MasterTrainer() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Gagal mengubah status."),
   });
 
+  const toggleAkun = useMutation({
+    mutationFn: async (t: Trainer) => {
+      await ubahStatusAkun({
+        data: { trainerId: t.id, aktif: t.akun_aktif === false },
+      });
+      return t.akun_aktif === false;
+    },
+    onSuccess: (aktif) => {
+      toast.success(aktif ? "Akun trainer diaktifkan." : "Akun trainer dinonaktifkan.");
+      qc.invalidateQueries({ queryKey: ["trainers"] });
+      setStatusAkun(null);
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Gagal mengubah status akun."),
+  });
+
   if (!loading && !isStaff) {
     return (
       <AppShell title="Master Trainer">
@@ -153,7 +205,7 @@ function MasterTrainer() {
       }
     >
       <p className="-mt-2 mb-4 text-sm text-muted-foreground">
-        Kelola data trainer yang menggunakan sistem laporan kegiatan.
+        Kelola data trainer dan akun login yang digunakan untuk sistem laporan kegiatan.
         {!isAdmin && " Anda melihat dalam mode baca saja."}
       </p>
 
@@ -190,12 +242,11 @@ function MasterTrainer() {
           <p className="p-5 text-sm text-muted-foreground">Tidak ada trainer yang cocok.</p>
         ) : (
           <>
-            {/* Desktop */}
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left">
-                    {["No", "ID Trainer", "Nama Lengkap", "Role", "Status", "Email", "Nomor WhatsApp", "Aksi"].map((h) => (
+                    {["No", "ID Trainer", "Nama Lengkap", "Role", "Status", "Akun", "Email", "Nomor WhatsApp", "Aksi"].map((h) => (
                       <th key={h} className="eyebrow px-4 py-3 font-medium text-muted-foreground">{h}</th>
                     ))}
                   </tr>
@@ -208,17 +259,27 @@ function MasterTrainer() {
                       <td className="px-4 py-3 font-medium">{t.nama_lengkap}</td>
                       <td className="px-4 py-3">{ROLE_LABEL[t.role]}</td>
                       <td className="px-4 py-3"><StatusPill aktif={t.aktif} /></td>
+                      <td className="px-4 py-3"><AccountPill trainer={t} /></td>
                       <td className="px-4 py-3 text-muted-foreground">{t.email || "—"}</td>
                       <td className="num px-4 py-3 text-muted-foreground">{t.nomor_whatsapp || "—"}</td>
                       <td className="px-4 py-3">
-                        <Aksi t={t} isAdmin={isAdmin} onDetail={setDetail} onEdit={(x) => setForm(toForm(x))} onToggle={setUbahStatus} />
+                        <Aksi
+                          t={t}
+                          isAdmin={isAdmin}
+                          onDetail={setDetail}
+                          onEdit={(x) => setForm(toForm(x))}
+                          onToggle={setUbahStatus}
+                          onAccount={setAkun}
+                          onResetPassword={setResetAkun}
+                          onToggleAccount={setStatusAkun}
+                        />
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {/* Mobile */}
+
             <div className="divide-y divide-border md:hidden">
               {tampil.map((t) => (
                 <div key={t.id} className="space-y-2 p-4">
@@ -229,8 +290,20 @@ function MasterTrainer() {
                     </div>
                     <StatusPill aktif={t.aktif} />
                   </div>
-                  <p className="text-xs text-muted-foreground">{t.email || "Email belum diisi"} · {t.nomor_whatsapp || "WA belum diisi"}</p>
-                  <Aksi t={t} isAdmin={isAdmin} onDetail={setDetail} onEdit={(x) => setForm(toForm(x))} onToggle={setUbahStatus} />
+                  <div className="flex flex-wrap gap-2">
+                    <AccountPill trainer={t} />
+                    <span className="text-xs text-muted-foreground">{t.email || "Email belum diisi"}</span>
+                  </div>
+                  <Aksi
+                    t={t}
+                    isAdmin={isAdmin}
+                    onDetail={setDetail}
+                    onEdit={(x) => setForm(toForm(x))}
+                    onToggle={setUbahStatus}
+                    onAccount={setAkun}
+                    onResetPassword={setResetAkun}
+                    onToggleAccount={setStatusAkun}
+                  />
                 </div>
               ))}
             </div>
@@ -247,6 +320,8 @@ function MasterTrainer() {
         />
       )}
       {detail && <DetailTrainer t={detail} onClose={() => setDetail(null)} />}
+      {akun && <BuatAkunDialog trainer={akun} onClose={() => setAkun(null)} />}
+      {resetAkun && <ResetPasswordDialog trainer={resetAkun} onClose={() => setResetAkun(null)} />}
 
       <Dialog open={!!ubahStatus} onOpenChange={(o) => !o && setUbahStatus(null)}>
         <DialogContent>
@@ -261,7 +336,29 @@ function MasterTrainer() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setUbahStatus(null)}>Batal</Button>
             <Button disabled={toggle.isPending} onClick={() => ubahStatus && toggle.mutate(ubahStatus)}>
-              {ubahStatus?.aktif ? "Nonaktifkan" : "Aktifkan"}
+              {toggle.isPending ? "Memproses…" : ubahStatus?.aktif ? "Nonaktifkan" : "Aktifkan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!statusAkun} onOpenChange={(o) => !o && setStatusAkun(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{statusAkun?.akun_aktif === false ? "Aktifkan akun trainer?" : "Nonaktifkan akun trainer?"}</DialogTitle>
+            <DialogDescription>
+              {statusAkun?.akun_aktif === false
+                ? `${statusAkun?.nama_lengkap} akan dapat login kembali menggunakan akun tersebut.`
+                : `${statusAkun?.nama_lengkap} tidak dapat login sampai akun diaktifkan kembali.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStatusAkun(null)}>Batal</Button>
+            <Button
+              disabled={toggleAkun.isPending}
+              onClick={() => statusAkun && toggleAkun.mutate(statusAkun)}
+            >
+              {toggleAkun.isPending ? "Memproses…" : statusAkun?.akun_aktif === false ? "Aktifkan Akun" : "Nonaktifkan Akun"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -288,12 +385,18 @@ function Aksi({
   onDetail,
   onEdit,
   onToggle,
+  onAccount,
+  onResetPassword,
+  onToggleAccount,
 }: {
   t: Trainer;
   isAdmin: boolean;
   onDetail: (t: Trainer) => void;
   onEdit: (t: Trainer) => void;
   onToggle: (t: Trainer) => void;
+  onAccount: (t: Trainer) => void;
+  onResetPassword: (t: Trainer) => void;
+  onToggleAccount: (t: Trainer) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -301,12 +404,197 @@ function Aksi({
       {isAdmin && (
         <>
           <Button size="sm" variant="outline" onClick={() => onEdit(t)}>Edit</Button>
+          {!t.user_id ? (
+            <Button size="sm" onClick={() => onAccount(t)}>Buat Akun</Button>
+          ) : (
+            <>
+              <Button size="sm" variant="outline" onClick={() => onResetPassword(t)}>Reset Password</Button>
+              <Button size="sm" variant={t.akun_aktif === false ? "secondary" : "ghost"} onClick={() => onToggleAccount(t)}>
+                {t.akun_aktif === false ? "Aktifkan Akun" : "Nonaktifkan Akun"}
+              </Button>
+            </>
+          )}
           <Button size="sm" variant={t.aktif ? "ghost" : "secondary"} onClick={() => onToggle(t)}>
             {t.aktif ? "Nonaktifkan" : "Aktifkan"}
           </Button>
         </>
       )}
     </div>
+  );
+}
+
+function buatPasswordSementara() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const values = new Uint32Array(10);
+  crypto.getRandomValues(values);
+  return Array.from(values, (n) => chars[n % chars.length]).join("") + "!";
+}
+
+function BuatAkunDialog({ trainer, onClose }: { trainer: Trainer; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [email, setEmail] = useState(trainer.email ?? "");
+  const [password, setPassword] = useState(buatPasswordSementara);
+  const [busy, setBusy] = useState(false);
+  const [hasil, setHasil] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setErr("Email wajib diisi dengan format yang valid.");
+      return;
+    }
+    if (password.length < 6) {
+      setErr("Password sementara minimal 6 karakter.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await buatAkunTrainer({ data: { trainerId: trainer.id, email: cleanEmail, password } });
+      toast.success("Akun trainer berhasil dibuat.");
+      setHasil(true);
+      qc.invalidateQueries({ queryKey: ["trainers"] });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Gagal membuat akun trainer.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Buat Akun Trainer</DialogTitle>
+          <DialogDescription>
+            Buat akun login untuk <strong>{trainer.nama_lengkap}</strong>. Password sementara hanya ditampilkan di sini dan tidak disimpan oleh aplikasi sebagai teks biasa.
+          </DialogDescription>
+        </DialogHeader>
+
+        {!hasil ? (
+          <form onSubmit={submit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Nama Trainer</Label>
+              <Input value={trainer.nama_lengkap} disabled />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="akun-email">Email Login</Label>
+              <Input id="akun-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="akun-password">Password Sementara</Label>
+              <div className="flex gap-2">
+                <Input id="akun-password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" className="font-mono" />
+                <Button type="button" variant="outline" onClick={() => setPassword(buatPasswordSementara())}>Buat Baru</Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Simpan/catat password ini untuk diberikan kepada trainer. Trainer sebaiknya langsung menggantinya setelah login.</p>
+            </div>
+            {err && <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{err}</p>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose}>Batal</Button>
+              <Button type="submit" disabled={busy}>{busy ? "Membuat Akun…" : "Buat Akun"}</Button>
+            </DialogFooter>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-status-verified/10 p-4 text-sm">
+              <p className="font-semibold text-status-verified">Akun berhasil dibuat.</p>
+              <p className="mt-1 text-muted-foreground">Berikan email dan password sementara berikut kepada trainer.</p>
+            </div>
+            <div className="space-y-3 rounded-lg border p-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Email</p>
+                <p className="font-medium">{email}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Password sementara</p>
+                <p className="break-all font-mono font-semibold">{password}</p>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">Password ini tidak dapat dilihat kembali setelah dialog ditutup. Jika hilang, gunakan menu Reset Password.</p>
+            <DialogFooter>
+              <Button onClick={onClose}>Selesai</Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ResetPasswordDialog({ trainer, onClose }: { trainer: Trainer; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [password, setPassword] = useState(buatPasswordSementara);
+  const [busy, setBusy] = useState(false);
+  const [hasil, setHasil] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    if (password.length < 6) {
+      setErr("Password sementara minimal 6 karakter.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await setPasswordSementara({ data: { trainerId: trainer.id, password } });
+      toast.success("Password sementara berhasil diatur ulang.");
+      setHasil(true);
+      qc.invalidateQueries({ queryKey: ["trainers"] });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Gagal mengatur ulang password.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Reset Password Trainer</DialogTitle>
+          <DialogDescription>
+            Buat password sementara baru untuk <strong>{trainer.nama_lengkap}</strong>. Password lama tidak dapat dilihat oleh Admin.
+          </DialogDescription>
+        </DialogHeader>
+
+        {!hasil ? (
+          <form onSubmit={submit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Password Sementara Baru</Label>
+              <div className="flex gap-2">
+                <Input value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" className="font-mono" />
+                <Button type="button" variant="outline" onClick={() => setPassword(buatPasswordSementara())}>Buat Baru</Button>
+              </div>
+            </div>
+            {err && <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{err}</p>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose}>Batal</Button>
+              <Button type="submit" disabled={busy}>{busy ? "Mereset…" : "Reset Password"}</Button>
+            </DialogFooter>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-status-verified/10 p-4 text-sm">
+              <p className="font-semibold text-status-verified">Password berhasil direset.</p>
+              <p className="mt-1 text-muted-foreground">Berikan password sementara berikut kepada trainer.</p>
+            </div>
+            <div className="rounded-lg border p-4">
+              <p className="text-xs text-muted-foreground">Password sementara baru</p>
+              <p className="mt-1 break-all font-mono font-semibold">{password}</p>
+            </div>
+            <p className="text-xs text-muted-foreground">Password ini tidak dapat dilihat kembali setelah dialog ditutup.</p>
+            <DialogFooter>
+              <Button onClick={onClose}>Selesai</Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -386,7 +674,7 @@ function FormTrainer({
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{edit ? "Edit Trainer" : "Tambah Trainer"}</DialogTitle>
-          <DialogDescription>Data trainer adalah identitas; akun login dibuat terpisah oleh trainer.</DialogDescription>
+          <DialogDescription>Data trainer adalah identitas. Akun login dapat dibuat Admin setelah data trainer tersimpan.</DialogDescription>
         </DialogHeader>
         <form onSubmit={simpan} className="space-y-4">
           <div className="space-y-1.5">
@@ -413,7 +701,7 @@ function FormTrainer({
           <div className="space-y-1.5">
             <Label htmlFor="em">Email <span className="text-muted-foreground">(opsional)</span></Label>
             <Input id="em" type="email" value={f.email} onChange={(e) => set("email", e.target.value)} />
-            <p className="text-xs text-muted-foreground">Jika trainer mendaftar dengan email ini, akunnya otomatis tertaut.</p>
+            <p className="text-xs text-muted-foreground">Untuk akun login, Admin dapat membuat akun menggunakan email ini setelah trainer tersimpan.</p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="wa">Nomor WhatsApp <span className="text-muted-foreground">(opsional)</span></Label>
@@ -471,7 +759,8 @@ function DetailTrainer({ t, onClose }: { t: Trainer; onClose: () => void }) {
     ["Nama Lengkap", t.nama_lengkap],
     ["ID Trainer", <span className="num">{t.nomor_id_trainer}</span>],
     ["Role", ROLE_LABEL[t.role]],
-    ["Status", <StatusPill aktif={t.aktif} />],
+    ["Status Trainer", <StatusPill aktif={t.aktif} />],
+    ["Status Akun", <AccountPill trainer={t} />],
     ["Email", t.email || "—"],
     ["Nomor WhatsApp", t.nomor_whatsapp || "—"],
     ["Akun login", t.user_id ? "Tertaut" : "Belum punya akun"],
