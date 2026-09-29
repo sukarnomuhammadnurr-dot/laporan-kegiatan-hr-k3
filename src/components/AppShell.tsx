@@ -27,14 +27,14 @@ type NavItem = {
 const NAV_TRAINER: NavItem[] = [
   { to: "/dashboard", label: "Dashboard" },
   { to: "/buat-laporan", label: "Buat Laporan" },
-  { label: "Laporan Saya" },
+  { to: "/laporan", label: "Laporan Saya" },
   { label: "Kalender Kegiatan" },
   { label: "Laporan Bulanan" },
 ];
 
 const NAV_STAFF: NavItem[] = [
   { to: "/dashboard", label: "Dashboard" },
-  { label: "Semua Laporan" },
+  { to: "/laporan", label: "Semua Laporan" },
   { to: "/buat-laporan", label: "Buat Laporan" },
   { label: "Monitoring Laporan" },
   { label: "Kalender Kegiatan" },
