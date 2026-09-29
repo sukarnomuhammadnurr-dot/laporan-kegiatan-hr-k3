@@ -43,7 +43,7 @@ const NAV_STAFF: NavItem[] = [
 
 const NAV_MASTER: NavItem[] = [
   { to: "/master-trainer", label: "Master Trainer" },
-  { label: "Master Materi" },
+  { to: "/master-materi", label: "Master Materi" },
   { label: "Master Kegiatan" },
   { label: "Master Jadwal" },
   { label: "Pesan WhatsApp" },
