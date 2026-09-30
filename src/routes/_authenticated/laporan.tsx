@@ -1,7 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Download, Eye, Image as ImageIcon } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Check,
+  Download,
+  Eye,
+  Image as ImageIcon,
+  RotateCcw,
+  X,
+} from "lucide-react";
 
 import { AppShell, Panel } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -112,10 +119,6 @@ type ReportPhoto = {
   nama_file: string | null;
 };
 
-/**
- * Ambil semua foto laporan dari tabel report_photos
- * lalu buat signed URL dari bucket report-photos.
- */
 async function getReportPhotos(reportId: string) {
   const { data, error } = await supabase
     .from("report_photos")
@@ -154,17 +157,102 @@ async function getReportPhotos(reportId: string) {
 }
 
 /* =========================================================
+   VERIFIKASI LAPORAN
+========================================================= */
+
+async function verifikasiLaporan(
+  report: ReportWithTrainer,
+  userId: string,
+) {
+  if (report.status_laporan !== "menunggu_verifikasi") {
+    throw new Error(
+      "Laporan ini tidak sedang menunggu verifikasi.",
+    );
+  }
+
+  const { error: updateError } = await supabase
+    .from("reports")
+    .update({
+      status_laporan: "terverifikasi",
+      verified_by: userId,
+      verified_at: new Date().toISOString(),
+      catatan_revisi: null,
+    })
+    .eq("id", report.id);
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  const { error: verificationError } = await supabase
+    .from("report_verifications")
+    .insert({
+      report_id: report.id,
+      verifier_id: userId,
+      hasil: "terverifikasi",
+      catatan: "Laporan diverifikasi.",
+    });
+
+  if (verificationError) {
+    throw verificationError;
+  }
+}
+
+/* =========================================================
+   MINTA REVISI
+========================================================= */
+
+async function mintaRevisiLaporan(
+  report: ReportWithTrainer,
+  userId: string,
+  catatan: string,
+) {
+  const trimmed = catatan.trim();
+
+  if (!trimmed) {
+    throw new Error(
+      "Catatan revisi wajib diisi.",
+    );
+  }
+
+  if (report.status_laporan !== "menunggu_verifikasi") {
+    throw new Error(
+      "Laporan ini tidak sedang menunggu verifikasi.",
+    );
+  }
+
+  const { error: updateError } = await supabase
+    .from("reports")
+    .update({
+      status_laporan: "perlu_revisi",
+      catatan_revisi: trimmed,
+      verified_by: null,
+      verified_at: null,
+    })
+    .eq("id", report.id);
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  const { error: verificationError } = await supabase
+    .from("report_verifications")
+    .insert({
+      report_id: report.id,
+      verifier_id: userId,
+      hasil: "perlu_revisi",
+      catatan: trimmed,
+    });
+
+  if (verificationError) {
+    throw verificationError;
+  }
+}
+
+/* =========================================================
    DOWNLOAD / PRINT PDF
 ========================================================= */
 
-/**
- * Download dilakukan setelah user membuka Preview.
- *
- * Alurnya:
- * Preview → Download PDF → Browser Print Preview → Save as PDF
- *
- * Semua foto laporan akan dimasukkan ke dokumen.
- */
 async function downloadLaporan(report: ReportWithTrainer) {
   const namaTrainer = report.trainers?.nama_lengkap || "Trainer";
 
@@ -380,8 +468,6 @@ async function downloadLaporan(report: ReportWithTrainer) {
             font-weight: bold;
           }
 
-          /* FOTO */
-
           .photos-section {
             border: 1px solid #d1d5db;
 
@@ -560,8 +646,6 @@ async function downloadLaporan(report: ReportWithTrainer) {
 
         </div>
 
-        <!-- INFORMASI -->
-
         <div class="section">
 
           <div class="section-title">
@@ -569,11 +653,7 @@ async function downloadLaporan(report: ReportWithTrainer) {
           </div>
 
           <div class="row">
-
-            <div class="label">
-              Tanggal
-            </div>
-
+            <div class="label">Tanggal</div>
             <div class="value">
               ${escapeHtml(
                 formatTanggalPanjang(
@@ -581,98 +661,56 @@ async function downloadLaporan(report: ReportWithTrainer) {
                 ),
               )}
             </div>
-
           </div>
 
           <div class="row">
-
-            <div class="label">
-              Trainer
-            </div>
-
+            <div class="label">Trainer</div>
             <div class="value">
               ${escapeHtml(namaTrainer)}
             </div>
-
           </div>
 
           <div class="row">
-
-            <div class="label">
-              Jam Kegiatan
-            </div>
-
+            <div class="label">Jam Kegiatan</div>
             <div class="value">
-              ${escapeHtml(
-                report.jam_mulai || "—",
-              )}
-
+              ${escapeHtml(report.jam_mulai || "—")}
               ${
                 report.jam_selesai
-                  ? ` - ${escapeHtml(
-                      report.jam_selesai,
-                    )}`
+                  ? ` - ${escapeHtml(report.jam_selesai)}`
                   : ""
               }
             </div>
-
           </div>
 
           <div class="row">
-
-            <div class="label">
-              Kelas
-            </div>
-
+            <div class="label">Kelas</div>
             <div class="value">
               ${escapeHtml(report.kelas || "—")}
             </div>
-
           </div>
 
           <div class="row">
-
-            <div class="label">
-              Jenis Kegiatan
-            </div>
-
+            <div class="label">Jenis Kegiatan</div>
             <div class="value">
-              ${escapeHtml(
-                report.jenis_kegiatan || "—",
-              )}
+              ${escapeHtml(report.jenis_kegiatan || "—")}
             </div>
-
           </div>
 
           <div class="row">
-
-            <div class="label">
-              Lokasi
-            </div>
-
+            <div class="label">Lokasi</div>
             <div class="value">
               ${escapeHtml(report.lokasi || "—")}
             </div>
-
           </div>
 
           <div class="row">
-
-            <div class="label">
-              Penanggung Jawab
-            </div>
-
+            <div class="label">Penanggung Jawab</div>
             <div class="value">
-              ${escapeHtml(
-                report.penanggung_jawab || "—",
-              )}
+              ${escapeHtml(report.penanggung_jawab || "—")}
             </div>
-
           </div>
 
         </div>
-
-        <!-- MATERI -->
 
         <div class="section">
 
@@ -686,8 +724,6 @@ async function downloadLaporan(report: ReportWithTrainer) {
 
         </div>
 
-        <!-- PESERTA -->
-
         <div class="section">
 
           <div class="section-title">
@@ -697,58 +733,44 @@ async function downloadLaporan(report: ReportWithTrainer) {
           <div class="stats">
 
             <div class="stat">
-
               <div class="stat-label">
                 Total Peserta
               </div>
-
               <div class="stat-number">
                 ${report.jumlah_peserta ?? "—"}
               </div>
-
             </div>
 
             <div class="stat">
-
               <div class="stat-label">
                 Hadir
               </div>
-
               <div class="stat-number">
                 ${report.jumlah_hadir ?? "—"}
               </div>
-
             </div>
 
             <div class="stat">
-
               <div class="stat-label">
                 Tidak Hadir
               </div>
-
               <div class="stat-number">
                 ${report.jumlah_tidak_hadir ?? "—"}
               </div>
-
             </div>
 
             <div class="stat">
-
               <div class="stat-label">
                 Tambahan
               </div>
-
               <div class="stat-number">
                 ${report.jumlah_tambahan ?? "—"}
               </div>
-
             </div>
 
           </div>
 
         </div>
-
-        <!-- KETERANGAN -->
 
         <div class="section">
 
@@ -764,8 +786,6 @@ async function downloadLaporan(report: ReportWithTrainer) {
           </div>
 
         </div>
-
-        <!-- STATUS -->
 
         <div class="section">
 
@@ -787,9 +807,22 @@ async function downloadLaporan(report: ReportWithTrainer) {
 
           </div>
 
-        </div>
+          ${
+            report.catatan_revisi
+              ? `
+                <div class="row">
+                  <div class="label">
+                    Catatan Revisi
+                  </div>
+                  <div class="value">
+                    ${escapeHtml(report.catatan_revisi)}
+                  </div>
+                </div>
+              `
+              : ""
+          }
 
-        <!-- FOTO -->
+        </div>
 
         <div class="photos-section">
 
@@ -798,9 +831,7 @@ async function downloadLaporan(report: ReportWithTrainer) {
           </div>
 
           <div class="photos-grid">
-
             ${photoHtml}
-
           </div>
 
         </div>
@@ -829,19 +860,12 @@ async function downloadLaporan(report: ReportWithTrainer) {
     }
 
     win.document.open();
-
     win.document.write(html);
-
     win.document.close();
 
-    /*
-     * Tunggu semua gambar selesai dimuat
-     * sebelum membuka Print Preview.
-     */
-    const images =
-      Array.from(
-        win.document.images,
-      );
+    const images = Array.from(
+      win.document.images,
+    );
 
     await Promise.all(
       images.map(
@@ -849,24 +873,17 @@ async function downloadLaporan(report: ReportWithTrainer) {
           new Promise<void>((resolve) => {
             if (img.complete) {
               resolve();
-
               return;
             }
 
             img.onload = () => resolve();
-
             img.onerror = () => resolve();
           }),
       ),
     );
 
-    /*
-     * Beri sedikit waktu untuk browser
-     * melakukan layout gambar.
-     */
     setTimeout(() => {
       win.focus();
-
       win.print();
     }, 300);
   } catch (error) {
@@ -912,8 +929,11 @@ function LaporanPage() {
     isStaff,
     isTrainer,
     trainer,
+    user,
     loading,
   } = useCurrentUser();
+
+  const queryClient = useQueryClient();
 
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
@@ -930,6 +950,17 @@ function LaporanPage() {
     useState<ReportWithTrainer | null>(
       null,
     );
+
+  const [revisiReport, setRevisiReport] =
+    useState<ReportWithTrainer | null>(
+      null,
+    );
+
+  const [catatanRevisi, setCatatanRevisi] =
+    useState("");
+
+  const [processingId, setProcessingId] =
+    useState<string | null>(null);
 
   const {
     data: trainers = [],
@@ -989,6 +1020,113 @@ function LaporanPage() {
       }),
   });
 
+  async function refreshReports() {
+    await queryClient.invalidateQueries({
+      queryKey: ["reports", "laporan"],
+    });
+
+    await queryClient.invalidateQueries({
+      queryKey: ["report-photos"],
+    });
+  }
+
+  async function handleVerifikasi(
+    report: ReportWithTrainer,
+  ) {
+    if (!user?.id) {
+      alert("User tidak ditemukan.");
+      return;
+    }
+
+    const yakin = window.confirm(
+      `Verifikasi laporan ${report.materi || "ini"}?`,
+    );
+
+    if (!yakin) return;
+
+    try {
+      setProcessingId(report.id);
+
+      await verifikasiLaporan(
+        report,
+        user.id,
+      );
+
+      alert(
+        "Laporan berhasil diverifikasi.",
+      );
+
+      setPreview(null);
+
+      await refreshReports();
+    } catch (error) {
+      console.error(
+        "Gagal verifikasi:",
+        error,
+      );
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Gagal memverifikasi laporan.",
+      );
+    } finally {
+      setProcessingId(null);
+    }
+  }
+
+  async function handleMintaRevisi() {
+    if (!revisiReport) return;
+
+    if (!user?.id) {
+      alert("User tidak ditemukan.");
+      return;
+    }
+
+    if (!catatanRevisi.trim()) {
+      alert(
+        "Catatan revisi wajib diisi.",
+      );
+
+      return;
+    }
+
+    try {
+      setProcessingId(
+        revisiReport.id,
+      );
+
+      await mintaRevisiLaporan(
+        revisiReport,
+        user.id,
+        catatanRevisi,
+      );
+
+      alert(
+        "Laporan dikembalikan untuk revisi.",
+      );
+
+      setRevisiReport(null);
+      setCatatanRevisi("");
+      setPreview(null);
+
+      await refreshReports();
+    } catch (error) {
+      console.error(
+        "Gagal meminta revisi:",
+        error,
+      );
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Gagal mengirim permintaan revisi.",
+      );
+    } finally {
+      setProcessingId(null);
+    }
+  }
+
   if (
     !loading &&
     !isStaff &&
@@ -997,12 +1135,10 @@ function LaporanPage() {
     return (
       <AppShell title="Laporan">
         <Panel>
-
           <p className="text-sm text-muted-foreground">
             Anda tidak memiliki akses ke
             halaman laporan.
           </p>
-
         </Panel>
       </AppShell>
     );
@@ -1017,21 +1153,18 @@ function LaporanPage() {
           : "Semua Laporan"
       }
     >
-
       <p className="-mt-2 mb-4 text-sm text-muted-foreground">
         {isTrainer
           ? "Lihat, preview, dan download laporan kegiatan Anda."
-          : "Lihat, preview, dan download laporan seluruh trainer."}
+          : "Lihat, preview, verifikasi, dan download laporan seluruh trainer."}
       </p>
 
       {/* FILTER */}
 
       <Panel className="mb-4">
-
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
 
           <div>
-
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Dari tanggal
             </p>
@@ -1043,11 +1176,9 @@ function LaporanPage() {
                 setDari(e.target.value)
               }
             />
-
           </div>
 
           <div>
-
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Sampai tanggal
             </p>
@@ -1059,12 +1190,10 @@ function LaporanPage() {
                 setSampai(e.target.value)
               }
             />
-
           </div>
 
           {!isTrainer && (
             <div>
-
               <p className="mb-1.5 text-xs font-medium text-muted-foreground">
                 Trainer
               </p>
@@ -1075,13 +1204,11 @@ function LaporanPage() {
                   setTrainerFilter
                 }
               >
-
                 <SelectTrigger>
                   <SelectValue placeholder="Semua trainer" />
                 </SelectTrigger>
 
                 <SelectContent>
-
                   <SelectItem value="semua">
                     Semua Trainer
                   </SelectItem>
@@ -1094,16 +1221,12 @@ function LaporanPage() {
                       {t.nama_lengkap}
                     </SelectItem>
                   ))}
-
                 </SelectContent>
-
               </Select>
-
             </div>
           )}
 
           <div>
-
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Status
             </p>
@@ -1116,13 +1239,11 @@ function LaporanPage() {
                 )
               }
             >
-
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
 
               <SelectContent>
-
                 <SelectItem value="semua">
                   Semua Status
                 </SelectItem>
@@ -1142,15 +1263,11 @@ function LaporanPage() {
                 <SelectItem value="perlu_revisi">
                   Perlu Revisi
                 </SelectItem>
-
               </SelectContent>
-
             </Select>
-
           </div>
 
           <div>
-
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Cari
             </p>
@@ -1162,11 +1279,9 @@ function LaporanPage() {
               }
               placeholder="Materi, kegiatan, kelas..."
             />
-
           </div>
 
         </div>
-
       </Panel>
 
       {/* DAFTAR LAPORAN */}
@@ -1176,7 +1291,6 @@ function LaporanPage() {
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
 
           <div>
-
             <p className="font-semibold">
               Daftar Laporan
             </p>
@@ -1184,7 +1298,6 @@ function LaporanPage() {
             <p className="text-xs text-muted-foreground">
               {reports.length} laporan ditemukan
             </p>
-
           </div>
 
           {(dari ||
@@ -1192,7 +1305,6 @@ function LaporanPage() {
             trainerFilter !== "semua" ||
             status !== "semua" ||
             cari) && (
-
             <Button
               size="sm"
               variant="outline"
@@ -1206,27 +1318,20 @@ function LaporanPage() {
             >
               Reset Filter
             </Button>
-
           )}
 
         </div>
 
         {isLoading ? (
-
           <p className="p-5 text-sm text-muted-foreground">
             Memuat laporan…
           </p>
-
         ) : isError ? (
-
           <p className="p-5 text-sm text-destructive">
             Gagal mengambil data laporan.
           </p>
-
         ) : reports.length === 0 ? (
-
           <div className="p-8 text-center">
-
             <p className="font-medium">
               Belum ada laporan
             </p>
@@ -1235,13 +1340,9 @@ function LaporanPage() {
               Tidak ada laporan yang sesuai
               dengan filter.
             </p>
-
           </div>
-
         ) : (
-
           <>
-
             {/* DESKTOP */}
 
             <div className="hidden overflow-x-auto md:block">
@@ -1249,7 +1350,6 @@ function LaporanPage() {
               <table className="w-full text-sm">
 
                 <thead>
-
                   <tr className="border-b border-border text-left">
 
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
@@ -1289,14 +1389,12 @@ function LaporanPage() {
                     </th>
 
                   </tr>
-
                 </thead>
 
                 <tbody>
 
                   {reports.map(
                     (r, index) => (
-
                       <tr
                         key={r.id}
                         className="border-b border-border/60 last:border-0"
@@ -1306,24 +1404,22 @@ function LaporanPage() {
                           {index + 1}
                         </td>
 
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="whitespace-nowrap px-4 py-3">
                           {formatTanggal(
                             r.tanggal_kegiatan,
                           )}
                         </td>
 
-                        <td className="num px-4 py-3 whitespace-nowrap">
-
+                        <td className="num whitespace-nowrap px-4 py-3">
                           {r.jam_mulai ||
                             "—"}
 
                           {r.jam_selesai
                             ? ` - ${r.jam_selesai}`
                             : ""}
-
                         </td>
 
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="whitespace-nowrap px-4 py-3">
                           {r.trainers
                             ?.nama_lengkap ||
                             "—"}
@@ -1368,21 +1464,67 @@ function LaporanPage() {
 
                         <td className="px-4 py-3">
 
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            title="Preview laporan"
-                            onClick={() =>
-                              setPreview(r)
-                            }
-                          >
-                            <Eye className="size-4" />
-                          </Button>
+                          <div className="flex items-center gap-1.5">
+
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              title="Preview laporan"
+                              onClick={() =>
+                                setPreview(r)
+                              }
+                            >
+                              <Eye className="size-4" />
+                            </Button>
+
+                            {isStaff &&
+                              r.status_laporan ===
+                                "menunggu_verifikasi" && (
+                                <>
+                                  <Button
+                                    size="icon"
+                                    title="Verifikasi laporan"
+                                    disabled={
+                                      processingId ===
+                                      r.id
+                                    }
+                                    onClick={() =>
+                                      handleVerifikasi(
+                                        r,
+                                      )
+                                    }
+                                  >
+                                    <Check className="size-4" />
+                                  </Button>
+
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    title="Minta revisi"
+                                    disabled={
+                                      processingId ===
+                                      r.id
+                                    }
+                                    onClick={() => {
+                                      setRevisiReport(
+                                        r,
+                                      );
+
+                                      setCatatanRevisi(
+                                        "",
+                                      );
+                                    }}
+                                  >
+                                    <RotateCcw className="size-4" />
+                                  </Button>
+                                </>
+                              )}
+
+                          </div>
 
                         </td>
 
                       </tr>
-
                     ),
                   )}
 
@@ -1398,7 +1540,6 @@ function LaporanPage() {
 
               {reports.map(
                 (r, index) => (
-
                   <div
                     key={r.id}
                     className="space-y-3 p-4"
@@ -1407,7 +1548,6 @@ function LaporanPage() {
                     <div className="flex items-start justify-between gap-3">
 
                       <div>
-
                         <p className="text-xs text-muted-foreground">
                           No. {index + 1}
                         </p>
@@ -1422,7 +1562,6 @@ function LaporanPage() {
                             ?.nama_lengkap ||
                             "—"}
                         </p>
-
                       </div>
 
                       <StatusPill
@@ -1436,7 +1575,6 @@ function LaporanPage() {
                     <div className="grid grid-cols-2 gap-3 text-sm">
 
                       <div>
-
                         <p className="text-xs text-muted-foreground">
                           Tanggal
                         </p>
@@ -1446,30 +1584,24 @@ function LaporanPage() {
                             r.tanggal_kegiatan,
                           )}
                         </p>
-
                       </div>
 
                       <div>
-
                         <p className="text-xs text-muted-foreground">
                           Jam
                         </p>
 
                         <p>
-
                           {r.jam_mulai ||
                             "—"}
 
                           {r.jam_selesai
                             ? ` - ${r.jam_selesai}`
                             : ""}
-
                         </p>
-
                       </div>
 
                       <div>
-
                         <p className="text-xs text-muted-foreground">
                           Kelas
                         </p>
@@ -1478,11 +1610,9 @@ function LaporanPage() {
                           {r.kelas ||
                             "—"}
                         </p>
-
                       </div>
 
                       <div>
-
                         <p className="text-xs text-muted-foreground">
                           Peserta
                         </p>
@@ -1491,34 +1621,74 @@ function LaporanPage() {
                           {r.jumlah_peserta ??
                             "—"}
                         </p>
-
                       </div>
 
                     </div>
 
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        setPreview(r)
-                      }
-                    >
+                    <div className="flex flex-wrap gap-2">
 
-                      <Eye className="mr-2 size-4" />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setPreview(r)
+                        }
+                      >
+                        <Eye className="mr-2 size-4" />
+                        Preview
+                      </Button>
 
-                      Preview
+                      {isStaff &&
+                        r.status_laporan ===
+                          "menunggu_verifikasi" && (
+                          <>
+                            <Button
+                              size="sm"
+                              disabled={
+                                processingId ===
+                                r.id
+                              }
+                              onClick={() =>
+                                handleVerifikasi(
+                                  r,
+                                )
+                              }
+                            >
+                              <Check className="mr-2 size-4" />
+                              Verifikasi
+                            </Button>
 
-                    </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={
+                                processingId ===
+                                r.id
+                              }
+                              onClick={() => {
+                                setRevisiReport(
+                                  r,
+                                );
+
+                                setCatatanRevisi(
+                                  "",
+                                );
+                              }}
+                            >
+                              <RotateCcw className="mr-2 size-4" />
+                              Minta Revisi
+                            </Button>
+                          </>
+                        )}
+
+                    </div>
 
                   </div>
-
                 ),
               )}
 
             </div>
-
           </>
-
         )}
 
       </Panel>
@@ -1528,10 +1698,146 @@ function LaporanPage() {
       {preview && (
         <PreviewLaporan
           report={preview}
+          isStaff={isStaff}
+          processingId={processingId}
           onClose={() =>
             setPreview(null)
           }
+          onVerifikasi={() =>
+            handleVerifikasi(preview)
+          }
+          onMintaRevisi={() => {
+            setRevisiReport(preview);
+            setCatatanRevisi("");
+          }}
         />
+      )}
+
+      {/* MODAL MINTA REVISI */}
+
+      {revisiReport && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+
+          <div className="w-full max-w-lg rounded-xl bg-background shadow-xl">
+
+            <div className="flex items-center justify-between border-b px-5 py-4">
+
+              <div>
+                <p className="font-semibold">
+                  Minta Revisi Laporan
+                </p>
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Tuliskan bagian yang perlu
+                  diperbaiki oleh trainer.
+                </p>
+              </div>
+
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => {
+                  setRevisiReport(null);
+                  setCatatanRevisi("");
+                }}
+              >
+                <X className="size-4" />
+              </Button>
+
+            </div>
+
+            <div className="space-y-4 p-5">
+
+              <div className="rounded-lg bg-muted/40 p-3">
+
+                <p className="text-xs text-muted-foreground">
+                  Trainer
+                </p>
+
+                <p className="font-medium">
+                  {revisiReport.trainers
+                    ?.nama_lengkap ||
+                    "—"}
+                </p>
+
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Materi
+                </p>
+
+                <p className="font-medium">
+                  {revisiReport.materi ||
+                    "—"}
+                </p>
+
+              </div>
+
+              <div>
+
+                <p className="mb-1.5 text-sm font-medium">
+                  Catatan Revisi
+                </p>
+
+                <textarea
+                  value={catatanRevisi}
+                  onChange={(e) =>
+                    setCatatanRevisi(
+                      e.target.value,
+                    )
+                  }
+                  placeholder="Contoh: Mohon perbaiki jumlah peserta hadir dan lengkapi foto dokumentasi."
+                  rows={5}
+                  className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Catatan ini akan tersimpan pada
+                  laporan dan dapat dilihat trainer.
+                </p>
+
+              </div>
+
+            </div>
+
+            <div className="flex justify-end gap-2 border-t bg-muted/20 px-5 py-4">
+
+              <Button
+                variant="outline"
+                disabled={
+                  processingId ===
+                  revisiReport.id
+                }
+                onClick={() => {
+                  setRevisiReport(null);
+                  setCatatanRevisi("");
+                }}
+              >
+                Batal
+              </Button>
+
+              <Button
+                variant="destructive"
+                disabled={
+                  processingId ===
+                    revisiReport.id ||
+                  !catatanRevisi.trim()
+                }
+                onClick={
+                  handleMintaRevisi
+                }
+              >
+                <RotateCcw className="mr-2 size-4" />
+
+                {processingId ===
+                revisiReport.id
+                  ? "Menyimpan..."
+                  : "Kirim Revisi"}
+              </Button>
+
+            </div>
+
+          </div>
+
+        </div>
       )}
 
     </AppShell>
@@ -1544,10 +1850,18 @@ function LaporanPage() {
 
 function PreviewLaporan({
   report,
+  isStaff,
+  processingId,
   onClose,
+  onVerifikasi,
+  onMintaRevisi,
 }: {
   report: ReportWithTrainer;
+  isStaff: boolean;
+  processingId: string | null;
   onClose: () => void;
+  onVerifikasi: () => void;
+  onMintaRevisi: () => void;
 }) {
   const {
     data: photos = [],
@@ -1573,16 +1887,14 @@ function PreviewLaporan({
         <div className="flex items-center justify-between border-b px-5 py-4">
 
           <div>
-
             <p className="text-lg font-semibold">
               Preview Laporan
             </p>
 
             <p className="text-xs text-muted-foreground">
               Periksa seluruh data dan foto
-              sebelum download.
+              sebelum download atau verifikasi.
             </p>
-
           </div>
 
           <Button
@@ -1735,6 +2047,20 @@ function PreviewLaporan({
 
             </div>
 
+            {report.catatan_revisi && (
+              <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+
+                <p className="text-xs font-medium text-destructive">
+                  Catatan Revisi
+                </p>
+
+                <p className="mt-1 whitespace-pre-wrap text-sm">
+                  {report.catatan_revisi}
+                </p>
+
+              </div>
+            )}
+
           </div>
 
           {/* KETERANGAN */}
@@ -1776,7 +2102,6 @@ function PreviewLaporan({
             </div>
 
             {isLoading ? (
-
               <div className="rounded-xl border border-dashed p-8 text-center">
 
                 <p className="text-sm text-muted-foreground">
@@ -1784,9 +2109,7 @@ function PreviewLaporan({
                 </p>
 
               </div>
-
             ) : isError ? (
-
               <div className="rounded-xl border border-dashed border-destructive/40 bg-destructive/5 p-8 text-center">
 
                 <p className="text-sm font-medium text-destructive">
@@ -1799,9 +2122,7 @@ function PreviewLaporan({
                 </p>
 
               </div>
-
             ) : photos.length === 0 ? (
-
               <div className="rounded-xl border border-dashed p-8 text-center">
 
                 <ImageIcon className="mx-auto size-8 text-muted-foreground" />
@@ -1817,14 +2138,11 @@ function PreviewLaporan({
                 </p>
 
               </div>
-
             ) : (
-
               <div className="space-y-5">
 
                 {photos.map(
                   (photo, index) => (
-
                     <div
                       key={`${photo.storage_path}-${index}`}
                       className="overflow-hidden rounded-xl border bg-muted/10"
@@ -1840,7 +2158,6 @@ function PreviewLaporan({
                       </div>
 
                       {photo.url ? (
-
                         <div className="flex w-full justify-center bg-background p-3">
 
                           <img
@@ -1855,9 +2172,7 @@ function PreviewLaporan({
                           />
 
                         </div>
-
                       ) : (
-
                         <div className="p-8 text-center">
 
                           <p className="text-sm font-medium text-destructive">
@@ -1870,7 +2185,6 @@ function PreviewLaporan({
                           </p>
 
                         </div>
-
                       )}
 
                       {photo.nama_file && (
@@ -1884,12 +2198,10 @@ function PreviewLaporan({
                       )}
 
                     </div>
-
                   ),
                 )}
 
               </div>
-
             )}
 
           </div>
@@ -1898,26 +2210,74 @@ function PreviewLaporan({
 
         {/* FOOTER ACTION */}
 
-        <div className="flex flex-col-reverse gap-2 border-t bg-muted/20 px-5 py-4 sm:flex-row sm:justify-end">
+        <div className="flex flex-col gap-2 border-t bg-muted/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
 
-          <Button
-            variant="outline"
-            onClick={onClose}
-          >
-            Tutup
-          </Button>
+          <div>
 
-          <Button
-            onClick={() =>
-              downloadLaporan(report)
-            }
-          >
+            {isStaff &&
+              report.status_laporan ===
+                "menunggu_verifikasi" && (
+                <p className="text-xs text-muted-foreground">
+                  Pastikan data dan dokumentasi
+                  sudah sesuai sebelum menentukan
+                  hasil verifikasi.
+                </p>
+              )}
 
-            <Download className="mr-2 size-4" />
+          </div>
 
-            Download PDF
+          <div className="flex flex-col gap-2 sm:flex-row">
 
-          </Button>
+            <Button
+              variant="outline"
+              onClick={onClose}
+            >
+              Tutup
+            </Button>
+
+            {isStaff &&
+              report.status_laporan ===
+                "menunggu_verifikasi" && (
+                <>
+                  <Button
+                    variant="outline"
+                    disabled={
+                      processingId ===
+                      report.id
+                    }
+                    onClick={
+                      onMintaRevisi
+                    }
+                  >
+                    <RotateCcw className="mr-2 size-4" />
+                    Minta Revisi
+                  </Button>
+
+                  <Button
+                    disabled={
+                      processingId ===
+                      report.id
+                    }
+                    onClick={
+                      onVerifikasi
+                    }
+                  >
+                    <Check className="mr-2 size-4" />
+                    Verifikasi
+                  </Button>
+                </>
+              )}
+
+            <Button
+              onClick={() =>
+                downloadLaporan(report)
+              }
+            >
+              <Download className="mr-2 size-4" />
+              Download PDF
+            </Button>
+
+          </div>
 
         </div>
 
