@@ -19,6 +19,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedLaporanRouteImport } from './routes/_authenticated/laporan'
 import { Route as AuthenticatedMasterMateriRouteImport } from './routes/_authenticated/master-materi'
 import { Route as AuthenticatedMasterTrainerRouteImport } from './routes/_authenticated/master-trainer'
+import { Route as AuthenticatedPengaturanSistemRouteImport } from './routes/_authenticated/pengaturan-sistem'
 import { Route as AuthenticatedUbahPasswordRouteImport } from './routes/_authenticated/ubah-password'
 
 const IndexRoute = IndexRouteImport.update({
@@ -73,6 +74,12 @@ const AuthenticatedMasterTrainerRoute =
     path: '/master-trainer',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPengaturanSistemRoute =
+  AuthenticatedPengaturanSistemRouteImport.update({
+    id: '/pengaturan-sistem',
+    path: '/pengaturan-sistem',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedUbahPasswordRoute =
   AuthenticatedUbahPasswordRouteImport.update({
     id: '/ubah-password',
@@ -90,6 +97,7 @@ export interface FileRoutesByFullPath {
   '/laporan': typeof AuthenticatedLaporanRoute
   '/master-materi': typeof AuthenticatedMasterMateriRoute
   '/master-trainer': typeof AuthenticatedMasterTrainerRoute
+  '/pengaturan-sistem': typeof AuthenticatedPengaturanSistemRoute
   '/ubah-password': typeof AuthenticatedUbahPasswordRoute
 }
 export interface FileRoutesByTo {
@@ -102,6 +110,7 @@ export interface FileRoutesByTo {
   '/laporan': typeof AuthenticatedLaporanRoute
   '/master-materi': typeof AuthenticatedMasterMateriRoute
   '/master-trainer': typeof AuthenticatedMasterTrainerRoute
+  '/pengaturan-sistem': typeof AuthenticatedPengaturanSistemRoute
   '/ubah-password': typeof AuthenticatedUbahPasswordRoute
 }
 export interface FileRoutesById {
@@ -116,6 +125,7 @@ export interface FileRoutesById {
   '/_authenticated/laporan': typeof AuthenticatedLaporanRoute
   '/_authenticated/master-materi': typeof AuthenticatedMasterMateriRoute
   '/_authenticated/master-trainer': typeof AuthenticatedMasterTrainerRoute
+  '/_authenticated/pengaturan-sistem': typeof AuthenticatedPengaturanSistemRoute
   '/_authenticated/ubah-password': typeof AuthenticatedUbahPasswordRoute
 }
 export interface FileRouteTypes {
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
     | '/laporan'
     | '/master-materi'
     | '/master-trainer'
+    | '/pengaturan-sistem'
     | '/ubah-password'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -142,6 +153,7 @@ export interface FileRouteTypes {
     | '/laporan'
     | '/master-materi'
     | '/master-trainer'
+    | '/pengaturan-sistem'
     | '/ubah-password'
   id:
     | '__root__'
@@ -155,6 +167,7 @@ export interface FileRouteTypes {
     | '/_authenticated/laporan'
     | '/_authenticated/master-materi'
     | '/_authenticated/master-trainer'
+    | '/_authenticated/pengaturan-sistem'
     | '/_authenticated/ubah-password'
   fileRoutesById: FileRoutesById
 }
@@ -238,6 +251,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMasterTrainerRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/pengaturan-sistem': {
+      id: '/_authenticated/pengaturan-sistem'
+      path: '/pengaturan-sistem'
+      fullPath: '/pengaturan-sistem'
+      preLoaderRoute: typeof AuthenticatedPengaturanSistemRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/ubah-password': {
       id: '/_authenticated/ubah-password'
       path: '/ubah-password'
@@ -254,6 +274,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedLaporanRoute: typeof AuthenticatedLaporanRoute
   AuthenticatedMasterMateriRoute: typeof AuthenticatedMasterMateriRoute
   AuthenticatedMasterTrainerRoute: typeof AuthenticatedMasterTrainerRoute
+  AuthenticatedPengaturanSistemRoute: typeof AuthenticatedPengaturanSistemRoute
   AuthenticatedUbahPasswordRoute: typeof AuthenticatedUbahPasswordRoute
 }
 
@@ -263,6 +284,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedLaporanRoute: AuthenticatedLaporanRoute,
   AuthenticatedMasterMateriRoute: AuthenticatedMasterMateriRoute,
   AuthenticatedMasterTrainerRoute: AuthenticatedMasterTrainerRoute,
+  AuthenticatedPengaturanSistemRoute: AuthenticatedPengaturanSistemRoute,
   AuthenticatedUbahPasswordRoute: AuthenticatedUbahPasswordRoute,
 }
 
