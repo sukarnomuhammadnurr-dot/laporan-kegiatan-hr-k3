@@ -42,6 +42,7 @@ type NavItem = {
     | "/master-materi"
     | "/ubah-password"
     | "/pengaturan-sistem";
+    | "/monitoring-laporan"
   label: string;
   icon: LucideIcon;
 };
@@ -57,7 +58,11 @@ const NAV_STAFF: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/laporan", label: "Semua Laporan", icon: FileText },
   { to: "/buat-laporan", label: "Buat Laporan", icon: FilePlus2 },
-  { label: "Monitoring Laporan", icon: ListChecks },
+  {
+  to: "/monitoring-laporan",
+  label: "Monitoring Laporan",
+  icon: ListChecks,
+},
   { label: "Laporan Bulanan & Export", icon: BarChart3 },
 ];
 
