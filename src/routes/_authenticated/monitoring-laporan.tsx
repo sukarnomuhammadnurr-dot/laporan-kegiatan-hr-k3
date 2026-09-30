@@ -687,30 +687,7 @@ function MonitoringLaporanPage() {
     return "Terkirim";
   }
 
-  function buatNomorDokumen(
-    report: ReportWithTrainer,
-    reports: ReportWithTrainer[],
-  ) {
-    const tanggal = report.tanggal_kegiatan || "";
-    const tahun = tanggal.slice(0, 4) || "0000";
-    const bulan = tanggal.slice(5, 7) || "00";
-
-    const nomorTrainer =
-      report.trainers?.nomor_id_trainer ||
-      report.trainer_id.slice(0, 8).toUpperCase();
-
-    const angkaTrainer =
-      nomorTrainer.match(/\d+/)?.[0] ||
-      String(
-        Math.abs(
-          reports.reduce(
-            (sum, item) => sum + item.id.charCodeAt(0),
-            0,
-          ),
-        ),
-      ).padStart(5, "0");
-
-    return `L  async function downloadLaporanBulanan() {
+  async function downloadLaporanBulanan() {
     const now = new Date();
     const bulan =
       dari && dari.length >= 7
@@ -1223,11 +1200,6 @@ function MonitoringLaporanPage() {
       );
     }
   }
-nyiapkan laporan bulanan.",
-      );
-    }
-  }
-
   if (loading) {
     return (
       <AppShell
