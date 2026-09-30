@@ -69,6 +69,7 @@ const NAV_TRAINER: NavItem[] = [
     icon: FileText,
   },
   {
+    to: "/monitoring-laporan",
     label: "Laporan Bulanan",
     icon: BarChart3,
   },
