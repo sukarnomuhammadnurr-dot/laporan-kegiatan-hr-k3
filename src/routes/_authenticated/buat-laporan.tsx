@@ -65,6 +65,8 @@ type ExistingPhoto = {
   url: string;
 };
 
+const MAX_PHOTOS = 10;
+
 function hariIni() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -142,13 +144,6 @@ function BuatLaporan() {
     [schedules],
   );
 
-  /*
-   * ==========================================
-   * DETEKSI MODE EDIT
-   * URL:
-   * /buat-laporan?edit=REPORT_ID
-   * ==========================================
-   */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("edit");
@@ -156,11 +151,6 @@ function BuatLaporan() {
     setEditId(id);
   }, []);
 
-  /*
-   * ==========================================
-   * LOAD LAPORAN YANG AKAN DIREVISI
-   * ==========================================
-   */
   useEffect(() => {
     if (!trainer?.id || !editId) return;
 
@@ -349,10 +339,15 @@ function BuatLaporan() {
       return;
     }
 
-    const sisaSlot = Math.max(0, 5 - totalFoto());
+    const sisaSlot = Math.max(
+      0,
+      MAX_PHOTOS - totalFoto(),
+    );
 
     if (sisaSlot === 0) {
-      toast.error("Maksimal 5 foto per laporan.");
+      toast.error(
+        `Maksimal ${MAX_PHOTOS} foto per laporan.`,
+      );
       return;
     }
 
@@ -360,11 +355,14 @@ function BuatLaporan() {
 
     if (accepted.length < selected.length) {
       toast.warning(
-        `Hanya ${accepted.length} foto yang ditambahkan karena maksimal 5 foto.`,
+        `Hanya ${accepted.length} foto yang ditambahkan karena maksimal ${MAX_PHOTOS} foto.`,
       );
     }
 
-    setFotoFiles((current) => [...current, ...accepted]);
+    setFotoFiles((current) => [
+      ...current,
+      ...accepted,
+    ]);
   }
 
   function hapusFoto(index: number) {
@@ -384,6 +382,10 @@ function BuatLaporan() {
 
     if (!form.materi.trim()) {
       return "Materi atau kegiatan wajib diisi.";
+    }
+
+    if (totalFoto() > MAX_PHOTOS) {
+      return `Maksimal ${MAX_PHOTOS} foto per laporan.`;
     }
 
     if (form.jumlah_peserta < 0) {
@@ -423,11 +425,6 @@ function BuatLaporan() {
     return null;
   }
 
-  /*
-   * ==========================================
-   * SIMPAN / KIRIM LAPORAN
-   * ==========================================
-   */
   const kirimLaporan = useMutation({
     mutationFn: async () => {
       if (!trainer?.id) {
@@ -457,13 +454,15 @@ function BuatLaporan() {
        * ======================================
        */
       if (editId) {
-        const { data: existingReport, error: existingError } =
-          await supabase
-            .from("reports")
-            .select("id, trainer_id, status_laporan")
-            .eq("id", editId)
-            .eq("trainer_id", trainer.id)
-            .maybeSingle();
+        const {
+          data: existingReport,
+          error: existingError,
+        } = await supabase
+          .from("reports")
+          .select("id, trainer_id, status_laporan")
+          .eq("id", editId)
+          .eq("trainer_id", trainer.id)
+          .maybeSingle();
 
         if (existingError) throw existingError;
 
@@ -482,81 +481,67 @@ function BuatLaporan() {
           );
         }
 
-        const { error: updateError } = await supabase
-          .from("reports")
-          .update({
-            schedule_id:
-              form.schedule_id || null,
-            material_id:
-              form.material_id || null,
-            tanggal_kegiatan:
-              form.tanggal_kegiatan,
-            jam_mulai:
-              form.jam_mulai || null,
-            jam_selesai:
-              form.jam_selesai || null,
-            jam_perlu_konfirmasi:
-              !form.jam_mulai ||
-              !form.jam_selesai,
-            jenis_kegiatan:
-              form.jenis_kegiatan || null,
-            materi:
-              form.materi.trim(),
-            kelas:
-              form.kelas.trim() || null,
-            lokasi:
-              form.lokasi.trim() || null,
-            penanggung_jawab:
-              form.penanggung_jawab.trim() ||
-              null,
-            jumlah_peserta:
-              form.jumlah_peserta,
-            jumlah_hadir:
-              form.jumlah_hadir,
-            jumlah_tidak_hadir:
-              form.jumlah_tidak_hadir,
-            jumlah_tambahan:
-              form.jumlah_tambahan,
-            keterangan:
-              form.keterangan.trim() ||
-              null,
-
-            /*
-             * Setelah diperbaiki:
-             * kembali ke antrean verifikasi.
-             */
-            status_laporan:
-              "menunggu_verifikasi" as const,
-
-            verified_by: null,
-            verified_at: null,
-
-            /*
-             * Catatan revisi sengaja tetap disimpan
-             * sampai laporan diverifikasi.
-             */
-            catatan_revisi:
-              revisionNote || null,
-
-            waktu_laporan_dikirim:
-              new Date().toISOString(),
-
-            updated_at:
-              new Date().toISOString(),
-          })
-          .eq("id", editId)
-          .eq("trainer_id", trainer.id);
+        const { error: updateError } =
+          await supabase
+            .from("reports")
+            .update({
+              schedule_id:
+                form.schedule_id || null,
+              material_id:
+                form.material_id || null,
+              tanggal_kegiatan:
+                form.tanggal_kegiatan,
+              jam_mulai:
+                form.jam_mulai || null,
+              jam_selesai:
+                form.jam_selesai || null,
+              jam_perlu_konfirmasi:
+                !form.jam_mulai ||
+                !form.jam_selesai,
+              jenis_kegiatan:
+                form.jenis_kegiatan || null,
+              materi:
+                form.materi.trim(),
+              kelas:
+                form.kelas.trim() || null,
+              lokasi:
+                form.lokasi.trim() || null,
+              penanggung_jawab:
+                form.penanggung_jawab.trim() ||
+                null,
+              jumlah_peserta:
+                form.jumlah_peserta,
+              jumlah_hadir:
+                form.jumlah_hadir,
+              jumlah_tidak_hadir:
+                form.jumlah_tidak_hadir,
+              jumlah_tambahan:
+                form.jumlah_tambahan,
+              keterangan:
+                form.keterangan.trim() ||
+                null,
+              status_laporan:
+                "menunggu_verifikasi" as const,
+              verified_by: null,
+              verified_at: null,
+              catatan_revisi:
+                revisionNote || null,
+              waktu_laporan_dikirim:
+                new Date().toISOString(),
+              updated_at:
+                new Date().toISOString(),
+            })
+            .eq("id", editId)
+            .eq("trainer_id", trainer.id);
 
         if (updateError) {
           throw updateError;
         }
 
         /*
-         * Upload foto tambahan.
-         *
          * Foto lama TIDAK dihapus.
-         * Trainer dapat menambahkan foto baru
-         * sampai total maksimal 5 foto.
+         * Foto baru hanya bisa ditambahkan
+         * sampai total maksimal 10 foto.
          */
         if (fotoFiles.length > 0) {
           for (const file of fotoFiles) {
@@ -1100,6 +1085,10 @@ function BuatLaporan() {
                 Tidak ada foto dokumentasi.
               </p>
             )}
+
+            <p className="mt-3 text-xs text-muted-foreground">
+              Total foto: {totalFoto()} / {MAX_PHOTOS}
+            </p>
           </div>
 
           <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
@@ -1625,10 +1614,10 @@ function BuatLaporan() {
                 </p>
 
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Maksimal 5 foto per laporan.
+                  Maksimal {MAX_PHOTOS} foto per laporan.
                   Pada laporan revisi, foto lama tetap
                   dipertahankan dan lu bisa menambahkan
-                  foto baru.
+                  foto baru sampai batas maksimal.
                 </p>
 
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -1641,7 +1630,7 @@ function BuatLaporan() {
                     type="file"
                     accept="image/*"
                     multiple
-                    disabled={totalFoto() >= 5}
+                    disabled={totalFoto() >= MAX_PHOTOS}
                     onChange={(e) => {
                       tambahFoto(e.target.files);
                       e.currentTarget.value = "";
@@ -1721,7 +1710,7 @@ function BuatLaporan() {
                 )}
 
                 <p className="mt-3 text-xs text-muted-foreground">
-                  Total foto: {totalFoto()} / 5
+                  Total foto: {totalFoto()} / {MAX_PHOTOS}
                 </p>
               </div>
             </div>
