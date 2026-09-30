@@ -4,10 +4,8 @@ import {
   BarChart3,
   CalendarDays,
   ChevronDown,
-  ClipboardList,
   FilePlus2,
   FileText,
-  History,
   KeyRound,
   LayoutDashboard,
   ListChecks,
@@ -17,7 +15,6 @@ import {
   Settings,
   Users,
   BookOpen,
-  Clock,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -70,15 +67,13 @@ const NAV_STAFF: NavItem[] = [
 const NAV_MASTER: NavItem[] = [
   { to: "/master-trainer", label: "Master Trainer", icon: Users },
   { to: "/master-materi", label: "Master Materi", icon: BookOpen },
-  { label: "Master Kegiatan", icon: ClipboardList },
-  { label: "Master Jadwal", icon: Clock },
   { label: "Pesan WhatsApp", icon: MessageCircle },
-  { label: "Riwayat Perubahan", icon: History },
   { to: "/pengaturan-sistem", label: "Pengaturan Sistem", icon: Settings },
 ];
 
 export function BrandLogo({ className }: { className?: string }) {
   const logo = useBrandingUrl("logo");
+
   return (
     <div
       className={cn(
@@ -87,18 +82,36 @@ export function BrandLogo({ className }: { className?: string }) {
         className,
       )}
     >
-      {logo ? <img src={logo} alt="Logo perusahaan" className="size-full object-contain p-1" /> : "K3"}
+      {logo ? (
+        <img
+          src={logo}
+          alt="Logo perusahaan"
+          className="size-full object-contain p-1"
+        />
+      ) : (
+        "K3"
+      )}
     </div>
   );
 }
 
-function NavList({ onNavigate, onLogout }: { onNavigate?: () => void; onLogout: () => void }) {
+function NavList({
+  onNavigate,
+  onLogout,
+}: {
+  onNavigate?: () => void;
+  onLogout: () => void;
+}) {
   const { isStaff, isAdmin } = useCurrentUser();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const pathname = useRouterState({
+    select: (s) => s.location.pathname,
+  });
+
   const main = isStaff ? NAV_STAFF : NAV_TRAINER;
 
   const item = (it: NavItem) => {
     const Icon = it.icon;
+
     if (!it.to) {
       return (
         <div
@@ -113,7 +126,10 @@ function NavList({ onNavigate, onLogout }: { onNavigate?: () => void; onLogout: 
         </div>
       );
     }
-    const active = pathname === it.to || pathname.startsWith(it.to + "/");
+
+    const active =
+      pathname === it.to || pathname.startsWith(it.to + "/");
+
     return (
       <Link
         key={it.label}
@@ -142,34 +158,61 @@ function NavList({ onNavigate, onLogout }: { onNavigate?: () => void; onLogout: 
     <nav className="space-y-0.5">
       {heading("Menu")}
       {main.map(item)}
+
       {isStaff && (
         <>
           {heading("Data & Sistem")}
-          {(isAdmin ? NAV_MASTER : NAV_MASTER.filter((n) => n.to !== "/pengaturan-sistem")).map(item)}
+          {(isAdmin
+            ? NAV_MASTER
+            : NAV_MASTER.filter(
+                (n) => n.to !== "/pengaturan-sistem",
+              )
+          ).map(item)}
         </>
       )}
+
       {heading("Akun")}
-      {item({ to: "/ubah-password", label: "Ubah Password", icon: KeyRound })}
+
+      {item({
+        to: "/ubah-password",
+        label: "Ubah Password",
+        icon: KeyRound,
+      })}
+
       <button
         onClick={onLogout}
         className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
       >
-        <LogOut className="size-4" /> Keluar
+        <LogOut className="size-4" />
+        Keluar
       </button>
     </nav>
   );
 }
 
-function SidebarInner(props: { onNavigate?: () => void; onLogout: () => void }) {
+function SidebarInner(props: {
+  onNavigate?: () => void;
+  onLogout: () => void;
+}) {
   return (
     <div className="flex h-full flex-col">
-      <Link to="/dashboard" onClick={props.onNavigate} className="flex items-center gap-3 px-2 pb-2">
+      <Link
+        to="/dashboard"
+        onClick={props.onNavigate}
+        className="flex items-center gap-3 px-2 pb-2"
+      >
         <BrandLogo />
+
         <div className="min-w-0">
-          <p className="text-sm leading-tight font-semibold text-sidebar-foreground">Laporan Kegiatan</p>
-          <p className="text-sm leading-tight font-semibold text-sidebar-foreground">Trainer K3</p>
+          <p className="text-sm leading-tight font-semibold text-sidebar-foreground">
+            Laporan Kegiatan
+          </p>
+          <p className="text-sm leading-tight font-semibold text-sidebar-foreground">
+            Trainer K3
+          </p>
         </div>
       </Link>
+
       <div className="-mx-1 flex-1 overflow-y-auto px-1 pb-4">
         <NavList {...props} />
       </div>
@@ -177,7 +220,11 @@ function SidebarInner(props: { onNavigate?: () => void; onLogout: () => void }) 
   );
 }
 
-const ROLE_LABEL: Record<string, string> = { admin: "Admin", supervisor: "Supervisor", trainer: "Trainer" };
+const ROLE_LABEL: Record<string, string> = {
+  admin: "Admin",
+  supervisor: "Supervisor",
+  trainer: "Trainer",
+};
 
 export function AppShell({
   title,
@@ -197,8 +244,13 @@ export function AppShell({
   const { nama, roles, user, trainer } = useCurrentUser();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
   const [open, setOpen] = useState(false);
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  const pathname = useRouterState({
+    select: (s) => s.location.pathname,
+  });
+
   const heroImg = useBrandingUrl(heroKey ?? "ilustrasi_k3");
   const bg = useBrandingUrl("background");
 
@@ -206,7 +258,10 @@ export function AppShell({
 
   useEffect(() => {
     if (wajibGanti && pathname !== "/ubah-password") {
-      navigate({ to: "/ubah-password", replace: true });
+      navigate({
+        to: "/ubah-password",
+        replace: true,
+      });
     }
   }, [wajibGanti, pathname, navigate]);
 
@@ -214,7 +269,11 @@ export function AppShell({
     await queryClient.cancelQueries();
     queryClient.clear();
     await supabase.auth.signOut();
-    navigate({ to: "/masuk", replace: true });
+
+    navigate({
+      to: "/masuk",
+      replace: true,
+    });
   }
 
   const role = roles[0] ?? "";
@@ -246,14 +305,29 @@ export function AppShell({
                   <Menu className="size-5" />
                 </button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-72 border-none bg-sidebar p-4">
-                <SheetTitle className="sr-only">Navigasi</SheetTitle>
-                <SidebarInner onNavigate={() => setOpen(false)} onLogout={keluar} />
+
+              <SheetContent
+                side="left"
+                className="w-72 border-none bg-sidebar p-4"
+              >
+                <SheetTitle className="sr-only">
+                  Navigasi
+                </SheetTitle>
+
+                <SidebarInner
+                  onNavigate={() => setOpen(false)}
+                  onLogout={keluar}
+                />
               </SheetContent>
             </Sheet>
+
             <BrandLogo className="size-9 lg:hidden" />
+
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold sm:text-base">Laporan Kegiatan Trainer K3</p>
+              <p className="truncate text-sm font-semibold sm:text-base">
+                Laporan Kegiatan Trainer K3
+              </p>
+
               <p className="eyebrow hidden truncate text-[10px] text-muted-foreground sm:block">
                 PT IWIP • Modul Pelatihan Keselamatan
               </p>
@@ -264,31 +338,56 @@ export function AppShell({
             <span className="hidden rounded-full bg-accent px-3 py-1 text-[11px] font-semibold tracking-wider text-accent-foreground uppercase sm:inline-block">
               {ROLE_LABEL[role] ?? "—"}
             </span>
+
             <DropdownMenu>
               <DropdownMenuTrigger className="flex items-center gap-2 rounded-full py-1 pr-2 pl-1 hover:bg-accent">
-                <TrainerAvatar nama={nama} foto={trainer?.foto_url} />
-                <span className="hidden max-w-40 truncate text-sm font-medium md:block">{nama}</span>
+                <TrainerAvatar
+                  nama={nama}
+                  foto={trainer?.foto_url}
+                />
+
+                <span className="hidden max-w-40 truncate text-sm font-medium md:block">
+                  {nama}
+                </span>
+
                 <ChevronDown className="size-4 text-muted-foreground" />
               </DropdownMenuTrigger>
+
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
                   <p className="truncate">{nama}</p>
-                  <p className="truncate text-xs font-normal text-muted-foreground">{user?.email}</p>
+                  <p className="truncate text-xs font-normal text-muted-foreground">
+                    {user?.email}
+                  </p>
                 </DropdownMenuLabel>
+
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => navigate({ to: "/ubah-password" })}>
-                  <KeyRound className="size-4" /> Ubah Password
+
+                <DropdownMenuItem
+                  onSelect={() =>
+                    navigate({ to: "/ubah-password" })
+                  }
+                >
+                  <KeyRound className="size-4" />
+                  Ubah Password
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={keluar} className="text-destructive">
-                  <LogOut className="size-4" /> Keluar
+
+                <DropdownMenuItem
+                  onSelect={keluar}
+                  className="text-destructive"
+                >
+                  <LogOut className="size-4" />
+                  Keluar
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
             <button
               onClick={keluar}
               className="hidden items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground xl:flex"
             >
-              <LogOut className="size-4" /> Keluar
+              <LogOut className="size-4" />
+              Keluar
             </button>
           </div>
         </header>
@@ -297,9 +396,15 @@ export function AppShell({
           {/* Hero */}
           <section className="relative mb-5 overflow-hidden rounded-2xl bg-sidebar text-sidebar-foreground shadow-[var(--shadow-card)]">
             {heroImg && (
-              <img src={heroImg} alt="" className="absolute inset-0 size-full object-cover opacity-45" />
+              <img
+                src={heroImg}
+                alt=""
+                className="absolute inset-0 size-full object-cover opacity-45"
+              />
             )}
+
             <div className="absolute inset-0 bg-[image:var(--gradient-hero)]" />
+
             <div className="relative flex flex-wrap items-end justify-between gap-4 px-5 py-7 sm:px-8 sm:py-10">
               <div className="max-w-2xl">
                 {eyebrow && (
@@ -307,10 +412,23 @@ export function AppShell({
                     {eyebrow}
                   </p>
                 )}
-                <h1 className="mt-1.5 text-2xl font-bold sm:text-3xl">{title}</h1>
-                {description && <p className="mt-2 text-sm text-sidebar-foreground/80 sm:text-base">{description}</p>}
+
+                <h1 className="mt-1.5 text-2xl font-bold sm:text-3xl">
+                  {title}
+                </h1>
+
+                {description && (
+                  <p className="mt-2 text-sm text-sidebar-foreground/80 sm:text-base">
+                    {description}
+                  </p>
+                )}
               </div>
-              {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+
+              {actions ? (
+                <div className="flex flex-wrap gap-2">
+                  {actions}
+                </div>
+              ) : null}
             </div>
           </section>
 
@@ -321,9 +439,20 @@ export function AppShell({
   );
 }
 
-export function Panel({ children, className }: { children: ReactNode; className?: string }) {
+export function Panel({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <section className={cn("rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)] sm:p-6", className)}>
+    <section
+      className={cn(
+        "rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)] sm:p-6",
+        className,
+      )}
+    >
       {children}
     </section>
   );
