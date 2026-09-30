@@ -48,6 +48,12 @@ type FilterStatus =
   | "terverifikasi"
   | "perlu_revisi";
 
+type ReportPhoto = {
+  storage_path: string;
+  nama_file: string | null;
+  url?: string | null;
+};
+
 function formatTanggal(tanggal: string | null | undefined) {
   if (!tanggal) return "—";
 
@@ -112,13 +118,8 @@ function StatusPill({
 }
 
 /* =========================================================
-   HELPER FOTO
+   FOTO
 ========================================================= */
-
-type ReportPhoto = {
-  storage_path: string;
-  nama_file: string | null;
-};
 
 async function getReportPhotos(reportId: string) {
   const { data, error } = await supabase
@@ -127,38 +128,41 @@ async function getReportPhotos(reportId: string) {
     .eq("report_id", reportId)
     .order("nama_file", { ascending: true });
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 
   const rows = (data ?? []) as ReportPhoto[];
 
-  const photos = await Promise.all(
+  return Promise.all(
     rows.map(async (photo) => {
       const { data: signed, error: signedError } =
         await supabase.storage
           .from("report-photos")
           .createSignedUrl(photo.storage_path, 60 * 60);
 
-      if (signedError || !signed?.signedUrl) {
-        return {
-          ...photo,
-          url: null,
-        };
-      }
-
       return {
         ...photo,
-        url: signed.signedUrl,
+        url:
+          signedError || !signed?.signedUrl
+            ? null
+            : signed.signedUrl,
       };
     }),
   );
+}
 
-  return photos;
+async function getDailyReportPhotos(reports: ReportWithTrainer[]) {
+  const result = await Promise.all(
+    reports.map(async (report) => ({
+      report,
+      photos: await getReportPhotos(report.id),
+    })),
+  );
+
+  return result;
 }
 
 /* =========================================================
-   VERIFIKASI LAPORAN
+   VERIFIKASI
 ========================================================= */
 
 async function verifikasiLaporan(
@@ -181,9 +185,7 @@ async function verifikasiLaporan(
     })
     .eq("id", report.id);
 
-  if (updateError) {
-    throw updateError;
-  }
+  if (updateError) throw updateError;
 
   const { error: verificationError } = await supabase
     .from("report_verifications")
@@ -194,9 +196,7 @@ async function verifikasiLaporan(
       catatan: "Laporan diverifikasi.",
     });
 
-  if (verificationError) {
-    throw verificationError;
-  }
+  if (verificationError) throw verificationError;
 }
 
 /* =========================================================
@@ -230,9 +230,7 @@ async function mintaRevisiLaporan(
     })
     .eq("id", report.id);
 
-  if (updateError) {
-    throw updateError;
-  }
+  if (updateError) throw updateError;
 
   const { error: verificationError } = await supabase
     .from("report_verifications")
@@ -243,67 +241,340 @@ async function mintaRevisiLaporan(
       catatan: trimmed,
     });
 
-  if (verificationError) {
-    throw verificationError;
-  }
+  if (verificationError) throw verificationError;
 }
 
 /* =========================================================
-   DOWNLOAD / PRINT PDF
+   KEMBALIKAN LAPORAN YANG SALAH TER VERIFIKASI
 ========================================================= */
 
-async function downloadLaporan(report: ReportWithTrainer) {
-  const namaTrainer = report.trainers?.nama_lengkap || "Trainer";
+async function kembalikanKeRevisiLaporan(
+  report: ReportWithTrainer,
+  userId: string,
+  catatan: string,
+) {
+  const trimmed = catatan.trim();
+
+  if (!trimmed) {
+    throw new Error("Catatan revisi wajib diisi.");
+  }
+
+  if (report.status_laporan !== "terverifikasi") {
+    throw new Error(
+      "Laporan ini tidak sedang berstatus terverifikasi.",
+    );
+  }
+
+  const { error: updateError } = await supabase
+    .from("reports")
+    .update({
+      status_laporan: "perlu_revisi",
+      catatan_revisi: trimmed,
+      verified_by: null,
+      verified_at: null,
+    })
+    .eq("id", report.id);
+
+  if (updateError) throw updateError;
+
+  const { error: verificationError } = await supabase
+    .from("report_verifications")
+    .insert({
+      report_id: report.id,
+      verifier_id: userId,
+      hasil: "perlu_revisi",
+      catatan: trimmed,
+    });
+
+  if (verificationError) throw verificationError;
+}
+
+/* =========================================================
+   JAM TRAINING
+========================================================= */
+
+function hitungDurasiJam(
+  jamMulai: string | null,
+  jamSelesai: string | null,
+) {
+  if (!jamMulai || !jamSelesai) return 0;
+
+  const [h1, m1] = jamMulai.split(":").map(Number);
+  const [h2, m2] = jamSelesai.split(":").map(Number);
+
+  if (
+    Number.isNaN(h1) ||
+    Number.isNaN(m1) ||
+    Number.isNaN(h2) ||
+    Number.isNaN(m2)
+  ) {
+    return 0;
+  }
+
+  let menit = h2 * 60 + m2 - (h1 * 60 + m1);
+
+  if (menit < 0) {
+    menit += 24 * 60;
+  }
+
+  return menit / 60;
+}
+
+function formatJamTraining(jam: number) {
+  if (!jam) return "0 jam";
+
+  const jamBulat = Math.floor(jam);
+  const menit = Math.round((jam - jamBulat) * 60);
+
+  if (menit === 0) {
+    return `${jamBulat} jam`;
+  }
+
+  return `${jamBulat} jam ${menit} menit`;
+}
+
+/* =========================================================
+   NOMOR DOKUMEN
+========================================================= */
+
+function buatNomorDokumen(
+  report: ReportWithTrainer,
+  reports: ReportWithTrainer[],
+) {
+  const tanggal = report.tanggal_kegiatan || "";
+
+  const tahun = tanggal.slice(0, 4) || "0000";
+  const bulan = tanggal.slice(5, 7) || "00";
+
+  const nomorTrainer =
+    report.trainers?.nomor_id_trainer ||
+    report.trainer_id.slice(0, 8).toUpperCase();
+
+  const angkaTrainer =
+    nomorTrainer.match(/\d+/)?.[0] ||
+    String(
+      Math.abs(
+        reports.reduce(
+          (sum, item) =>
+            sum + item.id.charCodeAt(0),
+          0,
+        ),
+      ),
+    ).padStart(5, "0");
+
+  return `LAP-K3/${tahun}/${bulan}/${angkaTrainer}`;
+}
+
+/* =========================================================
+   DOWNLOAD DAILY TRAINING ACTIVITY REPORT
+========================================================= */
+
+async function downloadLaporan(
+  report: ReportWithTrainer,
+) {
+  const namaTrainer =
+    report.trainers?.nama_lengkap || "Trainer";
 
   try {
-    const photos = await getReportPhotos(report.id);
+    /*
+     * Ambil SEMUA laporan trainer pada tanggal yang sama.
+     */
+    const dailyReports = await fetchReports({
+      trainerId: report.trainer_id,
+      dari: report.tanggal_kegiatan,
+      sampai: report.tanggal_kegiatan,
+    });
 
-    const photoHtml =
-      photos.length === 0
-        ? `
-          <div class="photo-empty">
-            Tidak ada foto dokumentasi.
-          </div>
-        `
-        : photos
-            .map((photo, index) => {
-              if (!photo.url) {
-                return `
-                  <div class="photo-error">
-                    <div class="photo-error-title">
-                      Foto ${index + 1}
-                    </div>
-                    <div>
-                      Foto tidak dapat dimuat.
-                    </div>
-                    <div class="photo-name">
-                      ${escapeHtml(photo.nama_file || "Dokumentasi")}
-                    </div>
-                  </div>
-                `;
-              }
+    if (dailyReports.length === 0) {
+      throw new Error(
+        "Tidak ditemukan kegiatan pada tanggal tersebut.",
+      );
+    }
 
-              return `
-                <div class="photo-item">
-                  <div class="photo-number">
-                    Dokumentasi ${index + 1}
-                  </div>
+    const dailyPhotos =
+      await getDailyReportPhotos(dailyReports);
 
-                  <img
-                    src="${photo.url}"
-                    alt="${escapeHtml(
-                      photo.nama_file || `Dokumentasi ${index + 1}`,
-                    )}"
-                    class="report-photo"
-                  />
+    const totalKegiatan = dailyReports.length;
 
-                  <div class="photo-caption">
-                    ${escapeHtml(photo.nama_file || "")}
-                  </div>
+    const totalPeserta = dailyReports.reduce(
+      (sum, item) =>
+        sum + Number(item.jumlah_peserta || 0),
+      0,
+    );
+
+    const totalHadir = dailyReports.reduce(
+      (sum, item) =>
+        sum + Number(item.jumlah_hadir || 0),
+      0,
+    );
+
+    const totalTambahan = dailyReports.reduce(
+      (sum, item) =>
+        sum + Number(item.jumlah_tambahan || 0),
+      0,
+    );
+
+    const totalJam = dailyReports.reduce(
+      (sum, item) =>
+        sum +
+        hitungDurasiJam(
+          item.jam_mulai,
+          item.jam_selesai,
+        ),
+      0,
+    );
+
+    const statusHarian = dailyReports.every(
+      (item) =>
+        item.status_laporan ===
+        "terverifikasi",
+    )
+      ? "Terverifikasi"
+      : dailyReports.some(
+            (item) =>
+              item.status_laporan ===
+              "perlu_revisi",
+          )
+        ? "Perlu Revisi"
+        : dailyReports.some(
+              (item) =>
+                item.status_laporan ===
+                "menunggu_verifikasi",
+            )
+          ? "Menunggu Verifikasi"
+          : "Terkirim";
+
+    const nomorDokumen = buatNomorDokumen(
+      report,
+      dailyReports,
+    );
+
+    /* =====================================================
+       FOTO DI SAMPING KEGIATAN
+    ===================================================== */
+
+    const kegiatanRows = dailyPhotos
+      .map(
+        ({ report: item, photos }, index) => {
+          const fotoHtml =
+            photos.length === 0
+              ? `
+                <div class="no-photo">
+                  Tidak ada foto
+                </div>
+              `
+              : `
+                <div class="photo-strip">
+                  ${photos
+                    .map(
+                      (photo) =>
+                        photo.url
+                          ? `
+                            <img
+                              src="${photo.url}"
+                              class="activity-photo"
+                              alt="${escapeHtml(
+                                photo.nama_file ||
+                                  "Dokumentasi",
+                              )}"
+                            />
+                          `
+                          : "",
+                    )
+                    .join("")}
                 </div>
               `;
-            })
-            .join("");
+
+          return `
+            <tr>
+              <td class="center number-cell">
+                ${index + 1}
+              </td>
+
+              <td class="time-cell">
+                <strong>
+                  ${escapeHtml(
+                    item.jam_mulai || "—",
+                  )}
+                </strong>
+
+                ${
+                  item.jam_selesai
+                    ? `
+                      <span class="time-end">
+                        - ${escapeHtml(
+                          item.jam_selesai,
+                        )}
+                      </span>
+                    `
+                    : ""
+                }
+              </td>
+
+              <td class="activity-cell">
+                <div class="activity-title">
+                  ${escapeHtml(
+                    item.materi || "—",
+                  )}
+                </div>
+
+                ${
+                  item.jenis_kegiatan
+                    ? `
+                      <div class="activity-type">
+                        ${escapeHtml(
+                          item.jenis_kegiatan,
+                        )}
+                      </div>
+                    `
+                    : ""
+                }
+              </td>
+
+              <td>
+                ${escapeHtml(
+                  item.kelas || "—",
+                )}
+              </td>
+
+              <td>
+                ${escapeHtml(
+                  item.lokasi || "—",
+                )}
+              </td>
+
+              <td class="center">
+                <strong>
+                  ${item.jumlah_peserta ?? 0}
+                </strong>
+
+                ${
+                  item.jumlah_hadir !==
+                  null
+                    ? `
+                      <div class="small-info">
+                        Hadir:
+                        ${item.jumlah_hadir}
+                      </div>
+                    `
+                    : ""
+                }
+              </td>
+
+              <td class="photo-cell">
+                ${fotoHtml}
+              </td>
+
+              <td>
+                ${escapeHtml(
+                  item.keterangan || "Selesai",
+                )}
+              </td>
+            </tr>
+          `;
+        },
+      )
+      .join("");
 
     const html = `
       <!DOCTYPE html>
@@ -313,11 +584,11 @@ async function downloadLaporan(report: ReportWithTrainer) {
         <meta charset="UTF-8" />
 
         <title>
-          Laporan Kegiatan - ${escapeHtml(namaTrainer)}
+          Daily Training Activity Report -
+          ${escapeHtml(namaTrainer)}
         </title>
 
         <style>
-
           * {
             box-sizing: border-box;
           }
@@ -334,192 +605,309 @@ async function downloadLaporan(report: ReportWithTrainer) {
               Helvetica,
               sans-serif;
 
-            color: #111827;
+            color: #17385f;
             background: white;
-            line-height: 1.5;
-            padding: 30px;
+            font-size: 9px;
           }
 
-          .header {
-            text-align: center;
-            margin-bottom: 28px;
-            padding-bottom: 18px;
-            border-bottom: 2px solid #111827;
+          .page {
+            width: 100%;
           }
 
-          .header h1 {
-            margin: 0;
-            font-size: 24px;
-            letter-spacing: 0.5px;
+          /* =========================
+             HEADER
+          ========================= */
+
+          .company-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 8px;
+            border-bottom: 3px solid #173f70;
           }
 
-          .header p {
-            margin: 5px 0 0;
-            color: #6b7280;
-            font-size: 13px;
-          }
-
-          .section {
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
-            padding: 18px;
-            margin-bottom: 16px;
-          }
-
-          .section-title {
-            font-size: 13px;
-            font-weight: bold;
-            text-transform: uppercase;
-            margin-bottom: 12px;
-            color: #374151;
-          }
-
-          .row {
-            display: grid;
-            grid-template-columns: 180px 1fr;
-            padding: 7px 0;
-            border-bottom: 1px solid #e5e7eb;
-          }
-
-          .row:last-child {
-            border-bottom: none;
-          }
-
-          .label {
-            font-weight: bold;
-            color: #4b5563;
-          }
-
-          .value {
-            color: #111827;
-            white-space: pre-wrap;
-            overflow-wrap: anywhere;
-          }
-
-          .materi {
-            font-size: 19px;
-            font-weight: bold;
-            color: #111827;
-            white-space: pre-wrap;
-            overflow-wrap: anywhere;
-          }
-
-          .stats {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
+          .company-left {
+            display: flex;
+            align-items: center;
             gap: 10px;
           }
 
-          .stat {
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
-            padding: 14px;
-            text-align: center;
-          }
-
-          .stat-label {
-            font-size: 12px;
-            color: #6b7280;
-          }
-
-          .stat-number {
-            margin-top: 4px;
-            font-size: 22px;
-            font-weight: bold;
-          }
-
-          .photos-section {
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
-            padding: 18px;
-            margin-top: 16px;
-          }
-
-          .photos-grid {
+          .iwip-mark {
+            width: 55px;
+            height: 34px;
             display: flex;
-            flex-direction: column;
-            gap: 22px;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 900;
+            color: #173f70;
+            font-style: italic;
           }
 
-          .photo-item {
+          .company-name {
+            font-size: 13px;
+            font-weight: 800;
+            color: #173f70;
+          }
+
+          .company-tagline {
+            margin-top: 2px;
+            font-size: 7px;
+            color: #6b7280;
+            letter-spacing: 0.4px;
+          }
+
+          .report-title {
+            margin-top: 10px;
+            margin-bottom: 9px;
+            font-size: 20px;
+            font-weight: 900;
+            letter-spacing: 0.5px;
+            color: #17385f;
+          }
+
+          .title-line {
+            height: 3px;
+            background: #173f70;
             width: 100%;
-            border: 1px solid #d1d5db;
+          }
+
+          /* =========================
+             IDENTITAS
+          ========================= */
+
+          .identity {
+            display: grid;
+            grid-template-columns:
+              1.25fr
+              1.05fr
+              1fr
+              1fr
+              1.1fr
+              0.9fr;
+
+            margin-top: 10px;
+            border: 1px solid #d8e1ec;
             border-radius: 8px;
-            padding: 12px;
-            background: #fff;
-            page-break-inside: avoid;
-            break-inside: avoid;
+            overflow: hidden;
+            background: #f8fbff;
+          }
+
+          .identity-item {
+            padding: 8px 10px;
+            border-right: 1px solid #d8e1ec;
+          }
+
+          .identity-item:last-child {
+            border-right: none;
+          }
+
+          .identity-label {
+            font-size: 7px;
+            color: #64748b;
+            margin-bottom: 3px;
+          }
+
+          .identity-value {
+            font-size: 10px;
+            font-weight: 800;
+            color: #17385f;
+          }
+
+          .status {
+            display: inline-block;
+            padding: 3px 7px;
+            border-radius: 10px;
+            font-size: 7px;
+            font-weight: 800;
+            background: #dff5e8;
+            color: #168044;
+          }
+
+          /* =========================
+             TABLE
+          ========================= */
+
+          .activity-wrapper {
+            margin-top: 10px;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+          }
+
+          th {
+            padding: 6px 5px;
+            background: #173f70;
+            color: white;
+            border: 1px solid #173f70;
+            font-size: 8px;
+            font-weight: 800;
             text-align: center;
           }
 
-          .photo-number {
-            font-size: 12px;
-            font-weight: bold;
-            color: #374151;
-            margin-bottom: 10px;
-            text-align: left;
+          td {
+            padding: 5px;
+            border: 1px solid #d7e0ea;
+            vertical-align: middle;
+            color: #17385f;
+            font-size: 8px;
+            overflow-wrap: anywhere;
           }
 
-          .report-photo {
+          tbody tr:nth-child(even) {
+            background: #f8fbff;
+          }
+
+          .number-cell {
+            font-weight: 800;
+          }
+
+          .center {
+            text-align: center;
+          }
+
+          .time-cell {
+            text-align: center;
+            white-space: nowrap;
+          }
+
+          .time-end {
             display: block;
-            width: 100%;
-            height: auto;
-            max-width: 100%;
-            max-height: 700px;
-            object-fit: contain;
-            margin: 0 auto;
-            border-radius: 5px;
-            background: #f9fafb;
+            font-weight: 600;
+            color: #64748b;
           }
 
-          .photo-caption {
-            margin-top: 8px;
-            font-size: 11px;
-            color: #6b7280;
-            overflow-wrap: anywhere;
+          .activity-title {
+            font-size: 9px;
+            font-weight: 800;
+            color: #17385f;
           }
 
-          .photo-empty {
-            border: 1px dashed #d1d5db;
-            border-radius: 8px;
-            padding: 25px;
+          .activity-type {
+            margin-top: 2px;
+            font-size: 7px;
+            color: #64748b;
+          }
+
+          .small-info {
+            margin-top: 2px;
+            font-size: 6.5px;
+            color: #64748b;
+          }
+
+          /* =========================
+             FOTO SAMPING
+          ========================= */
+
+          .photo-cell {
+            width: 18%;
+            padding: 4px;
+          }
+
+          .photo-strip {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+            align-items: center;
+          }
+
+          .activity-photo {
+            width: 65px;
+            height: 48px;
+            object-fit: cover;
+            border-radius: 4px;
+            border: 1px solid #cbd5e1;
+            background: #f1f5f9;
+          }
+
+          .no-photo {
+            color: #94a3b8;
+            font-size: 7px;
             text-align: center;
-            color: #6b7280;
+            padding: 8px 2px;
           }
 
-          .photo-error {
-            border: 1px dashed #ef4444;
-            border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-            color: #991b1b;
-            background: #fef2f2;
-            page-break-inside: avoid;
+          /* =========================
+             SUMMARY
+          ========================= */
+
+          .bottom-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 1.8fr;
+            gap: 8px;
+            margin-top: 9px;
           }
 
-          .photo-error-title {
-            font-weight: bold;
-            margin-bottom: 5px;
+          .summary {
+            display: grid;
+            grid-template-columns:
+              repeat(4, 1fr);
+            gap: 6px;
           }
 
-          .photo-name {
-            margin-top: 5px;
-            font-size: 11px;
-            overflow-wrap: anywhere;
+          .summary-card {
+            border: 1px solid #d7e0ea;
+            border-radius: 7px;
+            padding: 8px;
+            background: #f8fbff;
           }
+
+          .summary-label {
+            font-size: 7px;
+            color: #64748b;
+          }
+
+          .summary-value {
+            margin-top: 3px;
+            font-size: 15px;
+            font-weight: 900;
+            color: #17385f;
+          }
+
+          .notes {
+            border: 1px solid #d7e0ea;
+            border-radius: 7px;
+            padding: 8px;
+          }
+
+          .notes-title {
+            font-size: 8px;
+            font-weight: 800;
+            margin-bottom: 4px;
+          }
+
+          .notes-text {
+            color: #475569;
+            font-size: 7px;
+            line-height: 1.4;
+          }
+
+          /* =========================
+             FOOTER
+          ========================= */
 
           .footer {
-            margin-top: 35px;
-            padding-top: 12px;
-            border-top: 1px solid #d1d5db;
-            font-size: 11px;
-            color: #6b7280;
-            text-align: center;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 9px;
+            padding-top: 7px;
+            border-top: 1px solid #d7e0ea;
+            color: #64748b;
+            font-size: 7px;
+          }
+
+          .document-number {
+            font-weight: 800;
+            color: #17385f;
           }
 
           @page {
-            size: A4;
-            margin: 12mm;
+            size: A4 landscape;
+            margin: 8mm;
           }
 
           @media print {
@@ -527,227 +915,265 @@ async function downloadLaporan(report: ReportWithTrainer) {
               padding: 0;
             }
 
-            .section,
-            .photos-section {
-              page-break-inside: auto;
+            .page {
+              page-break-after: auto;
             }
 
-            .photo-item {
+            tr {
               page-break-inside: avoid;
-              break-inside: avoid;
             }
           }
-
         </style>
-
       </head>
 
       <body>
 
-        <div class="header">
+        <div class="page">
 
-          <h1>
-            LAPORAN KEGIATAN TRAINER
-          </h1>
+          <div class="company-header">
 
-          <p>
-            Laporan Kegiatan HR K3 PT IWIP
-          </p>
+            <div class="company-left">
 
-        </div>
-
-        <div class="section">
-
-          <div class="section-title">
-            Informasi Kegiatan
-          </div>
-
-          <div class="row">
-            <div class="label">Tanggal</div>
-            <div class="value">
-              ${escapeHtml(
-                formatTanggalPanjang(
-                  report.tanggal_kegiatan,
-                ),
-              )}
-            </div>
-          </div>
-
-          <div class="row">
-            <div class="label">Trainer</div>
-            <div class="value">
-              ${escapeHtml(namaTrainer)}
-            </div>
-          </div>
-
-          <div class="row">
-            <div class="label">Jam Kegiatan</div>
-            <div class="value">
-              ${escapeHtml(report.jam_mulai || "—")}
-              ${
-                report.jam_selesai
-                  ? ` - ${escapeHtml(report.jam_selesai)}`
-                  : ""
-              }
-            </div>
-          </div>
-
-          <div class="row">
-            <div class="label">Kelas</div>
-            <div class="value">
-              ${escapeHtml(report.kelas || "—")}
-            </div>
-          </div>
-
-          <div class="row">
-            <div class="label">Jenis Kegiatan</div>
-            <div class="value">
-              ${escapeHtml(report.jenis_kegiatan || "—")}
-            </div>
-          </div>
-
-          <div class="row">
-            <div class="label">Lokasi</div>
-            <div class="value">
-              ${escapeHtml(report.lokasi || "—")}
-            </div>
-          </div>
-
-          <div class="row">
-            <div class="label">Penanggung Jawab</div>
-            <div class="value">
-              ${escapeHtml(report.penanggung_jawab || "—")}
-            </div>
-          </div>
-
-        </div>
-
-        <div class="section">
-
-          <div class="section-title">
-            Materi / Kegiatan
-          </div>
-
-          <div class="materi">
-            ${escapeHtml(report.materi || "—")}
-          </div>
-
-        </div>
-
-        <div class="section">
-
-          <div class="section-title">
-            Data Peserta
-          </div>
-
-          <div class="stats">
-
-            <div class="stat">
-              <div class="stat-label">
-                Total Peserta
+              <div class="iwip-mark">
+                IWIP
               </div>
-              <div class="stat-number">
-                ${report.jumlah_peserta ?? "—"}
-              </div>
-            </div>
 
-            <div class="stat">
-              <div class="stat-label">
-                Hadir
-              </div>
-              <div class="stat-number">
-                ${report.jumlah_hadir ?? "—"}
-              </div>
-            </div>
-
-            <div class="stat">
-              <div class="stat-label">
-                Tidak Hadir
-              </div>
-              <div class="stat-number">
-                ${report.jumlah_tidak_hadir ?? "—"}
-              </div>
-            </div>
-
-            <div class="stat">
-              <div class="stat-label">
-                Tambahan
-              </div>
-              <div class="stat-number">
-                ${report.jumlah_tambahan ?? "—"}
-              </div>
-            </div>
-
-          </div>
-
-        </div>
-
-        <div class="section">
-
-          <div class="section-title">
-            Keterangan
-          </div>
-
-          <div class="value">
-            ${escapeHtml(
-              report.keterangan ||
-                "Tidak ada keterangan.",
-            )}
-          </div>
-
-        </div>
-
-        <div class="section">
-
-          <div class="section-title">
-            Status Laporan
-          </div>
-
-          <div class="row">
-
-            <div class="label">
-              Status
-            </div>
-
-            <div class="value">
-              ${escapeHtml(
-                report.status_laporan || "—",
-              )}
-            </div>
-
-          </div>
-
-          ${
-            report.catatan_revisi
-              ? `
-                <div class="row">
-                  <div class="label">
-                    Catatan Revisi
-                  </div>
-                  <div class="value">
-                    ${escapeHtml(report.catatan_revisi)}
-                  </div>
+              <div>
+                <div class="company-name">
+                  PT INDONESIA WEDA BAY INDUSTRIAL PARK (IWIP)
                 </div>
-              `
-              : ""
-          }
 
-        </div>
+                <div class="company-tagline">
+                  SUSTAINABLE INDUSTRY FOR A BETTER TOMORROW
+                </div>
+              </div>
 
-        <div class="photos-section">
+            </div>
 
-          <div class="section-title">
-            Dokumentasi Foto
           </div>
 
-          <div class="photos-grid">
-            ${photoHtml}
+          <div class="report-title">
+            DAILY TRAINING ACTIVITY REPORT
           </div>
 
-        </div>
+          <div class="title-line"></div>
 
-        <div class="footer">
-          Dokumen laporan kegiatan trainer · PT IWIP
+          <!-- IDENTITAS -->
+
+          <div class="identity">
+
+            <div class="identity-item">
+              <div class="identity-label">
+                Nama Trainer
+              </div>
+
+              <div class="identity-value">
+                ${escapeHtml(namaTrainer)}
+              </div>
+            </div>
+
+            <div class="identity-item">
+              <div class="identity-label">
+                No. ID Trainer
+              </div>
+
+              <div class="identity-value">
+                ${escapeHtml(
+                  report.trainers
+                    ?.nomor_id_trainer ||
+                    "—",
+                )}
+              </div>
+            </div>
+
+            <div class="identity-item">
+              <div class="identity-label">
+                Jabatan
+              </div>
+
+              <div class="identity-value">
+                ${escapeHtml(
+                  report.trainers
+                    ?.jabatan ||
+                    "—",
+                )}
+              </div>
+            </div>
+
+            <div class="identity-item">
+              <div class="identity-label">
+                Departemen
+              </div>
+
+              <div class="identity-value">
+                ${escapeHtml(
+                  report.trainers
+                    ?.departemen ||
+                    "—",
+                )}
+              </div>
+            </div>
+
+            <div class="identity-item">
+              <div class="identity-label">
+                Tanggal
+              </div>
+
+              <div class="identity-value">
+                ${escapeHtml(
+                  formatTanggalPanjang(
+                    report.tanggal_kegiatan,
+                  ),
+                )}
+              </div>
+            </div>
+
+            <div class="identity-item">
+              <div class="identity-label">
+                Status
+              </div>
+
+              <div class="status">
+                ✓ ${escapeHtml(statusHarian)}
+              </div>
+            </div>
+
+          </div>
+
+          <!-- KEGIATAN -->
+
+          <div class="activity-wrapper">
+
+            <table>
+
+              <colgroup>
+                <col style="width: 3.5%" />
+                <col style="width: 9%" />
+                <col style="width: 22%" />
+                <col style="width: 9%" />
+                <col style="width: 11%" />
+                <col style="width: 8%" />
+                <col style="width: 18%" />
+                <col style="width: 19.5%" />
+              </colgroup>
+
+              <thead>
+
+                <tr>
+
+                  <th>No.</th>
+                  <th>Jam</th>
+                  <th>Materi / Kegiatan</th>
+                  <th>Kelas</th>
+                  <th>Lokasi</th>
+                  <th>Peserta</th>
+                  <th>Dokumentasi</th>
+                  <th>Keterangan</th>
+
+                </tr>
+
+              </thead>
+
+              <tbody>
+                ${kegiatanRows}
+              </tbody>
+
+            </table>
+
+          </div>
+
+          <!-- SUMMARY -->
+
+          <div class="bottom-grid">
+
+            <div class="summary">
+
+              <div class="summary-card">
+                <div class="summary-label">
+                  Total Kegiatan
+                </div>
+
+                <div class="summary-value">
+                  ${totalKegiatan}
+                </div>
+              </div>
+
+              <div class="summary-card">
+                <div class="summary-label">
+                  Total Peserta
+                </div>
+
+                <div class="summary-value">
+                  ${totalPeserta}
+                </div>
+              </div>
+
+              <div class="summary-card">
+                <div class="summary-label">
+                  Total Hadir
+                </div>
+
+                <div class="summary-value">
+                  ${totalHadir}
+                </div>
+              </div>
+
+              <div class="summary-card">
+                <div class="summary-label">
+                  Total Jam Training
+                </div>
+
+                <div class="summary-value">
+                  ${formatJamTraining(totalJam)}
+                </div>
+              </div>
+
+            </div>
+
+            <div class="notes">
+
+              <div class="notes-title">
+                Catatan / Informasi Tambahan
+              </div>
+
+              <div class="notes-text">
+
+                ${
+                  dailyReports
+                    .filter(
+                      (item) =>
+                        item.keterangan,
+                    )
+                    .map(
+                      (item) =>
+                        `• ${escapeHtml(
+                          item.keterangan!,
+                        )}`,
+                    )
+                    .join("<br />") ||
+                  "Tidak ada catatan tambahan."
+                }
+
+              </div>
+
+            </div>
+
+          </div>
+
+          <div class="footer">
+
+            <div>
+              Generated from Trainer Activity Reporting System
+            </div>
+
+            <div class="document-number">
+              No. Dokumen: ${escapeHtml(
+                nomorDokumen,
+              )}
+            </div>
+
+          </div>
+
         </div>
 
       </body>
@@ -758,7 +1184,7 @@ async function downloadLaporan(report: ReportWithTrainer) {
     const win = window.open(
       "",
       "_blank",
-      "width=1000,height=800",
+      "width=1200,height=850",
     );
 
     if (!win) {
@@ -795,15 +1221,17 @@ async function downloadLaporan(report: ReportWithTrainer) {
     setTimeout(() => {
       win.focus();
       win.print();
-    }, 300);
+    }, 500);
   } catch (error) {
     console.error(
-      "Gagal menyiapkan PDF:",
+      "Gagal menyiapkan Daily Training Activity Report:",
       error,
     );
 
     alert(
-      "Foto atau data laporan gagal disiapkan untuk PDF. Silakan coba lagi.",
+      error instanceof Error
+        ? error.message
+        : "Gagal menyiapkan laporan harian.",
     );
   }
 }
@@ -847,13 +1275,10 @@ function LaporanPage() {
 
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
-
   const [trainerFilter, setTrainerFilter] =
     useState("semua");
-
   const [status, setStatus] =
     useState<FilterStatus>("semua");
-
   const [cari, setCari] = useState("");
 
   const [preview, setPreview] =
@@ -865,6 +1290,13 @@ function LaporanPage() {
     useState<ReportWithTrainer | null>(
       null,
     );
+
+  const [
+    kembalikanReport,
+    setKembalikanReport,
+  ] = useState<ReportWithTrainer | null>(
+    null,
+  );
 
   const [catatanRevisi, setCatatanRevisi] =
     useState("");
@@ -879,9 +1311,7 @@ function LaporanPage() {
       "trainers",
       "laporan-filter",
     ],
-
     enabled: isStaff,
-
     queryFn: fetchTrainers,
   });
 
@@ -900,11 +1330,9 @@ function LaporanPage() {
       status,
       cari,
     ],
-
     enabled:
       !loading &&
       (isStaff || isTrainer),
-
     queryFn: () =>
       fetchReports({
         trainerId:
@@ -913,16 +1341,12 @@ function LaporanPage() {
             : trainerFilter !== "semua"
               ? trainerFilter
               : null,
-
         dari: dari || null,
-
         sampai: sampai || null,
-
         status:
           status !== "semua"
             ? status
             : null,
-
         cari:
           cari.trim()
             ? cari.trim()
@@ -941,23 +1365,22 @@ function LaporanPage() {
   }
 
   /* =========================================================
-     EDIT LAPORAN PERLU REVISI
+     EDIT
   ========================================================= */
 
   function handleEditLaporan(
     report: ReportWithTrainer,
   ) {
-    if (!isTrainer) {
-      return;
-    }
+    if (!isTrainer) return;
 
     if (report.status_laporan !== "perlu_revisi") {
       return;
     }
 
-    window.location.href = `/buat-laporan?edit=${encodeURIComponent(
-      report.id,
-    )}`;
+    window.location.href =
+      `/buat-laporan?edit=${encodeURIComponent(
+        report.id,
+      )}`;
   }
 
   /* =========================================================
@@ -1025,7 +1448,6 @@ function LaporanPage() {
       alert(
         "Catatan revisi wajib diisi.",
       );
-
       return;
     }
 
@@ -1059,6 +1481,61 @@ function LaporanPage() {
         error instanceof Error
           ? error.message
           : "Gagal mengirim permintaan revisi.",
+      );
+    } finally {
+      setProcessingId(null);
+    }
+  }
+
+  /* =========================================================
+     KEMBALIKAN DARI TERVERIFIKASI KE REVISI
+  ========================================================= */
+
+  async function handleKembalikanKeRevisi() {
+    if (!kembalikanReport) return;
+
+    if (!user?.id) {
+      alert("User tidak ditemukan.");
+      return;
+    }
+
+    if (!catatanRevisi.trim()) {
+      alert(
+        "Catatan revisi wajib diisi.",
+      );
+      return;
+    }
+
+    try {
+      setProcessingId(
+        kembalikanReport.id,
+      );
+
+      await kembalikanKeRevisiLaporan(
+        kembalikanReport,
+        user.id,
+        catatanRevisi,
+      );
+
+      alert(
+        "Laporan berhasil dikembalikan ke status revisi.",
+      );
+
+      setKembalikanReport(null);
+      setCatatanRevisi("");
+      setPreview(null);
+
+      await refreshReports();
+    } catch (error) {
+      console.error(
+        "Gagal mengembalikan laporan:",
+        error,
+      );
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Gagal mengembalikan laporan ke revisi.",
       );
     } finally {
       setProcessingId(null);
@@ -1222,7 +1699,7 @@ function LaporanPage() {
         </div>
       </Panel>
 
-      {/* DAFTAR LAPORAN */}
+      {/* DAFTAR */}
 
       <Panel className="p-0 sm:p-0">
 
@@ -1418,7 +1895,7 @@ function LaporanPage() {
                             <Button
                               size="icon"
                               variant="outline"
-                              title="Preview laporan"
+                              title="Preview laporan harian"
                               onClick={() =>
                                 setPreview(r)
                               }
@@ -1467,6 +1944,31 @@ function LaporanPage() {
                                     <RotateCcw className="size-4" />
                                   </Button>
                                 </>
+                              )}
+
+                            {isStaff &&
+                              r.status_laporan ===
+                                "terverifikasi" && (
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  title="Kembalikan ke revisi"
+                                  disabled={
+                                    processingId ===
+                                    r.id
+                                  }
+                                  onClick={() => {
+                                    setKembalikanReport(
+                                      r,
+                                    );
+
+                                    setCatatanRevisi(
+                                      "",
+                                    );
+                                  }}
+                                >
+                                  <RotateCcw className="size-4" />
+                                </Button>
                               )}
 
                             {isTrainer &&
@@ -1663,6 +2165,31 @@ function LaporanPage() {
                           </>
                         )}
 
+                      {isStaff &&
+                        r.status_laporan ===
+                          "terverifikasi" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={
+                              processingId ===
+                              r.id
+                            }
+                            onClick={() => {
+                              setKembalikanReport(
+                                r,
+                              );
+
+                              setCatatanRevisi(
+                                "",
+                              );
+                            }}
+                          >
+                            <RotateCcw className="mr-2 size-4" />
+                            Kembalikan ke Revisi
+                          </Button>
+                        )}
+
                       {isTrainer &&
                         r.status_laporan ===
                           "perlu_revisi" && (
@@ -1710,13 +2237,19 @@ function LaporanPage() {
             setRevisiReport(preview);
             setCatatanRevisi("");
           }}
+          onKembalikanKeRevisi={() => {
+            setKembalikanReport(preview);
+            setCatatanRevisi("");
+          }}
           onEdit={() =>
             handleEditLaporan(preview)
           }
         />
       )}
 
-      {/* MODAL MINTA REVISI */}
+      {/* =====================================================
+         MODAL MINTA REVISI
+      ===================================================== */}
 
       {revisiReport && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
@@ -1843,12 +2376,157 @@ function LaporanPage() {
         </div>
       )}
 
+      {/* =====================================================
+         MODAL KEMBALIKAN KE REVISI
+      ===================================================== */}
+
+      {kembalikanReport && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+
+          <div className="w-full max-w-lg rounded-xl bg-background shadow-xl">
+
+            <div className="flex items-center justify-between border-b px-5 py-4">
+
+              <div>
+                <p className="font-semibold">
+                  Kembalikan ke Revisi
+                </p>
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Gunakan jika laporan terlanjur
+                  diverifikasi dan ternyata masih
+                  perlu diperbaiki.
+                </p>
+              </div>
+
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => {
+                  setKembalikanReport(null);
+                  setCatatanRevisi("");
+                }}
+              >
+                <X className="size-4" />
+              </Button>
+
+            </div>
+
+            <div className="space-y-4 p-5">
+
+              <div className="rounded-lg border border-amber-300/40 bg-amber-50 p-3">
+
+                <p className="text-xs font-semibold text-amber-800">
+                  Perhatian
+                </p>
+
+                <p className="mt-1 text-xs text-amber-700">
+                  Status laporan akan berubah dari
+                  Terverifikasi menjadi Perlu Revisi.
+                  Trainer dapat melihat catatan ini
+                  dan mengirim ulang laporan.
+                </p>
+
+              </div>
+
+              <div className="rounded-lg bg-muted/40 p-3">
+
+                <p className="text-xs text-muted-foreground">
+                  Trainer
+                </p>
+
+                <p className="font-medium">
+                  {kembalikanReport.trainers
+                    ?.nama_lengkap ||
+                    "—"}
+                </p>
+
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Materi
+                </p>
+
+                <p className="font-medium">
+                  {kembalikanReport.materi ||
+                    "—"}
+                </p>
+
+              </div>
+
+              <div>
+
+                <p className="mb-1.5 text-sm font-medium">
+                  Catatan Revisi *
+                </p>
+
+                <textarea
+                  value={catatanRevisi}
+                  onChange={(e) =>
+                    setCatatanRevisi(
+                      e.target.value,
+                    )
+                  }
+                  placeholder="Contoh: Laporan sudah terverifikasi secara tidak sengaja. Mohon lengkapi dokumentasi dan koreksi jumlah peserta."
+                  rows={5}
+                  className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Catatan wajib diisi dan akan
+                  tersimpan sebagai riwayat verifikasi.
+                </p>
+
+              </div>
+
+            </div>
+
+            <div className="flex justify-end gap-2 border-t bg-muted/20 px-5 py-4">
+
+              <Button
+                variant="outline"
+                disabled={
+                  processingId ===
+                  kembalikanReport.id
+                }
+                onClick={() => {
+                  setKembalikanReport(null);
+                  setCatatanRevisi("");
+                }}
+              >
+                Batal
+              </Button>
+
+              <Button
+                variant="destructive"
+                disabled={
+                  processingId ===
+                    kembalikanReport.id ||
+                  !catatanRevisi.trim()
+                }
+                onClick={
+                  handleKembalikanKeRevisi
+                }
+              >
+                <RotateCcw className="mr-2 size-4" />
+
+                {processingId ===
+                kembalikanReport.id
+                  ? "Menyimpan..."
+                  : "Kembalikan ke Revisi"}
+              </Button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
     </AppShell>
   );
 }
 
 /* =========================================================
-   PREVIEW LAPORAN
+   PREVIEW
 ========================================================= */
 
 function PreviewLaporan({
@@ -1859,6 +2537,7 @@ function PreviewLaporan({
   onClose,
   onVerifikasi,
   onMintaRevisi,
+  onKembalikanKeRevisi,
   onEdit,
 }: {
   report: ReportWithTrainer;
@@ -1868,6 +2547,7 @@ function PreviewLaporan({
   onClose: () => void;
   onVerifikasi: () => void;
   onMintaRevisi: () => void;
+  onKembalikanKeRevisi: () => void;
   onEdit: () => void;
 }) {
   const {
@@ -1879,7 +2559,6 @@ function PreviewLaporan({
       "report-photos",
       report.id,
     ],
-
     queryFn: () =>
       getReportPhotos(report.id),
   });
@@ -1895,12 +2574,12 @@ function PreviewLaporan({
 
           <div>
             <p className="text-lg font-semibold">
-              Preview Laporan
+              Preview Laporan Harian
             </p>
 
             <p className="text-xs text-muted-foreground">
-              Periksa seluruh data dan foto
-              sebelum download atau verifikasi.
+              Download akan menggabungkan seluruh
+              kegiatan trainer pada tanggal yang sama.
             </p>
           </div>
 
@@ -1913,13 +2592,11 @@ function PreviewLaporan({
 
         </div>
 
-        {/* CONTENT */}
-
         <div className="space-y-5 p-5">
 
-          {/* INFORMASI */}
+          {/* IDENTITAS */}
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
             <Info
               label="Tanggal Kegiatan"
@@ -1947,57 +2624,54 @@ function PreviewLaporan({
             />
 
             <Info
-              label="Jam"
-              value={`${report.jam_mulai || "—"}${
-                report.jam_selesai
-                  ? ` - ${report.jam_selesai}`
-                  : ""
-              }`}
-            />
-
-            <Info
-              label="Kelas"
+              label="Jabatan"
               value={
-                report.kelas || "—"
-              }
-            />
-
-            <Info
-              label="Lokasi"
-              value={
-                report.lokasi || "—"
-              }
-            />
-
-            <Info
-              label="Jenis Kegiatan"
-              value={
-                report.jenis_kegiatan ||
+                report.trainers
+                  ?.jabatan ||
                 "—"
               }
             />
 
             <Info
-              label="Penanggung Jawab"
+              label="Departemen"
               value={
-                report.penanggung_jawab ||
+                report.trainers
+                  ?.departemen ||
                 "—"
+              }
+            />
+
+            <Info
+              label="Status"
+              value={
+                report.status_laporan
               }
             />
 
           </div>
 
-          {/* MATERI */}
+          {/* KEGIATAN TERPILIH */}
 
           <div className="rounded-xl border p-4">
 
             <p className="text-xs font-medium text-muted-foreground">
-              Materi / Kegiatan
+              Materi / Kegiatan Terpilih
             </p>
 
             <p className="mt-1 whitespace-pre-wrap text-base font-semibold">
               {report.materi ||
                 "—"}
+            </p>
+
+            <p className="mt-2 text-xs text-muted-foreground">
+              PDF akan memuat seluruh kegiatan
+              pada tanggal{" "}
+              <strong>
+                {formatTanggal(
+                  report.tanggal_kegiatan,
+                )}
+              </strong>
+              .
             </p>
 
           </div>
@@ -2045,13 +2719,11 @@ function PreviewLaporan({
             </p>
 
             <div className="mt-2">
-
               <StatusPill
                 status={
                   report.status_laporan
                 }
               />
-
             </div>
 
             {report.catatan_revisi && (
@@ -2070,21 +2742,6 @@ function PreviewLaporan({
 
           </div>
 
-          {/* KETERANGAN */}
-
-          <div>
-
-            <p className="text-xs font-medium text-muted-foreground">
-              Keterangan
-            </p>
-
-            <div className="mt-1 whitespace-pre-wrap rounded-lg border p-3 text-sm">
-              {report.keterangan ||
-                "Tidak ada keterangan."}
-            </div>
-
-          </div>
-
           {/* FOTO */}
 
           <div className="rounded-xl border border-border/70 p-4">
@@ -2100,8 +2757,8 @@ function PreviewLaporan({
                 </p>
 
                 <p className="text-xs text-muted-foreground">
-                  Semua foto ditampilkan utuh
-                  tanpa dipotong.
+                  Foto tersimpan pada kegiatan
+                  yang sedang dipreview.
                 </p>
 
               </div>
@@ -2123,11 +2780,6 @@ function PreviewLaporan({
                   Foto tidak dapat dimuat.
                 </p>
 
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Periksa izin tabel
-                  report_photos dan Storage.
-                </p>
-
               </div>
             ) : photos.length === 0 ? (
               <div className="rounded-xl border border-dashed p-8 text-center">
@@ -2135,18 +2787,12 @@ function PreviewLaporan({
                 <ImageIcon className="mx-auto size-8 text-muted-foreground" />
 
                 <p className="mt-2 text-sm font-medium">
-                  Belum ada foto
-                  dokumentasi.
-                </p>
-
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Laporan ini belum memiliki
-                  foto yang tersimpan.
+                  Belum ada foto dokumentasi.
                 </p>
 
               </div>
             ) : (
-              <div className="space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
 
                 {photos.map(
                   (photo, index) => (
@@ -2165,7 +2811,7 @@ function PreviewLaporan({
                       </div>
 
                       {photo.url ? (
-                        <div className="flex w-full justify-center bg-background p-3">
+                        <div className="flex justify-center bg-background p-3">
 
                           <img
                             src={photo.url}
@@ -2175,20 +2821,15 @@ function PreviewLaporan({
                                 index + 1
                               }`
                             }
-                            className="block h-auto max-h-[700px] w-full object-contain"
+                            className="block h-auto max-h-[400px] w-full object-contain"
                           />
 
                         </div>
                       ) : (
                         <div className="p-8 text-center">
 
-                          <p className="text-sm font-medium text-destructive">
+                          <p className="text-sm text-destructive">
                             Foto gagal dimuat.
-                          </p>
-
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {photo.nama_file ||
-                              "Nama file tidak tersedia"}
                           </p>
 
                         </div>
@@ -2215,7 +2856,7 @@ function PreviewLaporan({
 
         </div>
 
-        {/* FOOTER ACTION */}
+        {/* FOOTER */}
 
         <div className="flex flex-col gap-2 border-t bg-muted/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
 
@@ -2228,6 +2869,16 @@ function PreviewLaporan({
                   Pastikan data dan dokumentasi
                   sudah sesuai sebelum menentukan
                   hasil verifikasi.
+                </p>
+              )}
+
+            {isStaff &&
+              report.status_laporan ===
+                "terverifikasi" && (
+                <p className="text-xs text-amber-600">
+                  Jika verifikasi dilakukan secara
+                  tidak sengaja, laporan dapat
+                  dikembalikan ke revisi.
                 </p>
               )}
 
@@ -2296,13 +2947,31 @@ function PreviewLaporan({
                 </>
               )}
 
+            {isStaff &&
+              report.status_laporan ===
+                "terverifikasi" && (
+                <Button
+                  variant="outline"
+                  disabled={
+                    processingId ===
+                    report.id
+                  }
+                  onClick={
+                    onKembalikanKeRevisi
+                  }
+                >
+                  <RotateCcw className="mr-2 size-4" />
+                  Kembalikan ke Revisi
+                </Button>
+              )}
+
             <Button
               onClick={() =>
                 downloadLaporan(report)
               }
             >
               <Download className="mr-2 size-4" />
-              Download PDF
+              Download PDF Harian
             </Button>
 
           </div>
@@ -2316,7 +2985,7 @@ function PreviewLaporan({
 }
 
 /* =========================================================
-   COMPONENT INFO
+   INFO
 ========================================================= */
 
 function Info({
@@ -2350,7 +3019,7 @@ function Info({
 }
 
 /* =========================================================
-   COMPONENT STAT
+   STAT
 ========================================================= */
 
 function Stat({
