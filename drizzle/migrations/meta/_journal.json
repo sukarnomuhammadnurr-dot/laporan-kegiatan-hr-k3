@@ -36,6 +36,13 @@
       "when": 1790645552331,
       "tag": "0004_trainer_account_status",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790735977045,
+      "tag": "0005_branding_and_trainer_photos",
+      "breakpoints": true
     }
   ]
 }
