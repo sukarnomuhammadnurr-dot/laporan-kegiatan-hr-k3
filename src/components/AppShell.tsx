@@ -51,7 +51,6 @@ const NAV_TRAINER: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/buat-laporan", label: "Buat Laporan", icon: FilePlus2 },
   { to: "/laporan", label: "Laporan Saya", icon: FileText },
-  { label: "Kalender Kegiatan", icon: CalendarDays },
   { label: "Laporan Bulanan", icon: BarChart3 },
 ];
 
@@ -60,7 +59,6 @@ const NAV_STAFF: NavItem[] = [
   { to: "/laporan", label: "Semua Laporan", icon: FileText },
   { to: "/buat-laporan", label: "Buat Laporan", icon: FilePlus2 },
   { label: "Monitoring Laporan", icon: ListChecks },
-  { label: "Kalender Kegiatan", icon: CalendarDays },
   { label: "Laporan Bulanan & Export", icon: BarChart3 },
 ];
 
