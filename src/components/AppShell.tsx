@@ -26,7 +26,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { TrainerAvatar } from "@/components/TrainerAvatar";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -38,42 +43,91 @@ type NavItem = {
     | "/dashboard"
     | "/buat-laporan"
     | "/laporan"
+    | "/monitoring-laporan"
     | "/master-trainer"
     | "/master-materi"
     | "/ubah-password"
     | "/pengaturan-sistem";
-    | "/monitoring-laporan"
   label: string;
   icon: LucideIcon;
 };
 
 const NAV_TRAINER: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/buat-laporan", label: "Buat Laporan", icon: FilePlus2 },
-  { to: "/laporan", label: "Laporan Saya", icon: FileText },
-  { label: "Laporan Bulanan", icon: BarChart3 },
+  {
+    to: "/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+  },
+  {
+    to: "/buat-laporan",
+    label: "Buat Laporan",
+    icon: FilePlus2,
+  },
+  {
+    to: "/laporan",
+    label: "Laporan Saya",
+    icon: FileText,
+  },
+  {
+    label: "Laporan Bulanan",
+    icon: BarChart3,
+  },
 ];
 
 const NAV_STAFF: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/laporan", label: "Semua Laporan", icon: FileText },
-  { to: "/buat-laporan", label: "Buat Laporan", icon: FilePlus2 },
   {
-  to: "/monitoring-laporan",
-  label: "Monitoring Laporan",
-  icon: ListChecks,
-},
-  { label: "Laporan Bulanan & Export", icon: BarChart3 },
+    to: "/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+  },
+  {
+    to: "/laporan",
+    label: "Semua Laporan",
+    icon: FileText,
+  },
+  {
+    to: "/buat-laporan",
+    label: "Buat Laporan",
+    icon: FilePlus2,
+  },
+  {
+    to: "/monitoring-laporan",
+    label: "Monitoring Laporan",
+    icon: ListChecks,
+  },
+  {
+    label: "Laporan Bulanan & Export",
+    icon: BarChart3,
+  },
 ];
 
 const NAV_MASTER: NavItem[] = [
-  { to: "/master-trainer", label: "Master Trainer", icon: Users },
-  { to: "/master-materi", label: "Master Materi", icon: BookOpen },
-  { label: "Pesan WhatsApp", icon: MessageCircle },
-  { to: "/pengaturan-sistem", label: "Pengaturan Sistem", icon: Settings },
+  {
+    to: "/master-trainer",
+    label: "Master Trainer",
+    icon: Users,
+  },
+  {
+    to: "/master-materi",
+    label: "Master Materi",
+    icon: BookOpen,
+  },
+  {
+    label: "Pesan WhatsApp",
+    icon: MessageCircle,
+  },
+  {
+    to: "/pengaturan-sistem",
+    label: "Pengaturan Sistem",
+    icon: Settings,
+  },
 ];
 
-export function BrandLogo({ className }: { className?: string }) {
+export function BrandLogo({
+  className,
+}: {
+  className?: string;
+}) {
   const logo = useBrandingUrl("logo");
 
   return (
@@ -105,6 +159,7 @@ function NavList({
   onLogout: () => void;
 }) {
   const { isStaff, isAdmin } = useCurrentUser();
+
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
   });
@@ -114,6 +169,10 @@ function NavList({
   const item = (it: NavItem) => {
     const Icon = it.icon;
 
+    /*
+     * Menu yang belum punya halaman/route
+     * tetap tampil sebagai "Segera".
+     */
     if (!it.to) {
       return (
         <div
@@ -121,7 +180,11 @@ function NavList({
           className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-sidebar-foreground/45"
         >
           <Icon className="size-4 shrink-0" />
-          <span className="flex-1 truncate">{it.label}</span>
+
+          <span className="flex-1 truncate">
+            {it.label}
+          </span>
+
           <span className="rounded-full bg-sidebar-accent px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-sidebar-foreground/60 uppercase">
             Segera
           </span>
@@ -130,7 +193,8 @@ function NavList({
     }
 
     const active =
-      pathname === it.to || pathname.startsWith(it.to + "/");
+      pathname === it.to ||
+      pathname.startsWith(it.to + "/");
 
     return (
       <Link
@@ -145,7 +209,10 @@ function NavList({
         )}
       >
         <Icon className="size-4 shrink-0" />
-        <span className="truncate">{it.label}</span>
+
+        <span className="truncate">
+          {it.label}
+        </span>
       </Link>
     );
   };
@@ -159,11 +226,13 @@ function NavList({
   return (
     <nav className="space-y-0.5">
       {heading("Menu")}
+
       {main.map(item)}
 
       {isStaff && (
         <>
           {heading("Data & Sistem")}
+
           {(isAdmin
             ? NAV_MASTER
             : NAV_MASTER.filter(
@@ -209,6 +278,7 @@ function SidebarInner(props: {
           <p className="text-sm leading-tight font-semibold text-sidebar-foreground">
             Laporan Kegiatan
           </p>
+
           <p className="text-sm leading-tight font-semibold text-sidebar-foreground">
             Trainer K3
           </p>
@@ -244,7 +314,9 @@ export function AppShell({
   children: ReactNode;
 }) {
   const { nama, roles, user, trainer } = useCurrentUser();
+
   const navigate = useNavigate();
+
   const queryClient = useQueryClient();
 
   const [open, setOpen] = useState(false);
@@ -253,23 +325,36 @@ export function AppShell({
     select: (s) => s.location.pathname,
   });
 
-  const heroImg = useBrandingUrl(heroKey ?? "ilustrasi_k3");
+  const heroImg = useBrandingUrl(
+    heroKey ?? "ilustrasi_k3",
+  );
+
   const bg = useBrandingUrl("background");
 
-  const wajibGanti = !!user?.user_metadata?.["wajib_ganti_password"];
+  const wajibGanti =
+    !!user?.user_metadata?.["wajib_ganti_password"];
 
   useEffect(() => {
-    if (wajibGanti && pathname !== "/ubah-password") {
+    if (
+      wajibGanti &&
+      pathname !== "/ubah-password"
+    ) {
       navigate({
         to: "/ubah-password",
         replace: true,
       });
     }
-  }, [wajibGanti, pathname, navigate]);
+  }, [
+    wajibGanti,
+    pathname,
+    navigate,
+  ]);
 
   async function keluar() {
     await queryClient.cancelQueries();
+
     queryClient.clear();
+
     await supabase.auth.signOut();
 
     navigate({
@@ -285,7 +370,9 @@ export function AppShell({
       {bg && (
         <div
           className="pointer-events-none fixed inset-0 bg-cover bg-center opacity-[0.06]"
-          style={{ backgroundImage: `url(${bg})` }}
+          style={{
+            backgroundImage: `url(${bg})`,
+          }}
         />
       )}
 
@@ -298,7 +385,10 @@ export function AppShell({
         {/* Header */}
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-border bg-card/95 px-3 backdrop-blur sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <Sheet open={open} onOpenChange={setOpen}>
+            <Sheet
+              open={open}
+              onOpenChange={setOpen}
+            >
               <SheetTrigger asChild>
                 <button
                   className="grid size-10 place-items-center rounded-lg text-foreground hover:bg-accent lg:hidden"
@@ -355,9 +445,15 @@ export function AppShell({
                 <ChevronDown className="size-4 text-muted-foreground" />
               </DropdownMenuTrigger>
 
-              <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuContent
+                align="end"
+                className="w-56"
+              >
                 <DropdownMenuLabel>
-                  <p className="truncate">{nama}</p>
+                  <p className="truncate">
+                    {nama}
+                  </p>
+
                   <p className="truncate text-xs font-normal text-muted-foreground">
                     {user?.email}
                   </p>
@@ -367,7 +463,9 @@ export function AppShell({
 
                 <DropdownMenuItem
                   onSelect={() =>
-                    navigate({ to: "/ubah-password" })
+                    navigate({
+                      to: "/ubah-password",
+                    })
                   }
                 >
                   <KeyRound className="size-4" />
