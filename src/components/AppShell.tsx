@@ -19,7 +19,9 @@ type NavItem = {
   to?:
     | "/dashboard"
     | "/buat-laporan"
+    | "/laporan"
     | "/master-trainer"
+    | "/master-materi"
     | "/ubah-password";
   label: string;
 };
