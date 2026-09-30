@@ -98,7 +98,6 @@ function BuatLaporan() {
 
   const [form, setForm] = useState<FormState>(FORM_AWAL);
   const [preview, setPreview] = useState(false);
-
   const [fotoFiles, setFotoFiles] = useState<File[]>([]);
 
   const [penanggungJawabOption, setPenanggungJawabOption] =
@@ -245,19 +244,14 @@ function BuatLaporan() {
 
     if (
       form.jam_mulai &&
-      form.jam_selesai
+      form.jam_selesai &&
+      form.jam_selesai <= form.jam_mulai
     ) {
-      if (
-        form.jam_selesai <=
-        form.jam_mulai
-      ) {
-        return "Jam selesai harus lebih besar dari jam mulai.";
-      }
+      return "Jam selesai harus lebih besar dari jam mulai.";
     }
 
     if (
-      penanggungJawabOption ===
-        "Lainnya" &&
+      penanggungJawabOption === "Lainnya" &&
       !form.penanggung_jawab.trim()
     ) {
       return "Nama penanggung jawab lainnya wajib diisi.";
@@ -274,18 +268,13 @@ function BuatLaporan() {
         );
       }
 
-      const errorValidasi =
-        validasiForm();
+      const errorValidasi = validasiForm();
 
       if (errorValidasi) {
-        throw new Error(
-          errorValidasi,
-        );
+        throw new Error(errorValidasi);
       }
 
-      const {
-        data: sessionData,
-      } =
+      const { data: sessionData } =
         await supabase.auth.getSession();
 
       const userId =
@@ -338,8 +327,13 @@ function BuatLaporan() {
           "manual" as const,
         waktu_laporan_dikirim:
           new Date().toISOString(),
+
+        // ==========================================
+        // STATUS AWAL SETELAH TRAINER MENGIRIM
+        // ==========================================
         status_laporan:
-          "terkirim" as const,
+          "menunggu_verifikasi" as const,
+
         created_by: userId,
       };
 
@@ -441,7 +435,7 @@ function BuatLaporan() {
         "Laporan berhasil dikirim.",
         {
           description:
-            "Laporan masuk ke daftar untuk proses verifikasi.",
+            "Status laporan: Menunggu Verifikasi.",
         },
       );
 
@@ -681,7 +675,6 @@ function BuatLaporan() {
             </p>
           </div>
 
-          {/* FOTO PREVIEW */}
           <div className="mt-4 rounded-xl border border-border/70 bg-card/40 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Dokumentasi Foto
@@ -775,7 +768,6 @@ function BuatLaporan() {
       }
     >
       <Panel>
-        {/* TRAINER */}
         <div className="mb-5 rounded-xl border border-border/70 bg-card/40 p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Trainer
@@ -878,7 +870,6 @@ function BuatLaporan() {
 
             <div className="mt-3 grid gap-4 md:grid-cols-2">
 
-              {/* JADWAL */}
               <div className="space-y-2">
                 <Label htmlFor="jadwal">
                   Gunakan jadwal master
@@ -930,7 +921,6 @@ function BuatLaporan() {
                 </select>
               </div>
 
-              {/* JENIS */}
               <div className="space-y-2">
                 <Label htmlFor="jenis-kegiatan">
                   Jenis kegiatan
@@ -972,7 +962,6 @@ function BuatLaporan() {
               </div>
             </div>
 
-            {/* MATERIAL + KELAS */}
             <div className="mt-4 grid gap-4 md:grid-cols-2">
 
               <div className="space-y-2">
@@ -1033,7 +1022,6 @@ function BuatLaporan() {
               </div>
             </div>
 
-            {/* MATERI */}
             <div className="mt-4 space-y-2">
               <Label htmlFor="materi">
                 Materi / kegiatan *
@@ -1052,10 +1040,8 @@ function BuatLaporan() {
               />
             </div>
 
-            {/* LOKASI + PJ */}
             <div className="mt-4 grid gap-4 md:grid-cols-2">
 
-              {/* LOKASI */}
               <div className="space-y-2">
                 <Label htmlFor="lokasi">
                   Lokasi
@@ -1086,7 +1072,6 @@ function BuatLaporan() {
                 </select>
               </div>
 
-              {/* PENANGGUNG JAWAB */}
               <div className="space-y-2">
                 <Label htmlFor="penanggung-jawab">
                   Penanggung jawab
@@ -1130,7 +1115,6 @@ function BuatLaporan() {
               </div>
             </div>
 
-            {/* PJ LAINNYA */}
             {penanggungJawabOption ===
               "Lainnya" && (
               <div className="mt-4 space-y-2">
@@ -1299,11 +1283,8 @@ function BuatLaporan() {
                   />
                 </div>
 
-                {/* FOTO YANG DIPILIH */}
-                {fotoFiles.length >
-                  0 && (
+                {fotoFiles.length > 0 && (
                   <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-
                     {fotoFiles.map(
                       (
                         file,
@@ -1344,17 +1325,14 @@ function BuatLaporan() {
                         </div>
                       ),
                     )}
-
                   </div>
                 )}
-
               </div>
             </div>
           </section>
 
-          {/* PREVIEW BUTTON */}
+          {/* PREVIEW */}
           <div className="flex justify-end">
-
             <Button
               onClick={bukaPreview}
               size="lg"
@@ -1362,9 +1340,7 @@ function BuatLaporan() {
               <Eye className="mr-2 size-4" />
               Preview Laporan
             </Button>
-
           </div>
-
         </div>
       </Panel>
     </AppShell>
@@ -1380,13 +1356,10 @@ function NumberField({
   id: string;
   label: string;
   value: number;
-  onChange: (
-    value: number,
-  ) => void;
+  onChange: (value: number) => void;
 }) {
   return (
     <div className="space-y-2">
-
       <Label htmlFor={id}>
         {label}
       </Label>
@@ -1398,22 +1371,18 @@ function NumberField({
         step={1}
         value={value}
         onChange={(e) => {
-          const parsed =
-            Number(
-              e.target.value,
-            );
+          const parsed = Number(
+            e.target.value,
+          );
 
           onChange(
-            Number.isFinite(
-              parsed,
-            ) &&
+            Number.isFinite(parsed) &&
               parsed >= 0
               ? parsed
               : 0,
           );
         }}
       />
-
     </div>
   );
 }
@@ -1427,7 +1396,6 @@ function PreviewItem({
 }) {
   return (
     <div className="rounded-xl border border-border/60 bg-card/30 p-3">
-
       <p className="text-xs text-muted-foreground">
         {label}
       </p>
@@ -1435,7 +1403,6 @@ function PreviewItem({
       <p className="mt-1 text-sm font-medium">
         {value}
       </p>
-
     </div>
   );
 }
@@ -1449,7 +1416,6 @@ function PreviewNumber({
 }) {
   return (
     <div className="rounded-xl border border-border/60 bg-background/40 p-3">
-
       <p className="text-xs text-muted-foreground">
         {label}
       </p>
@@ -1457,7 +1423,6 @@ function PreviewNumber({
       <p className="num mt-1 text-lg font-semibold">
         {value}
       </p>
-
     </div>
   );
 }
