@@ -29,12 +29,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useCurrentUser } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import {
   fetchReports,
   fetchTrainers,
   type ReportWithTrainer,
 } from "@/lib/queries";
 import { cn } from "@/lib/utils";
+import { useBrandingUrl } from "@/lib/branding";
 
 export const Route = createFileRoute("/_authenticated/monitoring-laporan")({
   head: () => ({
@@ -470,6 +472,7 @@ function MonitoringLaporanPage() {
   const [jenisKegiatan, setJenisKegiatan] = useState("semua");
   const [cari, setCari] = useState("");
   const [preview, setPreview] = useState<ReportWithTrainer | null>(null);
+  const brandingLogo = useBrandingUrl("logo");
 
   const { data: trainers = [] } = useQuery({
     queryKey: ["trainers", "monitoring-laporan"],
@@ -581,265 +584,648 @@ function MonitoringLaporanPage() {
     jenisKegiatan !== "semua" ||
     cari;
 
-  function downloadLaporanBulanan() {
-    const now = new Date();
 
+  type ReportPhoto = {
+    storage_path: string;
+    nama_file: string | null;
+    url?: string | null;
+  };
+
+  async function getReportPhotos(reportId: string) {
+    const { data, error } = await supabase
+      .from("report_photos")
+      .select("storage_path, nama_file")
+      .eq("report_id", reportId)
+      .order("nama_file", { ascending: true });
+
+    if (error) throw error;
+
+    const rows = (data ?? []) as ReportPhoto[];
+
+    return Promise.all(
+      rows.map(async (photo) => {
+        const { data: signed, error: signedError } =
+          await supabase.storage
+            .from("report-photos")
+            .createSignedUrl(photo.storage_path, 60 * 60);
+
+        return {
+          ...photo,
+          url:
+            signedError || !signed?.signedUrl
+              ? null
+              : signed.signedUrl,
+        };
+      }),
+    );
+  }
+
+  function hitungDurasiJam(
+    jamMulai: string | null,
+    jamSelesai: string | null,
+  ) {
+    if (!jamMulai || !jamSelesai) return 0;
+
+    const [h1, m1] = jamMulai.split(":").map(Number);
+    const [h2, m2] = jamSelesai.split(":").map(Number);
+
+    if (
+      Number.isNaN(h1) ||
+      Number.isNaN(m1) ||
+      Number.isNaN(h2) ||
+      Number.isNaN(m2)
+    ) {
+      return 0;
+    }
+
+    let menit = h2 * 60 + m2 - (h1 * 60 + m1);
+
+    if (menit < 0) menit += 24 * 60;
+
+    return menit / 60;
+  }
+
+  function formatJamTraining(jam: number) {
+    if (!jam) return "0 jam";
+
+    const jamBulat = Math.floor(jam);
+    const menit = Math.round((jam - jamBulat) * 60);
+
+    if (menit === 0) return `${jamBulat} jam`;
+
+    return `${jamBulat} jam ${menit} menit`;
+  }
+
+  function escapeHtml(value: string | number | null | undefined) {
+    if (value === null || value === undefined) return "";
+
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function statusHarian(reports: ReportWithTrainer[]) {
+    if (reports.every((item) => item.status_laporan === "terverifikasi")) {
+      return "Terverifikasi";
+    }
+
+    if (reports.some((item) => item.status_laporan === "perlu_revisi")) {
+      return "Perlu Revisi";
+    }
+
+    if (
+      reports.some(
+        (item) => item.status_laporan === "menunggu_verifikasi",
+      )
+    ) {
+      return "Menunggu Verifikasi";
+    }
+
+    return "Terkirim";
+  }
+
+  function buatNomorDokumen(
+    report: ReportWithTrainer,
+    reports: ReportWithTrainer[],
+  ) {
+    const tanggal = report.tanggal_kegiatan || "";
+    const tahun = tanggal.slice(0, 4) || "0000";
+    const bulan = tanggal.slice(5, 7) || "00";
+
+    const nomorTrainer =
+      report.trainers?.nomor_id_trainer ||
+      report.trainer_id.slice(0, 8).toUpperCase();
+
+    const angkaTrainer =
+      nomorTrainer.match(/\d+/)?.[0] ||
+      String(
+        Math.abs(
+          reports.reduce(
+            (sum, item) => sum + item.id.charCodeAt(0),
+            0,
+          ),
+        ),
+      ).padStart(5, "0");
+
+    return `L  async function downloadLaporanBulanan() {
+    const now = new Date();
     const bulan =
       dari && dari.length >= 7
         ? dari.slice(0, 7)
         : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-    const laporanBulanan = filteredReports.filter((report) =>
-      report.tanggal_kegiatan?.startsWith(bulan),
-    );
+    const laporanBulanan = filteredReports
+      .filter((report) => report.tanggal_kegiatan?.startsWith(bulan))
+      .sort((a, b) => {
+        const tanggalA = a.tanggal_kegiatan || "";
+        const tanggalB = b.tanggal_kegiatan || "";
+        return (
+          tanggalA.localeCompare(tanggalB) ||
+          (a.jam_mulai || "").localeCompare(b.jam_mulai || "")
+        );
+      });
 
     if (laporanBulanan.length === 0) {
-      window.alert(
-        `Tidak ada laporan untuk periode ${namaBulan(bulan)}.`,
-      );
+      window.alert(`Tidak ada laporan untuk periode ${namaBulan(bulan)}.`);
       return;
     }
 
-    const namaTrainer =
-      trainerFilter !== "semua"
-        ? trainers.find((item) => item.id === trainerFilter)
-            ?.nama_lengkap || "Trainer"
-        : isTrainer
-          ? trainer?.nama_lengkap || "Trainer"
-          : "Seluruh Trainer";
+    try {
+      const grouped = new Map<string, ReportWithTrainer[]>();
 
-    const rows = laporanBulanan
-      .map(
-        (report, index) => `
-          <tr>
-            <td>${index + 1}</td>
-            <td>${formatTanggal(report.tanggal_kegiatan)}</td>
-            <td>${report.trainers?.nama_lengkap || "—"}</td>
-            <td>${report.materi || "—"}</td>
-            <td>${report.jenis_kegiatan || "—"}</td>
-            <td>${report.lokasi || "—"}</td>
-            <td>${report.jumlah_peserta ?? 0}</td>
-            <td>${report.jumlah_hadir ?? 0}</td>
-            <td>${report.status_laporan || "—"}</td>
-          </tr>
-        `,
-      )
-      .join("");
+      for (const report of laporanBulanan) {
+        const trainerKey = report.trainer_id;
+        const current = grouped.get(trainerKey) || [];
+        current.push(report);
+        grouped.set(trainerKey, current);
+      }
 
-    const html = `
-      <!doctype html>
-      <html lang="id">
-      <head>
-        <meta charset="utf-8" />
-        <title>Laporan Bulanan ${namaTrainer} - ${namaBulan(bulan)}</title>
-        <style>
-          @page {
-            size: A4 landscape;
-            margin: 12mm;
-          }
+      const trainerGroups = [...grouped.values()];
 
-          * {
-            box-sizing: border-box;
-          }
-
-          body {
-            font-family: Arial, Helvetica, sans-serif;
-            color: #172033;
-            margin: 0;
-            font-size: 10px;
-          }
-
-          .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            border-bottom: 2px solid #174f86;
-            padding-bottom: 10px;
-            margin-bottom: 16px;
-          }
-
-          h1 {
-            margin: 0 0 4px;
-            font-size: 20px;
-          }
-
-          h2 {
-            margin: 0;
-            font-size: 13px;
-            color: #174f86;
-          }
-
-          .muted {
-            color: #6b7280;
-          }
-
-          .summary {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 8px;
-            margin-bottom: 16px;
-          }
-
-          .box {
-            border: 1px solid #d9e1ea;
-            border-radius: 8px;
-            padding: 9px;
-          }
-
-          .label {
-            color: #6b7280;
-            font-size: 8px;
-            margin-bottom: 4px;
-          }
-
-          .number {
-            font-size: 17px;
-            font-weight: 700;
-          }
-
-          table {
-            width: 100%;
-            border-collapse: collapse;
-          }
-
-          th {
-            background: #edf4fb;
-            color: #174f86;
-            text-align: left;
-            font-size: 8px;
-            padding: 7px;
-            border: 1px solid #d9e1ea;
-          }
-
-          td {
-            padding: 7px;
-            border: 1px solid #e1e6ed;
-            vertical-align: top;
-          }
-
-          .footer {
-            margin-top: 14px;
-            font-size: 8px;
-            color: #6b7280;
-          }
-        </style>
-      </head>
-
-      <body>
-        <div class="header">
-          <div>
-            <h1>Laporan Kegiatan Trainer K3</h1>
-            <h2>PT IWIP · Modul Pelatihan Keselamatan</h2>
-            <p class="muted">Periode: ${namaBulan(bulan)}</p>
-          </div>
-
-          <div style="text-align:right">
-            <strong>${namaTrainer}</strong>
-            <br />
-            <span class="muted">
-              ${laporanBulanan.length} laporan
-            </span>
-          </div>
-        </div>
-
-        <div class="summary">
-          <div class="box">
-            <div class="label">TOTAL LAPORAN</div>
-            <div class="number">${laporanBulanan.length}</div>
-          </div>
-
-          <div class="box">
-            <div class="label">TERVERIFIKASI</div>
-            <div class="number">
-              ${
-                laporanBulanan.filter(
-                  (r) => r.status_laporan === "terverifikasi",
-                ).length
-              }
-            </div>
-          </div>
-
-          <div class="box">
-            <div class="label">MENUNGGU VERIFIKASI</div>
-            <div class="number">
-              ${
-                laporanBulanan.filter(
-                  (r) => r.status_laporan === "menunggu_verifikasi",
-                ).length
-              }
-            </div>
-          </div>
-
-          <div class="box">
-            <div class="label">PERLU REVISI</div>
-            <div class="number">
-              ${
-                laporanBulanan.filter(
-                  (r) => r.status_laporan === "perlu_revisi",
-                ).length
-              }
-            </div>
-          </div>
-
-          <div class="box">
-            <div class="label">TOTAL PESERTA</div>
-            <div class="number">
-              ${laporanBulanan.reduce(
-                (sum, r) => sum + (r.jumlah_peserta ?? 0),
-                0,
-              )}
-            </div>
-          </div>
-        </div>
-
-        <table>
-          <thead>
-            <tr>
-              <th>No</th>
-              <th>Tanggal</th>
-              <th>Trainer</th>
-              <th>Materi / Kegiatan</th>
-              <th>Jenis</th>
-              <th>Lokasi</th>
-              <th>Peserta</th>
-              <th>Hadir</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            ${rows}
-          </tbody>
-        </table>
-
-        <div class="footer">
-          Dokumen ini dibuat dari sistem Laporan Kegiatan Trainer K3 PT IWIP.
-        </div>
-      </body>
-      </html>
-    `;
-
-    const win = window.open(
-      "",
-      "_blank",
-      "width=1200,height=800",
-    );
-
-    if (!win) {
-      window.alert(
-        "Popup diblokir browser. Silakan izinkan popup untuk membuka PDF.",
+      const monthlyData = await Promise.all(
+        trainerGroups.map(async (trainerReports) => ({
+          reports: trainerReports,
+          photos: await Promise.all(
+            trainerReports.map(async (report) => ({
+              report,
+              photos: await getReportPhotos(report.id),
+            })),
+          ),
+        })),
       );
-      return;
+
+      const pages = monthlyData.map(({ reports, photos }) => {
+        const first = reports[0];
+        if (!first) return "";
+
+        const namaTrainer = first.trainers?.nama_lengkap || "Trainer";
+        const nomorTrainer =
+          first.trainers?.nomor_id_trainer || "—";
+        const jabatan = first.trainers?.jabatan || "—";
+        const departemen = first.trainers?.departemen || "—";
+
+        const totalKegiatan = reports.length;
+        const totalPeserta = reports.reduce(
+          (sum, item) => sum + Number(item.jumlah_peserta || 0),
+          0,
+        );
+        const totalHadir = reports.reduce(
+          (sum, item) => sum + Number(item.jumlah_hadir || 0),
+          0,
+        );
+        const totalJam = reports.reduce(
+          (sum, item) =>
+            sum + hitungDurasiJam(item.jam_mulai, item.jam_selesai),
+          0,
+        );
+
+        const status = statusHarian(reports);
+
+        const kegiatanRows = photos
+          .map(({ report: item, photos: reportPhotos }, index) => {
+            const fotoHtml =
+              reportPhotos.filter((photo) => photo.url).length === 0
+                ? `<div class="no-photo">Tidak ada foto</div>`
+                : `
+                    <div class="photo-strip">
+                      ${reportPhotos
+                        .filter((photo) => photo.url)
+                        .map(
+                          (photo) => `
+                            <img
+                              src="${photo.url}"
+                              class="activity-photo"
+                              alt="${escapeHtml(photo.nama_file || "Dokumentasi")}" 
+                            />
+                          `,
+                        )
+                        .join("")}
+                    </div>
+                  `;
+
+            return `
+              <tr>
+                <td class="center number-cell">${index + 1}</td>
+
+                <td class="time-cell">
+                  <strong>${escapeHtml(item.jam_mulai || "—")}</strong>
+                  ${
+                    item.jam_selesai
+                      ? `<span class="time-end">- ${escapeHtml(item.jam_selesai)}</span>`
+                      : ""
+                  }
+                </td>
+
+                <td class="activity-cell">
+                  <div class="activity-title">
+                    ${escapeHtml(item.materi || "—")}
+                  </div>
+                  ${
+                    item.jenis_kegiatan
+                      ? `<div class="activity-type">${escapeHtml(item.jenis_kegiatan)}</div>`
+                      : ""
+                  }
+                </td>
+
+                <td>${escapeHtml(item.kelas || "—")}</td>
+                <td>${escapeHtml(item.lokasi || "—")}</td>
+
+                <td class="center participant-cell">
+                  <strong>${Number(item.jumlah_peserta || 0).toLocaleString("id-ID")}</strong>
+                  <div class="small-info">
+                    Hadir: ${Number(item.jumlah_hadir || 0).toLocaleString("id-ID")}
+                  </div>
+                </td>
+
+                <td class="photo-cell">${fotoHtml}</td>
+              </tr>
+            `;
+          })
+          .join("");
+
+        return `
+          <section class="page">
+            <header class="report-header">
+              <div class="brand-block">
+                ${
+                  brandingLogo
+                    ? `<img src="${brandingLogo}" class="company-logo" alt="Logo perusahaan" />`
+                    : `<div class="logo-fallback">K3</div>`
+                }
+                <div>
+                  <div class="brand-title">LAPORAN KEGIATAN TRAINER K3</div>
+                  <div class="brand-subtitle">PT IWIP</div>
+                </div>
+              </div>
+
+              <div class="month-block">
+                <div class="month-label">LAPORAN BULANAN</div>
+                <div class="month-value">${escapeHtml(namaBulan(bulan))}</div>
+              </div>
+            </header>
+
+            <div class="header-line"></div>
+
+            <div class="identity">
+              <div class="identity-item">
+                <div class="identity-label">Nama Trainer</div>
+                <div class="identity-value">${escapeHtml(namaTrainer)}</div>
+              </div>
+              <div class="identity-item">
+                <div class="identity-label">No. ID Trainer</div>
+                <div class="identity-value">${escapeHtml(nomorTrainer)}</div>
+              </div>
+              <div class="identity-item">
+                <div class="identity-label">Jabatan</div>
+                <div class="identity-value">${escapeHtml(jabatan)}</div>
+              </div>
+              <div class="identity-item">
+                <div class="identity-label">Departemen</div>
+                <div class="identity-value">${escapeHtml(departemen)}</div>
+              </div>
+              <div class="identity-item">
+                <div class="identity-label">Periode Laporan</div>
+                <div class="identity-value">${escapeHtml(namaBulan(bulan))}</div>
+              </div>
+              <div class="identity-item status-item">
+                <div class="identity-label">Status</div>
+                <div class="status status-${status.toLowerCase().replaceAll(" ", "-")}">
+                  ✓ ${escapeHtml(status)}
+                </div>
+              </div>
+            </div>
+
+            <div class="activity-wrapper">
+              <table>
+                <colgroup>
+                  <col style="width: 4%" />
+                  <col style="width: 9%" />
+                  <col style="width: 24%" />
+                  <col style="width: 9%" />
+                  <col style="width: 12%" />
+                  <col style="width: 8%" />
+                  <col style="width: 34%" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>No.</th>
+                    <th>Jam</th>
+                    <th>Materi / Kegiatan</th>
+                    <th>Kelas</th>
+                    <th>Lokasi</th>
+                    <th>Jumlah Peserta</th>
+                    <th>Dokumentasi</th>
+                  </tr>
+                </thead>
+                <tbody>${kegiatanRows}</tbody>
+              </table>
+            </div>
+
+            <div class="summary-section">
+              <div class="summary-heading">REKAPITULASI BULANAN</div>
+              <div class="summary-grid">
+                <div class="summary-card">
+                  <div class="summary-label">Total Kegiatan</div>
+                  <div class="summary-value">${totalKegiatan}</div>
+                  <div class="summary-unit">kegiatan</div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-label">Total Peserta</div>
+                  <div class="summary-value">${totalPeserta.toLocaleString("id-ID")}</div>
+                  <div class="summary-unit">orang</div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-label">Total Hadir</div>
+                  <div class="summary-value">${totalHadir.toLocaleString("id-ID")}</div>
+                  <div class="summary-unit">orang</div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-label">Total Jam Training</div>
+                  <div class="summary-value">${escapeHtml(formatJamTraining(totalJam))}</div>
+                  <div class="summary-unit">durasi kegiatan</div>
+                </div>
+              </div>
+            </div>
+
+            <footer class="footer">
+              <span>Dicetak pada: ${escapeHtml(new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }))} &nbsp; | &nbsp; PT IWIP</span>
+              <span class="document-number">Laporan Bulanan K3 - ${escapeHtml(namaTrainer)}</span>
+            </footer>
+          </section>
+        `;
+      });
+
+      const html = `
+        <!DOCTYPE html>
+        <html lang="id">
+        <head>
+          <meta charset="UTF-8" />
+          <title>Laporan Bulanan Trainer K3 - ${escapeHtml(namaBulan(bulan))}</title>
+          <style>
+            * { box-sizing: border-box; }
+            html, body { margin: 0; padding: 0; }
+            body {
+              font-family: Arial, Helvetica, sans-serif;
+              color: #124a82;
+              background: #fff;
+              font-size: 9px;
+            }
+            .page {
+              width: 100%;
+              min-height: 180mm;
+              page-break-after: always;
+              padding-bottom: 2mm;
+            }
+            .page:last-child { page-break-after: auto; }
+            .report-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              gap: 20px;
+            }
+            .brand-block {
+              display: flex;
+              align-items: center;
+              gap: 10px;
+            }
+            .company-logo {
+              width: 58px;
+              height: 46px;
+              object-fit: contain;
+            }
+            .logo-fallback {
+              width: 58px;
+              height: 46px;
+              display: grid;
+              place-items: center;
+              border-radius: 10px;
+              background: #0b5aa5;
+              color: #fff;
+              font-size: 17px;
+              font-weight: 900;
+            }
+            .brand-title {
+              color: #124a82;
+              font-size: 18px;
+              font-weight: 900;
+              line-height: 1.05;
+              letter-spacing: .2px;
+            }
+            .brand-subtitle {
+              margin-top: 3px;
+              color: #124a82;
+              font-size: 12px;
+              font-weight: 700;
+            }
+            .month-block { text-align: right; }
+            .month-label {
+              color: #124a82;
+              font-size: 15px;
+              font-weight: 900;
+            }
+            .month-value {
+              margin-top: 4px;
+              color: #124a82;
+              font-size: 12px;
+              font-weight: 700;
+            }
+            .header-line {
+              height: 2px;
+              margin: 8px 0 9px;
+              background: #0b5aa5;
+              border-radius: 999px;
+            }
+            .identity {
+              display: grid;
+              grid-template-columns: 1.35fr 1.1fr 1fr 1fr 1.25fr .95fr;
+              border: 1px solid #b8d9f7;
+              border-radius: 7px;
+              overflow: hidden;
+              background: #f7fbff;
+            }
+            .identity-item {
+              min-height: 48px;
+              padding: 7px 9px;
+              border-right: 1px solid #cfe5f8;
+            }
+            .identity-item:last-child { border-right: 0; }
+            .identity-label {
+              color: #1766a6;
+              font-size: 7px;
+              margin-bottom: 4px;
+            }
+            .identity-value {
+              color: #123f6d;
+              font-size: 9px;
+              font-weight: 800;
+              line-height: 1.2;
+            }
+            .status {
+              display: inline-flex;
+              align-items: center;
+              padding: 4px 7px;
+              border-radius: 999px;
+              background: #dcf7e8;
+              color: #12834f;
+              font-size: 7px;
+              font-weight: 800;
+            }
+            .activity-wrapper { margin-top: 9px; }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              table-layout: fixed;
+            }
+            th {
+              padding: 6px 4px;
+              border: 1px solid #0b5aa5;
+              background: #0b5aa5;
+              color: white;
+              text-align: center;
+              font-size: 8px;
+              font-weight: 800;
+            }
+            td {
+              padding: 4px 5px;
+              border: 1px solid #b9d8f2;
+              color: #123f6d;
+              font-size: 7.7px;
+              vertical-align: middle;
+              overflow-wrap: anywhere;
+            }
+            tbody tr:nth-child(even) { background: #f8fbff; }
+            .center { text-align: center; }
+            .number-cell { font-size: 9px; font-weight: 800; }
+            .time-cell { text-align: center; white-space: nowrap; }
+            .time-end { display: block; color: #5d7894; font-size: 7px; }
+            .activity-title { font-size: 8.4px; font-weight: 800; color: #124a82; }
+            .activity-type { margin-top: 2px; color: #63809a; font-size: 6.9px; }
+            .participant-cell strong { font-size: 9px; }
+            .small-info { margin-top: 2px; color: #63809a; font-size: 6.6px; }
+            .photo-cell { padding: 3px; }
+            .photo-strip {
+              display: flex;
+              flex-wrap: wrap;
+              justify-content: center;
+              gap: 3px;
+            }
+            .activity-photo {
+              width: 82px;
+              height: 54px;
+              object-fit: cover;
+              border-radius: 4px;
+              border: 1px solid #b9d8f2;
+              background: #eef6fc;
+            }
+            .no-photo {
+              min-height: 45px;
+              display: grid;
+              place-items: center;
+              color: #8ba0b3;
+              font-size: 7px;
+            }
+            .summary-section {
+              margin-top: 8px;
+              border: 1px solid #b8d9f7;
+              border-radius: 7px;
+              padding: 7px;
+              background: #f8fbff;
+            }
+            .summary-heading {
+              margin-bottom: 6px;
+              color: #124a82;
+              font-size: 9px;
+              font-weight: 900;
+            }
+            .summary-grid {
+              display: grid;
+              grid-template-columns: repeat(4, 1fr);
+              gap: 6px;
+            }
+            .summary-card {
+              min-height: 53px;
+              border: 1px solid #c7e0f6;
+              border-radius: 6px;
+              padding: 7px 8px;
+              background: white;
+            }
+            .summary-label { color: #3978ab; font-size: 7px; }
+            .summary-value {
+              margin-top: 2px;
+              color: #124a82;
+              font-size: 14px;
+              font-weight: 900;
+            }
+            .summary-unit { color: #6d879e; font-size: 6.5px; }
+            .footer {
+              display: flex;
+              justify-content: space-between;
+              gap: 15px;
+              margin-top: 6px;
+              padding-top: 5px;
+              border-top: 1px solid #d4e4f2;
+              color: #6b8297;
+              font-size: 6.7px;
+            }
+            .document-number { font-weight: 700; color: #124a82; }
+            @page { size: A4 landscape; margin: 8mm; }
+            @media print {
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              tr { page-break-inside: avoid; }
+            }
+          </style>
+        </head>
+        <body>${pages.join("")}</body>
+        </html>
+      `;
+
+      const win = window.open("", "_blank", "width=1400,height=900");
+
+      if (!win) {
+        window.alert(
+          "Popup diblokir browser. Silakan izinkan popup untuk membuka Preview PDF.",
+        );
+        return;
+      }
+
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+
+      const images = Array.from(win.document.images);
+      await Promise.all(
+        images.map(
+          (img) =>
+            new Promise<void>((resolve) => {
+              if (img.complete) {
+                resolve();
+                return;
+              }
+              img.onload = () => resolve();
+              img.onerror = () => resolve();
+            }),
+        ),
+      );
+
+      setTimeout(() => {
+        win.focus();
+        win.print();
+      }, 500);
+    } catch (error) {
+      console.error("Gagal menyiapkan laporan bulanan:", error);
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Gagal menyiapkan laporan bulanan.",
+      );
     }
-
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-
-    setTimeout(() => {
-      win.print();
-    }, 500);
+  }
+nyiapkan laporan bulanan.",
+      );
+    }
   }
 
   if (loading) {
