@@ -7,7 +7,7 @@ export function TrainerAvatar({
   className,
 }: {
   nama: string | null | undefined;
-  foto?: string | null;
+  foto?: string | null | undefined;
   className?: string;
 }) {
   const url = useStorageUrl(foto);
