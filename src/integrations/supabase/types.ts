@@ -500,6 +500,7 @@ export type Database = {
           departemen: string
           email: string | null
           foto_profil: string | null
+          foto_url: string | null
           id: string
           jabatan: string
           nama_lengkap: string
@@ -517,6 +518,7 @@ export type Database = {
           departemen?: string
           email?: string | null
           foto_profil?: string | null
+          foto_url?: string | null
           id?: string
           jabatan?: string
           nama_lengkap: string
@@ -534,6 +536,7 @@ export type Database = {
           departemen?: string
           email?: string | null
           foto_profil?: string | null
+          foto_url?: string | null
           id?: string
           jabatan?: string
           nama_lengkap?: string

@@ -1,20 +1,42 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Menu } from "lucide-react";
+import {
+  BarChart3,
+  CalendarDays,
+  ChevronDown,
+  ClipboardList,
+  FilePlus2,
+  FileText,
+  History,
+  KeyRound,
+  LayoutDashboard,
+  ListChecks,
+  LogOut,
+  Menu,
+  MessageCircle,
+  Settings,
+  Users,
+  BookOpen,
+  Clock,
+  type LucideIcon,
+} from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
 import {
-  Sheet,
-  SheetContent,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { TrainerAvatar } from "@/components/TrainerAvatar";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { useBrandingUrl, type BrandingKey } from "@/lib/branding";
 import { cn } from "@/lib/utils";
 
-/** Daftar halaman yang sudah tersedia. */
 type NavItem = {
   to?:
     | "/dashboard"
@@ -22,302 +44,286 @@ type NavItem = {
     | "/laporan"
     | "/master-trainer"
     | "/master-materi"
-    | "/ubah-password";
+    | "/ubah-password"
+    | "/pengaturan-sistem";
   label: string;
+  icon: LucideIcon;
 };
 
 const NAV_TRAINER: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard" },
-  { to: "/buat-laporan", label: "Buat Laporan" },
-  { to: "/laporan", label: "Laporan Saya" },
-  { label: "Kalender Kegiatan" },
-  { label: "Laporan Bulanan" },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/buat-laporan", label: "Buat Laporan", icon: FilePlus2 },
+  { to: "/laporan", label: "Laporan Saya", icon: FileText },
+  { label: "Kalender Kegiatan", icon: CalendarDays },
+  { label: "Laporan Bulanan", icon: BarChart3 },
 ];
 
 const NAV_STAFF: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard" },
-  { to: "/laporan", label: "Semua Laporan" },
-  { to: "/buat-laporan", label: "Buat Laporan" },
-  { label: "Monitoring Laporan" },
-  { label: "Kalender Kegiatan" },
-  { label: "Laporan Bulanan & Export" },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/laporan", label: "Semua Laporan", icon: FileText },
+  { to: "/buat-laporan", label: "Buat Laporan", icon: FilePlus2 },
+  { label: "Monitoring Laporan", icon: ListChecks },
+  { label: "Kalender Kegiatan", icon: CalendarDays },
+  { label: "Laporan Bulanan & Export", icon: BarChart3 },
 ];
 
 const NAV_MASTER: NavItem[] = [
-  { to: "/master-trainer", label: "Master Trainer" },
-  { to: "/master-materi", label: "Master Materi" },
-  { label: "Master Kegiatan" },
-  { label: "Master Jadwal" },
-  { label: "Pesan WhatsApp" },
-  { label: "Riwayat Perubahan" },
-  { label: "Pengaturan Sistem" },
+  { to: "/master-trainer", label: "Master Trainer", icon: Users },
+  { to: "/master-materi", label: "Master Materi", icon: BookOpen },
+  { label: "Master Kegiatan", icon: ClipboardList },
+  { label: "Master Jadwal", icon: Clock },
+  { label: "Pesan WhatsApp", icon: MessageCircle },
+  { label: "Riwayat Perubahan", icon: History },
+  { to: "/pengaturan-sistem", label: "Pengaturan Sistem", icon: Settings },
 ];
 
-function NavList({ onNavigate }: { onNavigate?: () => void }) {
-  const { isStaff } = useCurrentUser();
-  const pathname = useRouterState({
-    select: (s) => s.location.pathname,
-  });
+export function BrandLogo({ className }: { className?: string }) {
+  const logo = useBrandingUrl("logo");
+  return (
+    <div
+      className={cn(
+        "num grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground",
+        logo && "bg-card",
+        className,
+      )}
+    >
+      {logo ? <img src={logo} alt="Logo perusahaan" className="size-full object-contain p-1" /> : "K3"}
+    </div>
+  );
+}
 
+function NavList({ onNavigate, onLogout }: { onNavigate?: () => void; onLogout: () => void }) {
+  const { isStaff, isAdmin } = useCurrentUser();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const main = isStaff ? NAV_STAFF : NAV_TRAINER;
 
-  const render = (items: NavItem[]) =>
-    items.map((item) => {
-      if (!item.to) {
-        return (
-          <div
-            key={item.label}
-            className="flex items-center justify-between rounded-lg px-3 py-2.5 text-[13px] font-medium text-muted-foreground/60"
-          >
-            <span>{item.label}</span>
-            <span className="eyebrow text-muted-foreground/60">
-              segera
-            </span>
-          </div>
-        );
-      }
-
-      const active =
-        pathname === item.to || pathname.startsWith(item.to + "/");
-
+  const item = (it: NavItem) => {
+    const Icon = it.icon;
+    if (!it.to) {
       return (
-        <Link
-          key={item.label}
-          to={item.to}
-          onClick={onNavigate}
-          className={cn(
-            "block rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors",
-            active
-              ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:bg-accent hover:text-foreground",
-          )}
+        <div
+          key={it.label}
+          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-sidebar-foreground/45"
         >
-          {item.label}
-        </Link>
+          <Icon className="size-4 shrink-0" />
+          <span className="flex-1 truncate">{it.label}</span>
+          <span className="rounded-full bg-sidebar-accent px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-sidebar-foreground/60 uppercase">
+            Segera
+          </span>
+        </div>
       );
-    });
+    }
+    const active = pathname === it.to || pathname.startsWith(it.to + "/");
+    return (
+      <Link
+        key={it.label}
+        to={it.to}
+        onClick={onNavigate}
+        className={cn(
+          "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors",
+          active
+            ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-[var(--shadow-nav)]"
+            : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+        )}
+      >
+        <Icon className="size-4 shrink-0" />
+        <span className="truncate">{it.label}</span>
+      </Link>
+    );
+  };
+
+  const heading = (t: string) => (
+    <p className="px-3 pt-5 pb-1.5 text-[10px] font-semibold tracking-[0.18em] text-sidebar-foreground/45 uppercase">
+      {t}
+    </p>
+  );
 
   return (
-    <nav className="space-y-1">
-      <p className="eyebrow px-3 pb-1 text-muted-foreground">
-        Menu
-      </p>
-
-      {render(main)}
-
+    <nav className="space-y-0.5">
+      {heading("Menu")}
+      {main.map(item)}
       {isStaff && (
         <>
-          <p className="eyebrow px-3 pt-4 pb-1 text-muted-foreground">
-            Data & Sistem
-          </p>
-
-          {render(NAV_MASTER)}
+          {heading("Data & Sistem")}
+          {(isAdmin ? NAV_MASTER : NAV_MASTER.filter((n) => n.to !== "/pengaturan-sistem")).map(item)}
         </>
       )}
-
-      <p className="eyebrow px-3 pt-4 pb-1 text-muted-foreground">
-        Akun
-      </p>
-
-      {render([
-        {
-          to: "/ubah-password",
-          label: "Ubah Password",
-        },
-      ])}
+      {heading("Akun")}
+      {item({ to: "/ubah-password", label: "Ubah Password", icon: KeyRound })}
+      <button
+        onClick={onLogout}
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+      >
+        <LogOut className="size-4" /> Keluar
+      </button>
     </nav>
   );
 }
 
-export function AppShell({
-  title,
-  eyebrow,
-  actions,
-  children,
-}: {
-  title: string;
-  eyebrow?: string;
-  actions?: ReactNode;
-  children: ReactNode;
-}) {
-  const { nama, roles, user } = useCurrentUser();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-
-  const [open, setOpen] = useState(false);
-
-  const pathname = useRouterState({
-    select: (s) => s.location.pathname,
-  });
-
-  const wajibGanti =
-    !!user?.user_metadata?.["wajib_ganti_password"];
-
-  useEffect(() => {
-    if (
-      wajibGanti &&
-      pathname !== "/ubah-password"
-    ) {
-      navigate({
-        to: "/ubah-password",
-        replace: true,
-      });
-    }
-  }, [wajibGanti, pathname, navigate]);
-
-  const inisial =
-    nama
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((w) => w[0]?.toUpperCase())
-      .join("") || "??";
-
-  async function keluar() {
-    await queryClient.cancelQueries();
-    queryClient.clear();
-
-    await supabase.auth.signOut();
-
-    navigate({
-      to: "/masuk",
-      replace: true,
-    });
-  }
-
+function SidebarInner(props: { onNavigate?: () => void; onLogout: () => void }) {
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-40 -left-32 size-[520px] rounded-full bg-primary/20 blur-[120px]" />
-
-        <div className="absolute top-1/3 -right-40 size-[460px] rounded-full bg-status-sent/20 blur-[120px]" />
-      </div>
-
-      <div className="relative mx-auto max-w-[1440px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
-        <header className="glass-strong flex items-center justify-between gap-3 rounded-2xl px-3 py-3 ring-1 ring-foreground/5 sm:px-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <Sheet
-              open={open}
-              onOpenChange={setOpen}
-            >
-              <SheetTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="lg:hidden"
-                  aria-label="Buka menu"
-                >
-                  <Menu className="size-5" />
-                </Button>
-              </SheetTrigger>
-
-              <SheetContent
-                side="left"
-                className="w-72 p-4"
-              >
-                <SheetTitle className="mb-4 text-sm">
-                  Navigasi
-                </SheetTitle>
-
-                <NavList
-                  onNavigate={() => setOpen(false)}
-                />
-              </SheetContent>
-            </Sheet>
-
-            <Link
-              to="/dashboard"
-              className="flex min-w-0 items-center gap-3"
-            >
-              <div className="num grid size-9 shrink-0 place-items-center rounded-lg bg-primary text-xs font-semibold text-primary-foreground">
-                IW
-              </div>
-
-              <div className="min-w-0">
-                <p className="truncate text-sm leading-none font-semibold">
-                  Laporan Kegiatan Trainer K3
-                </p>
-
-                <p className="eyebrow mt-1 truncate text-muted-foreground">
-                  PT IWIP · Modul Pelatihan Keselamatan
-                </p>
-              </div>
-            </Link>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="eyebrow hidden rounded-full bg-card/60 px-2.5 py-1 text-muted-foreground ring-1 ring-foreground/5 sm:inline-block">
-              {roles[0] ?? "—"}
-            </span>
-
-            <button
-              onClick={keluar}
-              className="hidden rounded-lg bg-card/60 px-3 py-2 text-sm font-medium text-muted-foreground ring-1 ring-foreground/5 transition-colors hover:text-foreground sm:block"
-            >
-              Keluar
-            </button>
-
-            <div className="num grid size-9 shrink-0 place-items-center rounded-full bg-foreground/90 text-xs font-semibold text-background">
-              {inisial}
-            </div>
-          </div>
-        </header>
-
-        <div className="mt-4 flex gap-5">
-          <aside className="glass hidden w-60 shrink-0 self-start rounded-2xl p-3 ring-1 ring-foreground/5 lg:block">
-            <NavList />
-
-            <button
-              onClick={keluar}
-              className="mt-4 w-full rounded-lg px-3 py-2.5 text-left text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              Keluar
-            </button>
-          </aside>
-
-          <main className="min-w-0 flex-1">
-            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-              <div>
-                {eyebrow ? (
-                  <p className="eyebrow text-primary">
-                    {eyebrow}
-                  </p>
-                ) : null}
-
-                <h1 className="mt-1 text-xl font-semibold sm:text-2xl">
-                  {title}
-                </h1>
-              </div>
-
-              {actions ? (
-                <div className="flex flex-wrap gap-2">
-                  {actions}
-                </div>
-              ) : null}
-            </div>
-
-            {children}
-          </main>
+    <div className="flex h-full flex-col">
+      <Link to="/dashboard" onClick={props.onNavigate} className="flex items-center gap-3 px-2 pb-2">
+        <BrandLogo />
+        <div className="min-w-0">
+          <p className="text-sm leading-tight font-semibold text-sidebar-foreground">Laporan Kegiatan</p>
+          <p className="text-sm leading-tight font-semibold text-sidebar-foreground">Trainer K3</p>
         </div>
+      </Link>
+      <div className="-mx-1 flex-1 overflow-y-auto px-1 pb-4">
+        <NavList {...props} />
       </div>
     </div>
   );
 }
 
-export function Panel({
+const ROLE_LABEL: Record<string, string> = { admin: "Admin", supervisor: "Supervisor", trainer: "Trainer" };
+
+export function AppShell({
+  title,
+  eyebrow,
+  description,
+  heroKey,
+  actions,
   children,
-  className,
 }: {
+  title: string;
+  eyebrow?: string;
+  description?: string;
+  heroKey?: BrandingKey;
+  actions?: ReactNode;
   children: ReactNode;
-  className?: string;
 }) {
+  const { nama, roles, user, trainer } = useCurrentUser();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const heroImg = useBrandingUrl(heroKey ?? "ilustrasi_k3");
+  const bg = useBrandingUrl("background");
+
+  const wajibGanti = !!user?.user_metadata?.["wajib_ganti_password"];
+
+  useEffect(() => {
+    if (wajibGanti && pathname !== "/ubah-password") {
+      navigate({ to: "/ubah-password", replace: true });
+    }
+  }, [wajibGanti, pathname, navigate]);
+
+  async function keluar() {
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    await supabase.auth.signOut();
+    navigate({ to: "/masuk", replace: true });
+  }
+
+  const role = roles[0] ?? "";
+
   return (
-    <section
-      className={cn(
-        "glass rounded-2xl p-4 ring-1 ring-foreground/5 sm:p-5",
-        className,
+    <div className="relative min-h-screen bg-background text-foreground">
+      {bg && (
+        <div
+          className="pointer-events-none fixed inset-0 bg-cover bg-center opacity-[0.06]"
+          style={{ backgroundImage: `url(${bg})` }}
+        />
       )}
-    >
+
+      {/* Sidebar desktop */}
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 bg-sidebar px-3 py-5 lg:block">
+        <SidebarInner onLogout={keluar} />
+      </aside>
+
+      <div className="relative lg:pl-64">
+        {/* Header */}
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-border bg-card/95 px-3 backdrop-blur sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <Sheet open={open} onOpenChange={setOpen}>
+              <SheetTrigger asChild>
+                <button
+                  className="grid size-10 place-items-center rounded-lg text-foreground hover:bg-accent lg:hidden"
+                  aria-label="Buka menu"
+                >
+                  <Menu className="size-5" />
+                </button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-72 border-none bg-sidebar p-4">
+                <SheetTitle className="sr-only">Navigasi</SheetTitle>
+                <SidebarInner onNavigate={() => setOpen(false)} onLogout={keluar} />
+              </SheetContent>
+            </Sheet>
+            <BrandLogo className="size-9 lg:hidden" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold sm:text-base">Laporan Kegiatan Trainer K3</p>
+              <p className="eyebrow hidden truncate text-[10px] text-muted-foreground sm:block">
+                PT IWIP • Modul Pelatihan Keselamatan
+              </p>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <span className="hidden rounded-full bg-accent px-3 py-1 text-[11px] font-semibold tracking-wider text-accent-foreground uppercase sm:inline-block">
+              {ROLE_LABEL[role] ?? "—"}
+            </span>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="flex items-center gap-2 rounded-full py-1 pr-2 pl-1 hover:bg-accent">
+                <TrainerAvatar nama={nama} foto={trainer?.foto_url} />
+                <span className="hidden max-w-40 truncate text-sm font-medium md:block">{nama}</span>
+                <ChevronDown className="size-4 text-muted-foreground" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <p className="truncate">{nama}</p>
+                  <p className="truncate text-xs font-normal text-muted-foreground">{user?.email}</p>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => navigate({ to: "/ubah-password" })}>
+                  <KeyRound className="size-4" /> Ubah Password
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={keluar} className="text-destructive">
+                  <LogOut className="size-4" /> Keluar
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <button
+              onClick={keluar}
+              className="hidden items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground xl:flex"
+            >
+              <LogOut className="size-4" /> Keluar
+            </button>
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-[1400px] px-3 py-4 sm:px-6 sm:py-6">
+          {/* Hero */}
+          <section className="relative mb-5 overflow-hidden rounded-2xl bg-sidebar text-sidebar-foreground shadow-[var(--shadow-card)]">
+            {heroImg && (
+              <img src={heroImg} alt="" className="absolute inset-0 size-full object-cover opacity-45" />
+            )}
+            <div className="absolute inset-0 bg-[image:var(--gradient-hero)]" />
+            <div className="relative flex flex-wrap items-end justify-between gap-4 px-5 py-7 sm:px-8 sm:py-10">
+              <div className="max-w-2xl">
+                {eyebrow && (
+                  <p className="text-[11px] font-semibold tracking-[0.2em] text-sidebar-primary-foreground/80 uppercase">
+                    {eyebrow}
+                  </p>
+                )}
+                <h1 className="mt-1.5 text-2xl font-bold sm:text-3xl">{title}</h1>
+                {description && <p className="mt-2 text-sm text-sidebar-foreground/80 sm:text-base">{description}</p>}
+              </div>
+              {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+            </div>
+          </section>
+
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+export function Panel({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <section className={cn("rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)] sm:p-6", className)}>
       {children}
     </section>
   );
