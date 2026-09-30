@@ -6,6 +6,7 @@ import {
   Download,
   Eye,
   Image as ImageIcon,
+  Pencil,
   RotateCcw,
   X,
 } from "lucide-react";
@@ -210,9 +211,7 @@ async function mintaRevisiLaporan(
   const trimmed = catatan.trim();
 
   if (!trimmed) {
-    throw new Error(
-      "Catatan revisi wajib diisi.",
-    );
+    throw new Error("Catatan revisi wajib diisi.");
   }
 
   if (report.status_laporan !== "menunggu_verifikasi") {
@@ -336,73 +335,50 @@ async function downloadLaporan(report: ReportWithTrainer) {
               sans-serif;
 
             color: #111827;
-
             background: white;
-
             line-height: 1.5;
-
             padding: 30px;
           }
 
           .header {
             text-align: center;
-
             margin-bottom: 28px;
-
             padding-bottom: 18px;
-
             border-bottom: 2px solid #111827;
           }
 
           .header h1 {
             margin: 0;
-
             font-size: 24px;
-
             letter-spacing: 0.5px;
           }
 
           .header p {
             margin: 5px 0 0;
-
             color: #6b7280;
-
             font-size: 13px;
           }
 
           .section {
             border: 1px solid #d1d5db;
-
             border-radius: 8px;
-
             padding: 18px;
-
             margin-bottom: 16px;
           }
 
           .section-title {
             font-size: 13px;
-
             font-weight: bold;
-
             text-transform: uppercase;
-
             margin-bottom: 12px;
-
             color: #374151;
           }
 
           .row {
             display: grid;
-
-            grid-template-columns:
-              180px
-              1fr;
-
+            grid-template-columns: 180px 1fr;
             padding: 7px 0;
-
-            border-bottom:
-              1px solid #e5e7eb;
+            border-bottom: 1px solid #e5e7eb;
           }
 
           .row:last-child {
@@ -411,206 +387,142 @@ async function downloadLaporan(report: ReportWithTrainer) {
 
           .label {
             font-weight: bold;
-
             color: #4b5563;
           }
 
           .value {
             color: #111827;
-
             white-space: pre-wrap;
-
             overflow-wrap: anywhere;
           }
 
           .materi {
             font-size: 19px;
-
             font-weight: bold;
-
             color: #111827;
-
             white-space: pre-wrap;
-
             overflow-wrap: anywhere;
           }
 
           .stats {
             display: grid;
-
-            grid-template-columns:
-              repeat(4, 1fr);
-
+            grid-template-columns: repeat(4, 1fr);
             gap: 10px;
           }
 
           .stat {
             border: 1px solid #d1d5db;
-
             border-radius: 8px;
-
             padding: 14px;
-
             text-align: center;
           }
 
           .stat-label {
             font-size: 12px;
-
             color: #6b7280;
           }
 
           .stat-number {
             margin-top: 4px;
-
             font-size: 22px;
-
             font-weight: bold;
           }
 
           .photos-section {
             border: 1px solid #d1d5db;
-
             border-radius: 8px;
-
             padding: 18px;
-
             margin-top: 16px;
           }
 
           .photos-grid {
             display: flex;
-
             flex-direction: column;
-
             gap: 22px;
           }
 
           .photo-item {
             width: 100%;
-
             border: 1px solid #d1d5db;
-
             border-radius: 8px;
-
             padding: 12px;
-
             background: #fff;
-
             page-break-inside: avoid;
-
             break-inside: avoid;
-
             text-align: center;
           }
 
           .photo-number {
             font-size: 12px;
-
             font-weight: bold;
-
             color: #374151;
-
             margin-bottom: 10px;
-
             text-align: left;
           }
 
           .report-photo {
             display: block;
-
             width: 100%;
-
             height: auto;
-
             max-width: 100%;
-
             max-height: 700px;
-
             object-fit: contain;
-
             margin: 0 auto;
-
             border-radius: 5px;
-
             background: #f9fafb;
           }
 
           .photo-caption {
             margin-top: 8px;
-
             font-size: 11px;
-
             color: #6b7280;
-
             overflow-wrap: anywhere;
           }
 
           .photo-empty {
             border: 1px dashed #d1d5db;
-
             border-radius: 8px;
-
             padding: 25px;
-
             text-align: center;
-
             color: #6b7280;
           }
 
           .photo-error {
             border: 1px dashed #ef4444;
-
             border-radius: 8px;
-
             padding: 20px;
-
             text-align: center;
-
             color: #991b1b;
-
             background: #fef2f2;
-
             page-break-inside: avoid;
           }
 
           .photo-error-title {
             font-weight: bold;
-
             margin-bottom: 5px;
           }
 
           .photo-name {
             margin-top: 5px;
-
             font-size: 11px;
-
             overflow-wrap: anywhere;
           }
 
           .footer {
             margin-top: 35px;
-
             padding-top: 12px;
-
-            border-top:
-              1px solid #d1d5db;
-
+            border-top: 1px solid #d1d5db;
             font-size: 11px;
-
             color: #6b7280;
-
             text-align: center;
           }
 
           @page {
             size: A4;
-
             margin: 12mm;
           }
 
           @media print {
-
             body {
               padding: 0;
             }
@@ -622,10 +534,8 @@ async function downloadLaporan(report: ReportWithTrainer) {
 
             .photo-item {
               page-break-inside: avoid;
-
               break-inside: avoid;
             }
-
           }
 
         </style>
@@ -1030,6 +940,30 @@ function LaporanPage() {
     });
   }
 
+  /* =========================================================
+     EDIT LAPORAN PERLU REVISI
+  ========================================================= */
+
+  function handleEditLaporan(
+    report: ReportWithTrainer,
+  ) {
+    if (!isTrainer) {
+      return;
+    }
+
+    if (report.status_laporan !== "perlu_revisi") {
+      return;
+    }
+
+    window.location.href = `/buat-laporan?edit=${encodeURIComponent(
+      report.id,
+    )}`;
+  }
+
+  /* =========================================================
+     VERIFIKASI
+  ========================================================= */
+
   async function handleVerifikasi(
     report: ReportWithTrainer,
   ) {
@@ -1074,6 +1008,10 @@ function LaporanPage() {
       setProcessingId(null);
     }
   }
+
+  /* =========================================================
+     MINTA REVISI
+  ========================================================= */
 
   async function handleMintaRevisi() {
     if (!revisiReport) return;
@@ -1155,8 +1093,8 @@ function LaporanPage() {
     >
       <p className="-mt-2 mb-4 text-sm text-muted-foreground">
         {isTrainer
-          ? "Lihat, preview, dan download laporan kegiatan Anda."
-          : "Lihat, preview, verifikasi, dan download laporan seluruh trainer."}
+          ? "Lihat, preview, edit laporan yang perlu revisi, dan download laporan kegiatan Anda."
+          : "Lihat, preview, verifikasi, minta revisi, dan download laporan seluruh trainer."}
       </p>
 
       {/* FILTER */}
@@ -1440,6 +1378,17 @@ function LaporanPage() {
                             </p>
                           )}
 
+                          {r.status_laporan ===
+                            "perlu_revisi" &&
+                            r.catatan_revisi && (
+                              <p className="mt-1 line-clamp-2 text-xs text-destructive">
+                                Revisi:{" "}
+                                {
+                                  r.catatan_revisi
+                                }
+                              </p>
+                            )}
+
                         </td>
 
                         <td className="px-4 py-3">
@@ -1520,6 +1469,23 @@ function LaporanPage() {
                                 </>
                               )}
 
+                            {isTrainer &&
+                              r.status_laporan ===
+                                "perlu_revisi" && (
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  title="Edit dan kirim ulang laporan"
+                                  onClick={() =>
+                                    handleEditLaporan(
+                                      r,
+                                    )
+                                  }
+                                >
+                                  <Pencil className="size-4" />
+                                </Button>
+                              )}
+
                           </div>
 
                         </td>
@@ -1571,6 +1537,22 @@ function LaporanPage() {
                       />
 
                     </div>
+
+                    {r.status_laporan ===
+                      "perlu_revisi" &&
+                      r.catatan_revisi && (
+                        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+
+                          <p className="text-xs font-medium text-destructive">
+                            Catatan Revisi
+                          </p>
+
+                          <p className="mt-1 whitespace-pre-wrap text-xs">
+                            {r.catatan_revisi}
+                          </p>
+
+                        </div>
+                      )}
 
                     <div className="grid grid-cols-2 gap-3 text-sm">
 
@@ -1681,6 +1663,23 @@ function LaporanPage() {
                           </>
                         )}
 
+                      {isTrainer &&
+                        r.status_laporan ===
+                          "perlu_revisi" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              handleEditLaporan(
+                                r,
+                              )
+                            }
+                          >
+                            <Pencil className="mr-2 size-4" />
+                            Edit & Kirim Ulang
+                          </Button>
+                        )}
+
                     </div>
 
                   </div>
@@ -1699,6 +1698,7 @@ function LaporanPage() {
         <PreviewLaporan
           report={preview}
           isStaff={isStaff}
+          isTrainer={isTrainer}
           processingId={processingId}
           onClose={() =>
             setPreview(null)
@@ -1710,6 +1710,9 @@ function LaporanPage() {
             setRevisiReport(preview);
             setCatatanRevisi("");
           }}
+          onEdit={() =>
+            handleEditLaporan(preview)
+          }
         />
       )}
 
@@ -1851,17 +1854,21 @@ function LaporanPage() {
 function PreviewLaporan({
   report,
   isStaff,
+  isTrainer,
   processingId,
   onClose,
   onVerifikasi,
   onMintaRevisi,
+  onEdit,
 }: {
   report: ReportWithTrainer;
   isStaff: boolean;
+  isTrainer: boolean;
   processingId: string | null;
   onClose: () => void;
   onVerifikasi: () => void;
   onMintaRevisi: () => void;
+  onEdit: () => void;
 }) {
   const {
     data: photos = [],
@@ -2224,6 +2231,15 @@ function PreviewLaporan({
                 </p>
               )}
 
+            {isTrainer &&
+              report.status_laporan ===
+                "perlu_revisi" && (
+                <p className="text-xs text-destructive">
+                  Laporan ini perlu diperbaiki
+                  berdasarkan catatan revisi.
+                </p>
+              )}
+
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -2234,6 +2250,18 @@ function PreviewLaporan({
             >
               Tutup
             </Button>
+
+            {isTrainer &&
+              report.status_laporan ===
+                "perlu_revisi" && (
+                <Button
+                  variant="outline"
+                  onClick={onEdit}
+                >
+                  <Pencil className="mr-2 size-4" />
+                  Edit & Kirim Ulang
+                </Button>
+              )}
 
             {isStaff &&
               report.status_laporan ===
