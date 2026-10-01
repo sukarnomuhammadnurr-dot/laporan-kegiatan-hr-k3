@@ -165,8 +165,8 @@ function BuatLaporan() {
         const { data: report, error } = await supabase
           .from("reports")
           .select("*")
-          .eq("id", editId)
-          .eq("trainer_id", trainer.id)
+          .eq("id", reportId)
+          .eq("trainer_id", trainerId)
           .maybeSingle();
 
         if (error) throw error;
@@ -186,7 +186,7 @@ function BuatLaporan() {
         const { data: photos, error: photoError } = await supabase
           .from("report_photos")
           .select("id, storage_path, nama_file")
-          .eq("report_id", editId);
+          .eq("report_id", reportId);
 
         if (photoError) throw photoError;
 
