@@ -33,7 +33,11 @@ import {
   fetchTrainers,
   type ReportWithTrainer,
 } from "@/lib/queries";
-import { getReportPhotos, getReportPhotosBatch, type ReportPhoto } from "@/lib/report-photos";
+import {
+  getReportPhotos,
+  getReportPhotosBatch,
+  type ReportPhoto,
+} from "@/lib/report-photos";
 import { cn } from "@/lib/utils";
 import { useBrandingUrl } from "@/lib/branding";
 
@@ -382,6 +386,7 @@ function ActivityChart({ reports }: { reports: ReportWithTrainer[] }) {
     </div>
   );
 }
+
 // =============================================================
 // PART 2 — Komponen utama + PDF group per tanggal + Preview foto
 // =============================================================
@@ -474,7 +479,6 @@ function MonitoringLaporanPage() {
       (r) => r.status_laporan === "terkirim",
     ).length;
 
-    // FIX: pakai jumlah_hadir, BUKAN jumlah_peserta
     const totalHadir = filteredReports.reduce(
       (sum, report) => sum + (report.jumlah_hadir ?? 0),
       0,
@@ -484,7 +488,15 @@ function MonitoringLaporanPage() {
       0,
     );
 
-    return { total, terverifikasi, menunggu, revisi, terkirim, totalHadir, totalPeserta };
+    return {
+      total,
+      terverifikasi,
+      menunggu,
+      revisi,
+      terkirim,
+      totalHadir,
+      totalPeserta,
+    };
   }, [filteredReports]);
 
   const resetFilter = () => {
@@ -564,7 +576,7 @@ function MonitoringLaporanPage() {
     return "Terkirim";
   }
 
-  // ---------- DOWNLOAD PDF (group per tanggal + rekap materi) ----------
+  // ---------- DOWNLOAD PDF (group per tanggal + identitas trainer) ----------
   async function downloadLaporanBulanan() {
     if (filteredReports.length === 0) {
       window.alert("Tidak ada laporan untuk diunduh.");
@@ -574,7 +586,6 @@ function MonitoringLaporanPage() {
     setDownloading(true);
 
     try {
-      // 1. Tentukan bulan/periode
       const now = new Date();
       const bulan =
         dari && dari.length >= 7
@@ -596,12 +607,11 @@ function MonitoringLaporanPage() {
         return;
       }
 
-      // 2. Ambil foto semua laporan sekaligus
       const photosMap = await getReportPhotosBatch(
         laporanPeriode.map((r) => r.id),
       );
 
-      // 3. Group by tanggal
+      // Group by tanggal
       const byTanggal = new Map<string, ReportWithTrainer[]>();
       for (const r of laporanPeriode) {
         const key = r.tanggal_kegiatan || "tanpa-tanggal";
@@ -610,7 +620,7 @@ function MonitoringLaporanPage() {
         byTanggal.set(key, cur);
       }
 
-      // 4. Rekap per materi
+      // Rekap per materi
       const rekapMateri = new Map<string, { kegiatan: number; hadir: number }>();
       for (const r of laporanPeriode) {
         const key = r.materi?.trim() || "Tanpa Materi";
@@ -633,11 +643,60 @@ function MonitoringLaporanPage() {
         0,
       );
 
-      // 5. Render halaman per tanggal
+      // Render halaman per tanggal
       const tanggalSections = [...byTanggal.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([tanggal, list]) => {
           const status = statusHarian(list);
+
+          // Kumpulkan trainer unik di tanggal ini
+          const trainerMap = new Map<
+            string,
+            {
+              nama: string;
+              nomor: string;
+              jabatan: string;
+              departemen: string;
+            }
+          >();
+          for (const r of list) {
+            const tid = r.trainer_id ?? "unknown";
+            if (!trainerMap.has(tid)) {
+              trainerMap.set(tid, {
+                nama: r.trainers?.nama_lengkap || "—",
+                nomor: r.trainers?.nomor_id_trainer || "—",
+                jabatan: r.trainers?.jabatan || "—",
+                departemen: r.trainers?.departemen || "—",
+              });
+            }
+          }
+          const trainersList = [...trainerMap.values()];
+
+          const trainerCards = trainersList
+            .map(
+              (t) => `
+                <div class="trainer-card">
+                  <div class="trainer-cell">
+                    <div class="trainer-label">NAMA TRAINER</div>
+                    <div class="trainer-value">${escapeHtml(t.nama)}</div>
+                  </div>
+                  <div class="trainer-cell">
+                    <div class="trainer-label">NO. ID TRAINER</div>
+                    <div class="trainer-value">${escapeHtml(t.nomor)}</div>
+                  </div>
+                  <div class="trainer-cell">
+                    <div class="trainer-label">JABATAN</div>
+                    <div class="trainer-value">${escapeHtml(t.jabatan)}</div>
+                  </div>
+                  <div class="trainer-cell">
+                    <div class="trainer-label">DEPARTEMEN</div>
+                    <div class="trainer-value">${escapeHtml(t.departemen)}</div>
+                  </div>
+                </div>
+              `,
+            )
+            .join("");
+
           const listHtml = list
             .map((item, idx) => {
               const fotos = (photosMap.get(item.id) ?? []).filter((p) => p.url);
@@ -739,6 +798,8 @@ function MonitoringLaporanPage() {
                   .replaceAll(" ", "-")}">✓ ${escapeHtml(status)}</div>
               </div>
 
+              ${trainerCards}
+
               <div class="activity-wrapper">
                 <table>
                   <colgroup>
@@ -776,7 +837,7 @@ function MonitoringLaporanPage() {
         })
         .join("");
 
-      // 6. Halaman rekap materi
+      // Halaman rekap materi
       const rekapHtml = `
         <section class="page recap-page">
           <header class="report-header">
@@ -886,7 +947,6 @@ function MonitoringLaporanPage() {
         </section>
       `;
 
-      // 7. HTML doc
       const html = `
         <!DOCTYPE html>
         <html lang="id">
@@ -948,6 +1008,22 @@ function MonitoringLaporanPage() {
               padding: 4px 8px; border-radius: 999px;
               background: #dcf7e8; color: #12834f;
               font-size: 8px; font-weight: 800;
+            }
+            .trainer-card {
+              display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr;
+              border: 1px solid #b8d9f7; border-radius: 7px;
+              background: #f7fbff; overflow: hidden; margin-bottom: 8px;
+            }
+            .trainer-cell {
+              padding: 7px 9px; border-right: 1px solid #cfe5f8;
+            }
+            .trainer-cell:last-child { border-right: 0; }
+            .trainer-label {
+              color: #1766a6; font-size: 7px; margin-bottom: 4px;
+              font-weight: 700; letter-spacing: .3px;
+            }
+            .trainer-value {
+              color: #123f6d; font-size: 9.5px; font-weight: 800; line-height: 1.2;
             }
             .activity-wrapper { margin-top: 4px; }
             table {
@@ -1283,9 +1359,7 @@ function MonitoringLaporanPage() {
               <Users className="size-5" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">
-                Total Peserta Hadir
-              </p>
+              <p className="text-xs text-muted-foreground">Total Peserta Hadir</p>
               <p className="num text-2xl font-bold">
                 {stats.totalHadir.toLocaleString("id-ID")}
               </p>
@@ -1510,9 +1584,7 @@ function MonitoringLaporanPage() {
                       <td className="max-w-[150px] px-4 py-3 text-muted-foreground">
                         <span className="line-clamp-2">{report.lokasi || "—"}</span>
                       </td>
-                      <td className="num px-4 py-3">
-                        {report.jumlah_hadir ?? 0}
-                      </td>
+                      <td className="num px-4 py-3">{report.jumlah_hadir ?? 0}</td>
                       <td className="px-4 py-3">
                         <StatusPill status={report.status_laporan} />
                       </td>
@@ -1609,7 +1681,10 @@ function MonitoringLaporanPage() {
 
             <div className="space-y-5 p-5">
               <div className="grid gap-3 sm:grid-cols-2">
-                <DetailItem label="Trainer" value={preview.trainers?.nama_lengkap || "—"} />
+                <DetailItem
+                  label="Trainer"
+                  value={preview.trainers?.nama_lengkap || "—"}
+                />
                 <DetailItem
                   label="ID Trainer"
                   value={preview.trainers?.nomor_id_trainer || "—"}
@@ -1743,7 +1818,10 @@ function MonitoringLaporanPage() {
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4"
           onClick={() => setLightbox(null)}
         >
-          <div className="relative max-h-[90vh] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="relative max-h-[90vh] max-w-[90vw]"
+            onClick={(e) => e.stopPropagation()}
+          >
             <img
               src={lightbox.url}
               alt={lightbox.nama}
