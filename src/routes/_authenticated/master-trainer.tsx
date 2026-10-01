@@ -1140,12 +1140,12 @@ function FormTrainer({
     }
 
     if (
-      !["trainer", "supervisor", "admin"].includes(
-        f.role,
-      )
-    ) {
-      return setErr("Role tidak valid.");
-    }
+  !["trainer", "supervisor", "superintendent", "admin"].includes(
+    f.role,
+  )
+) {
+  return setErr("Role tidak valid.");
+}
 
     setBusy(true);
 
