@@ -848,9 +848,7 @@ function MonitoringLaporanPage() {
                       item.lokasi || "-",
                     )}</td>
                     <td class="col-hadir">${item.jumlah_hadir ?? 0}</td>
-                    <td class="col-pj">${escapeHtml(
-                      item.penanggung_jawab || "-",
-                    )}</td>
+                   <td class="col-pj">Muhammad Halid (Superintendent)</td>
                     <td class="col-foto">${fotoHtml}</td>
                   </tr>
                 `;
