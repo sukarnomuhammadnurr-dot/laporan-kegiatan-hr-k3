@@ -43,6 +43,13 @@
       "when": 1790735977045,
       "tag": "0005_branding_and_trainer_photos",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790818270229,
+      "tag": "0006_tighten_notifications_settings_policies",
+      "breakpoints": true
     }
   ]
 }
