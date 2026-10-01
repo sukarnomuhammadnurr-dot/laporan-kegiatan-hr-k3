@@ -58,6 +58,9 @@ export function useCurrentUser() {
   const roles = query.data?.roles ?? [];
   const isAdmin = roles.includes("admin");
   const isSupervisor = roles.includes("supervisor");
+  const isSuperintendent = roles.includes(
+    "superintendent" as AppRole,
+  );
 
   return {
     session,
@@ -66,7 +69,8 @@ export function useCurrentUser() {
     roles,
     isAdmin,
     isSupervisor,
-    isStaff: isAdmin || isSupervisor,
+    isSuperintendent,
+    isStaff: isAdmin || isSupervisor || isSuperintendent,
     isTrainer: roles.includes("trainer"),
     profile: query.data?.profile ?? null,
     trainer: query.data?.trainer ?? null,
