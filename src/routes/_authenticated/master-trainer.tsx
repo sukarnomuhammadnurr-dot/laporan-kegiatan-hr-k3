@@ -1393,20 +1393,23 @@ function FormTrainer({
                   <SelectValue />
                 </SelectTrigger>
 
-                <SelectContent>
-                  <SelectItem value="trainer">
-                    Trainer
-                  </SelectItem>
+               <SelectContent>
+  <SelectItem value="trainer">
+    Trainer
+  </SelectItem>
 
-                  <SelectItem value="supervisor">
-                    Supervisor
-                  </SelectItem>
+  <SelectItem value="supervisor">
+    Supervisor
+  </SelectItem>
 
-                  <SelectItem value="admin">
-                    Admin
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+  <SelectItem value="superintendent">
+    Superintendent
+  </SelectItem>
+
+  <SelectItem value="admin">
+    Admin
+  </SelectItem>
+</SelectContent>
 
               {akunSendiri && (
                 <p className="text-xs text-muted-foreground">
