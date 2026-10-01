@@ -2,6 +2,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   BarChart3,
+  BookOpen,
+  CalendarDays,
   ChevronDown,
   FilePlus2,
   FileText,
@@ -13,7 +15,6 @@ import {
   MessageCircle,
   Settings,
   Users,
-  BookOpen,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -46,6 +47,7 @@ type NavItem = {
     | "/monitoring-laporan"
     | "/master-trainer"
     | "/master-materi"
+    | "/master-jadwal"
     | "/ubah-password"
     | "/pengaturan-sistem";
   label: string;
@@ -112,6 +114,11 @@ const NAV_MASTER: NavItem[] = [
     to: "/master-materi",
     label: "Master Materi",
     icon: BookOpen,
+  },
+  {
+    to: "/master-jadwal",
+    label: "Master Jadwal",
+    icon: CalendarDays,
   },
   {
     label: "Pesan WhatsApp",
