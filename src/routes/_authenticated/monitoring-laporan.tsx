@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   BarChart3,
   CalendarDays,
@@ -12,7 +13,9 @@ import {
   FileText,
   ImageIcon,
   RefreshCcw,
+  RotateCcw,
   Search,
+  Send,
   Users,
   XCircle,
 } from "lucide-react";
@@ -21,6 +24,14 @@ import { AppShell, Panel } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -28,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useCurrentUser } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import {
   fetchReports,
   fetchTrainers,
@@ -388,11 +400,12 @@ function ActivityChart({ reports }: { reports: ReportWithTrainer[] }) {
 }
 
 // =============================================================
-// PART 2 — Komponen utama + PDF group per tanggal + Preview foto
+// PART 2 — Komponen utama + verifikasi + PDF
 // =============================================================
 
 function MonitoringLaporanPage() {
-  const { isStaff, isTrainer, trainer, loading } = useCurrentUser();
+  const { isStaff, isTrainer, trainer, loading, user, nama } = useCurrentUser();
+  const qc = useQueryClient();
 
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
@@ -405,6 +418,13 @@ function MonitoringLaporanPage() {
   const [previewLoadingPhotos, setPreviewLoadingPhotos] = useState(false);
   const [lightbox, setLightbox] = useState<{ url: string; nama: string } | null>(null);
   const [downloading, setDownloading] = useState(false);
+
+  // Aksi verifikasi
+  const [verifAction, setVerifAction] = useState<{
+    report: ReportWithTrainer;
+    action: "verifikasi" | "revisi" | "batalkan";
+  } | null>(null);
+  const [catatanInput, setCatatanInput] = useState("");
 
   const brandingLogo = useBrandingUrl("logo");
 
@@ -516,6 +536,80 @@ function MonitoringLaporanPage() {
     jenisKegiatan !== "semua" ||
     cari;
 
+  // ---------- Aksi verifikasi ----------
+  const verifikasiMutation = useMutation({
+    mutationFn: async ({
+      report,
+      action,
+      catatan,
+    }: {
+      report: ReportWithTrainer;
+      action: "verifikasi" | "revisi" | "batalkan";
+      catatan: string;
+    }) => {
+      if (!user?.id) throw new Error("User tidak terdeteksi.");
+
+      const now = new Date().toISOString();
+
+      if (action === "verifikasi") {
+        const { error } = await supabase
+          .from("reports")
+          .update({
+            status_laporan: "terverifikasi",
+            verified_by: user.id,
+            verified_at: now,
+            catatan_revisi: null,
+          })
+          .eq("id", report.id);
+        if (error) throw error;
+      } else if (action === "revisi") {
+        if (!catatan.trim()) throw new Error("Catatan wajib diisi.");
+        const { error } = await supabase
+          .from("reports")
+          .update({
+            status_laporan: "perlu_revisi",
+            catatan_revisi: catatan.trim(),
+          })
+          .eq("id", report.id);
+        if (error) throw error;
+      } else if (action === "batalkan") {
+        if (!catatan.trim()) throw new Error("Catatan wajib diisi.");
+        const { error } = await supabase
+          .from("reports")
+          .update({
+            status_laporan: "perlu_revisi",
+            catatan_revisi: catatan.trim(),
+            verified_by: null,
+            verified_at: null,
+          })
+          .eq("id", report.id);
+        if (error) throw error;
+      }
+    },
+    onSuccess: (_, variables) => {
+      const msg =
+        variables.action === "verifikasi"
+          ? "Laporan berhasil diverifikasi."
+          : variables.action === "revisi"
+            ? "Laporan dikembalikan untuk revisi."
+            : "Verifikasi dibatalkan, laporan perlu revisi.";
+      toast.success(msg);
+      qc.invalidateQueries({ queryKey: ["reports"] });
+      setVerifAction(null);
+      setCatatanInput("");
+      setPreview(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  function bukaVerifAction(
+    report: ReportWithTrainer,
+    action: "verifikasi" | "revisi" | "batalkan",
+  ) {
+    setVerifAction({ report, action });
+    setCatatanInput("");
+  }
+
   // ---------- Preview foto ----------
   async function bukaPreview(report: ReportWithTrainer) {
     setPreview(report);
@@ -576,7 +670,7 @@ function MonitoringLaporanPage() {
     return "Terkirim";
   }
 
-  // ---------- DOWNLOAD PDF (group per tanggal + identitas trainer) ----------
+  // ---------- DOWNLOAD PDF ----------
   async function downloadLaporanBulanan() {
     if (filteredReports.length === 0) {
       window.alert("Tidak ada laporan untuk diunduh.");
@@ -611,7 +705,6 @@ function MonitoringLaporanPage() {
         laporanPeriode.map((r) => r.id),
       );
 
-      // Group by tanggal
       const byTanggal = new Map<string, ReportWithTrainer[]>();
       for (const r of laporanPeriode) {
         const key = r.tanggal_kegiatan || "tanpa-tanggal";
@@ -620,7 +713,6 @@ function MonitoringLaporanPage() {
         byTanggal.set(key, cur);
       }
 
-      // Rekap per materi
       const rekapMateri = new Map<string, { kegiatan: number; hadir: number }>();
       for (const r of laporanPeriode) {
         const key = r.materi?.trim() || "Tanpa Materi";
@@ -643,21 +735,14 @@ function MonitoringLaporanPage() {
         0,
       );
 
-      // Render halaman per tanggal
       const tanggalSections = [...byTanggal.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([tanggal, list]) => {
           const status = statusHarian(list);
 
-          // Kumpulkan trainer unik di tanggal ini
           const trainerMap = new Map<
             string,
-            {
-              nama: string;
-              nomor: string;
-              jabatan: string;
-              departemen: string;
-            }
+            { nama: string; nomor: string; jabatan: string; departemen: string }
           >();
           for (const r of list) {
             const tid = r.trainer_id ?? "unknown";
@@ -837,7 +922,6 @@ function MonitoringLaporanPage() {
         })
         .join("");
 
-      // Halaman rekap materi
       const rekapHtml = `
         <section class="page recap-page">
           <header class="report-header">
@@ -900,960 +984,4 @@ function MonitoringLaporanPage() {
             </table>
           </div>
 
-          <div class="summary-section">
-            <div class="summary-heading">RINGKASAN PERIODE</div>
-            <div class="summary-grid">
-              <div class="summary-card">
-                <div class="summary-label">Total Kegiatan</div>
-                <div class="summary-value">${totalKegiatan}</div>
-                <div class="summary-unit">kegiatan</div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-label">Total Peserta Hadir</div>
-                <div class="summary-value">${totalHadir.toLocaleString(
-                  "id-ID",
-                )}</div>
-                <div class="summary-unit">orang</div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-label">Total Jam Training</div>
-                <div class="summary-value">${escapeHtml(
-                  formatJamTraining(totalJam),
-                )}</div>
-                <div class="summary-unit">durasi</div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-label">Jumlah Trainer</div>
-                <div class="summary-value">${
-                  new Set(laporanPeriode.map((r) => r.trainer_id)).size
-                }</div>
-                <div class="summary-unit">orang</div>
-              </div>
-            </div>
-          </div>
-
-          <footer class="footer">
-            <span>Dicetak pada: ${escapeHtml(
-              new Date().toLocaleDateString("id-ID", {
-                day: "2-digit",
-                month: "long",
-                year: "numeric",
-              }),
-            )} &nbsp; | &nbsp; PT IWIP</span>
-            <span class="document-number">Rekap Bulanan K3 — ${escapeHtml(
-              namaBulan(bulan),
-            )}</span>
-          </footer>
-        </section>
-      `;
-
-      const html = `
-        <!DOCTYPE html>
-        <html lang="id">
-        <head>
-          <meta charset="UTF-8" />
-          <title>Laporan Bulanan Trainer K3 - ${escapeHtml(namaBulan(bulan))}</title>
-          <style>
-            * { box-sizing: border-box; }
-            html, body { margin: 0; padding: 0; }
-            body {
-              font-family: Arial, Helvetica, sans-serif;
-              color: #124a82;
-              background: #fff;
-              font-size: 9px;
-            }
-            .page {
-              width: 100%;
-              min-height: 180mm;
-              page-break-after: always;
-              padding-bottom: 2mm;
-            }
-            .page:last-child { page-break-after: auto; }
-            .report-header {
-              display: flex; justify-content: space-between;
-              align-items: flex-start; gap: 20px;
-            }
-            .brand-block { display: flex; align-items: center; gap: 10px; }
-            .company-logo { width: 58px; height: 46px; object-fit: contain; }
-            .logo-fallback {
-              width: 58px; height: 46px; display: grid; place-items: center;
-              border-radius: 10px; background: #0b5aa5; color: #fff;
-              font-size: 17px; font-weight: 900;
-            }
-            .brand-title {
-              color: #124a82; font-size: 18px; font-weight: 900;
-              line-height: 1.05; letter-spacing: .2px;
-            }
-            .brand-subtitle {
-              margin-top: 3px; color: #124a82; font-size: 12px; font-weight: 700;
-            }
-            .month-block { text-align: right; }
-            .month-label { color: #124a82; font-size: 15px; font-weight: 900; }
-            .month-value {
-              margin-top: 4px; color: #124a82; font-size: 12px; font-weight: 700;
-            }
-            .header-line {
-              height: 2px; margin: 8px 0 9px;
-              background: #0b5aa5; border-radius: 999px;
-            }
-            .date-header {
-              display: flex; align-items: center; gap: 12px;
-              padding: 8px 10px; margin-bottom: 8px;
-              background: #f0f7ff; border: 1px solid #b8d9f7;
-              border-radius: 7px;
-            }
-            .date-label { color: #1766a6; font-size: 8px; font-weight: 700; }
-            .date-value { color: #123f6d; font-size: 12px; font-weight: 900; flex: 1; }
-            .date-status {
-              padding: 4px 8px; border-radius: 999px;
-              background: #dcf7e8; color: #12834f;
-              font-size: 8px; font-weight: 800;
-            }
-            .trainer-card {
-              display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr;
-              border: 1px solid #b8d9f7; border-radius: 7px;
-              background: #f7fbff; overflow: hidden; margin-bottom: 8px;
-            }
-            .trainer-cell {
-              padding: 7px 9px; border-right: 1px solid #cfe5f8;
-            }
-            .trainer-cell:last-child { border-right: 0; }
-            .trainer-label {
-              color: #1766a6; font-size: 7px; margin-bottom: 4px;
-              font-weight: 700; letter-spacing: .3px;
-            }
-            .trainer-value {
-              color: #123f6d; font-size: 9.5px; font-weight: 800; line-height: 1.2;
-            }
-            .activity-wrapper { margin-top: 4px; }
-            table {
-              width: 100%; border-collapse: collapse; table-layout: fixed;
-            }
-            th {
-              padding: 6px 4px; border: 1px solid #0b5aa5;
-              background: #0b5aa5; color: white; text-align: center;
-              font-size: 8px; font-weight: 800;
-            }
-            td {
-              padding: 4px 5px; border: 1px solid #b9d8f2;
-              color: #123f6d; font-size: 7.7px;
-              vertical-align: middle; overflow-wrap: anywhere;
-            }
-            tbody tr:nth-child(even) { background: #f8fbff; }
-            .center { text-align: center; }
-            .number-cell { font-size: 9px; font-weight: 800; }
-            .time-cell { text-align: center; white-space: nowrap; }
-            .time-end { display: block; color: #5d7894; font-size: 7px; }
-            .activity-title { font-size: 8.4px; font-weight: 800; color: #124a82; }
-            .activity-type { margin-top: 2px; color: #63809a; font-size: 6.9px; }
-            .activity-desc { margin-top: 3px; color: #4a5f75; font-size: 6.8px; font-style: italic; }
-            .participant-cell strong { font-size: 9px; }
-            .small-info { margin-top: 2px; color: #63809a; font-size: 6.6px; }
-            .photo-cell { padding: 3px; }
-            .photo-strip {
-              display: flex; flex-wrap: wrap; justify-content: center; gap: 3px;
-            }
-            .activity-photo {
-              width: 82px; height: 54px; object-fit: cover;
-              border-radius: 4px; border: 1px solid #b9d8f2;
-              background: #eef6fc;
-            }
-            .no-photo {
-              min-height: 45px; display: grid; place-items: center;
-              color: #8ba0b3; font-size: 7px;
-            }
-            .day-summary {
-              margin-top: 6px; padding: 6px 10px;
-              background: #f0f7ff; border-radius: 6px;
-              color: #123f6d; font-size: 8px;
-            }
-            .summary-section {
-              margin-top: 8px; border: 1px solid #b8d9f7;
-              border-radius: 7px; padding: 7px; background: #f8fbff;
-            }
-            .summary-heading {
-              margin-bottom: 6px; color: #124a82;
-              font-size: 9px; font-weight: 900;
-            }
-            .summary-grid {
-              display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
-            }
-            .summary-card {
-              min-height: 53px; border: 1px solid #c7e0f6;
-              border-radius: 6px; padding: 7px 8px; background: white;
-            }
-            .summary-label { color: #3978ab; font-size: 7px; }
-            .summary-value {
-              margin-top: 2px; color: #124a82; font-size: 14px; font-weight: 900;
-            }
-            .summary-unit { color: #6d879e; font-size: 6.5px; }
-            .total-row td { background: #e7f1fb; border-top: 2px solid #0b5aa5; }
-            .footer {
-              display: flex; justify-content: space-between; gap: 15px;
-              margin-top: 6px; padding-top: 5px;
-              border-top: 1px solid #d4e4f2;
-              color: #6b8297; font-size: 6.7px;
-            }
-            .document-number { font-weight: 700; color: #124a82; }
-            @page { size: A4 landscape; margin: 8mm; }
-            @media print {
-              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-              tr { page-break-inside: avoid; }
-            }
-          </style>
-        </head>
-        <body>
-          ${tanggalSections}
-          ${rekapHtml}
-        </body>
-        </html>
-      `;
-
-      const win = window.open("", "_blank", "width=1400,height=900");
-      if (!win) {
-        window.alert(
-          "Popup diblokir browser. Izinkan popup untuk membuka Preview PDF.",
-        );
-        return;
-      }
-
-      win.document.open();
-      win.document.write(html);
-      win.document.close();
-
-      const images = Array.from(win.document.images);
-      await Promise.all(
-        images.map(
-          (img) =>
-            new Promise<void>((resolve) => {
-              if (img.complete) return resolve();
-              img.onload = () => resolve();
-              img.onerror = () => resolve();
-            }),
-        ),
-      );
-
-      setTimeout(() => {
-        win.focus();
-        win.print();
-      }, 500);
-    } catch (error) {
-      console.error("Gagal menyiapkan laporan bulanan:", error);
-      window.alert(
-        error instanceof Error ? error.message : "Gagal menyiapkan laporan bulanan.",
-      );
-    } finally {
-      setDownloading(false);
-    }
-  }
-
-  if (loading) {
-    return (
-      <AppShell title="Monitoring Laporan" eyebrow="Laporan Kegiatan Trainer K3">
-        <Panel>
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            Memuat monitoring laporan…
-          </p>
-        </Panel>
-      </AppShell>
-    );
-  }
-
-  if (!isStaff && !isTrainer) {
-    return (
-      <AppShell title="Monitoring Laporan">
-        <Panel>
-          <p className="text-sm text-muted-foreground">
-            Anda tidak memiliki akses ke halaman monitoring laporan.
-          </p>
-        </Panel>
-      </AppShell>
-    );
-  }
-
-  return (
-    <AppShell
-      title="Monitoring Laporan"
-      eyebrow="Laporan Kegiatan Trainer K3"
-      actions={
-        <Button
-          variant="outline"
-          onClick={downloadLaporanBulanan}
-          disabled={filteredReports.length === 0 || downloading}
-        >
-          <Download className="mr-2 size-4" />
-          {downloading ? "Menyiapkan…" : "Download Laporan Bulanan"}
-        </Button>
-      }
-    >
-      {/* HERO */}
-      <div className="mb-5 overflow-hidden rounded-2xl border border-primary/10 bg-gradient-to-r from-primary/10 via-background to-primary/5 p-5 sm:p-6">
-        <div className="flex flex-col justify-between gap-5 md:flex-row md:items-center">
-          <div className="flex items-start gap-4">
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-              <BarChart3 className="size-6" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight sm:text-2xl">
-                Monitoring Laporan
-              </h1>
-              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-                Pantau status, perkembangan, dan aktivitas laporan trainer K3 secara
-                terpusat.
-              </p>
-            </div>
-          </div>
-          <div className="hidden shrink-0 md:block">
-            <FileBarChart2 className="size-20 text-primary/15" />
-          </div>
-        </div>
-      </div>
-
-      {/* FILTER */}
-      <Panel className="mb-5">
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="font-semibold">Filter Monitoring</p>
-            <p className="text-xs text-muted-foreground">
-              Gunakan filter untuk melihat laporan sesuai kebutuhan.
-            </p>
-          </div>
-          {hasFilter ? (
-            <Button size="sm" variant="outline" onClick={resetFilter}>
-              <RefreshCcw className="mr-2 size-3.5" />
-              Reset Filter
-            </Button>
-          ) : null}
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">Dari tanggal</p>
-            <Input type="date" value={dari} onChange={(e) => setDari(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">Sampai tanggal</p>
-            <Input
-              type="date"
-              value={sampai}
-              onChange={(e) => setSampai(e.target.value)}
-            />
-          </div>
-
-          {isStaff ? (
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">Trainer</p>
-              <Select value={trainerFilter} onValueChange={setTrainerFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Semua Trainer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="semua">Semua Trainer</SelectItem>
-                  {trainers.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.nama_lengkap}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">Trainer</p>
-              <div className="flex h-10 items-center rounded-md border border-input bg-muted/30 px-3 text-sm">
-                {trainer?.nama_lengkap || "Trainer"}
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">Jenis kegiatan</p>
-            <Select value={jenisKegiatan} onValueChange={setJenisKegiatan}>
-              <SelectTrigger>
-                <SelectValue placeholder="Semua Jenis" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="semua">Semua Jenis</SelectItem>
-                {jenisOptions.map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {item}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">Status</p>
-            <Select
-              value={status}
-              onValueChange={(value) => setStatus(value as FilterStatus)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Semua Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="semua">Semua Status</SelectItem>
-                <SelectItem value="terkirim">Terkirim</SelectItem>
-                <SelectItem value="menunggu_verifikasi">
-                  Menunggu Verifikasi
-                </SelectItem>
-                <SelectItem value="terverifikasi">Terverifikasi</SelectItem>
-                <SelectItem value="perlu_revisi">Perlu Revisi</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">Cari</p>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="Materi, kegiatan, kelas…"
-                value={cari}
-                onChange={(e) => setCari(e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-      </Panel>
-
-      {/* STATISTICS */}
-      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Total Laporan"
-          value={stats.total}
-          description="Laporan sesuai filter"
-          icon={FileText}
-          tone="blue"
-        />
-        <StatCard
-          title="Menunggu Verifikasi"
-          value={stats.menunggu}
-          description="Perlu diperiksa staff"
-          icon={Clock3}
-          tone="yellow"
-        />
-        <StatCard
-          title="Terverifikasi"
-          value={stats.terverifikasi}
-          description="Laporan sudah selesai"
-          icon={CheckCircle2}
-          tone="green"
-        />
-        <StatCard
-          title="Perlu Revisi"
-          value={stats.revisi}
-          description="Menunggu perbaikan trainer"
-          icon={XCircle}
-          tone="red"
-        />
-      </div>
-
-      {/* QUICK SUMMARY */}
-      <div className="mb-5 grid gap-4 sm:grid-cols-2">
-        <Panel>
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Users className="size-5" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Peserta Hadir</p>
-              <p className="num text-2xl font-bold">
-                {stats.totalHadir.toLocaleString("id-ID")}
-              </p>
-            </div>
-          </div>
-        </Panel>
-        <Panel>
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <CalendarDays className="size-5" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Periode Monitoring</p>
-              <p className="text-sm font-semibold">
-                {dari || sampai
-                  ? `${dari ? formatTanggal(dari) : "Awal"} – ${
-                      sampai ? formatTanggal(sampai) : "Sekarang"
-                    }`
-                  : "Semua periode"}
-              </p>
-            </div>
-          </div>
-        </Panel>
-      </div>
-
-      {/* CHARTS */}
-      <div className="mb-5 grid gap-5 xl:grid-cols-[1.5fr_1fr]">
-        <Panel>
-          <div className="mb-5">
-            <p className="font-semibold">Tren Laporan</p>
-            <p className="text-xs text-muted-foreground">
-              Perkembangan jumlah laporan berdasarkan tanggal kegiatan.
-            </p>
-          </div>
-          <TrendChart reports={filteredReports} />
-        </Panel>
-        <Panel>
-          <div className="mb-5">
-            <p className="font-semibold">Status Laporan</p>
-            <p className="text-xs text-muted-foreground">
-              Distribusi status laporan pada periode yang dipilih.
-            </p>
-          </div>
-          <StatusChart
-            total={stats.total}
-            terverifikasi={stats.terverifikasi}
-            menunggu={stats.menunggu}
-            revisi={stats.revisi}
-            terkirim={stats.terkirim}
-          />
-        </Panel>
-      </div>
-
-      <div className="mb-5 grid gap-5 xl:grid-cols-2">
-        <Panel>
-          <div className="mb-5">
-            <p className="font-semibold">Jenis Kegiatan</p>
-            <p className="text-xs text-muted-foreground">
-              Jumlah laporan berdasarkan jenis kegiatan.
-            </p>
-          </div>
-          <ActivityChart reports={filteredReports} />
-        </Panel>
-        <Panel>
-          <div className="mb-5">
-            <p className="font-semibold">Ringkasan Status</p>
-            <p className="text-xs text-muted-foreground">
-              Kondisi laporan yang sedang dipantau.
-            </p>
-          </div>
-          <div className="space-y-4">
-            <MiniLegend
-              label="Terverifikasi"
-              value={stats.terverifikasi}
-              className="bg-status-verified"
-            />
-            <MiniLegend
-              label="Menunggu Verifikasi"
-              value={stats.menunggu}
-              className="bg-status-warning"
-            />
-            <MiniLegend
-              label="Perlu Revisi"
-              value={stats.revisi}
-              className="bg-destructive"
-            />
-            <MiniLegend
-              label="Terkirim"
-              value={stats.terkirim}
-              className="bg-primary"
-            />
-            <div className="border-t border-border pt-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Total</span>
-                <span className="num text-lg font-bold">{stats.total}</span>
-              </div>
-            </div>
-          </div>
-        </Panel>
-      </div>
-
-      {/* REPORT TABLE */}
-      <Panel className="overflow-hidden p-0">
-        <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="font-semibold">Daftar Laporan</p>
-            <p className="text-xs text-muted-foreground">
-              {filteredReports.length.toLocaleString("id-ID")} laporan ditemukan
-              sesuai filter.
-            </p>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={downloadLaporanBulanan}
-            disabled={filteredReports.length === 0 || downloading}
-          >
-            <Download className="mr-2 size-4" />
-            {downloading ? "Menyiapkan…" : "Download Bulanan"}
-          </Button>
-        </div>
-
-        {isLoading ? (
-          <div className="p-10 text-center">
-            <p className="text-sm text-muted-foreground">Memuat data monitoring…</p>
-          </div>
-        ) : isError ? (
-          <div className="p-10 text-center">
-            <p className="font-medium text-destructive">
-              Gagal mengambil data laporan.
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Coba refresh halaman atau ubah filter.
-            </p>
-          </div>
-        ) : filteredReports.length === 0 ? (
-          <div className="p-12 text-center">
-            <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
-              <FileText className="size-5 text-muted-foreground" />
-            </div>
-            <p className="mt-4 font-semibold">Belum ada laporan</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Tidak ada laporan yang sesuai dengan filter saat ini.
-            </p>
-            {hasFilter ? (
-              <Button
-                className="mt-4"
-                variant="outline"
-                size="sm"
-                onClick={resetFilter}
-              >
-                <RefreshCcw className="mr-2 size-4" />
-                Reset Filter
-              </Button>
-            ) : null}
-          </div>
-        ) : (
-          <>
-            {/* DESKTOP */}
-            <div className="hidden overflow-x-auto md:block">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-muted/20 text-left">
-                    <th className="eyebrow whitespace-nowrap px-4 py-3 text-muted-foreground">
-                      No
-                    </th>
-                    <th className="eyebrow whitespace-nowrap px-4 py-3 text-muted-foreground">
-                      Tanggal
-                    </th>
-                    <th className="eyebrow px-4 py-3 text-muted-foreground">
-                      Trainer
-                    </th>
-                    <th className="eyebrow px-4 py-3 text-muted-foreground">
-                      Materi / Kegiatan
-                    </th>
-                    <th className="eyebrow px-4 py-3 text-muted-foreground">Jenis</th>
-                    <th className="eyebrow px-4 py-3 text-muted-foreground">Lokasi</th>
-                    <th className="eyebrow whitespace-nowrap px-4 py-3 text-muted-foreground">
-                      Hadir
-                    </th>
-                    <th className="eyebrow px-4 py-3 text-muted-foreground">Status</th>
-                    <th className="eyebrow px-4 py-3 text-muted-foreground">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredReports.map((report, index) => (
-                    <tr
-                      key={report.id}
-                      className="border-b border-border/60 transition-colors hover:bg-muted/20"
-                    >
-                      <td className="num px-4 py-3 text-muted-foreground">
-                        {index + 1}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        {formatTanggal(report.tanggal_kegiatan)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="min-w-[140px]">
-                          <p className="font-medium">
-                            {report.trainers?.nama_lengkap || "—"}
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-muted-foreground">
-                            {report.trainers?.nomor_id_trainer || "—"}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="max-w-[240px] px-4 py-3">
-                        <p className="truncate font-medium">
-                          {report.materi || "Tanpa materi"}
-                        </p>
-                        {report.kelas ? (
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            Kelas: {report.kelas}
-                          </p>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-                          {report.jenis_kegiatan || "Lainnya"}
-                        </span>
-                      </td>
-                      <td className="max-w-[150px] px-4 py-3 text-muted-foreground">
-                        <span className="line-clamp-2">{report.lokasi || "—"}</span>
-                      </td>
-                      <td className="num px-4 py-3">{report.jumlah_hadir ?? 0}</td>
-                      <td className="px-4 py-3">
-                        <StatusPill status={report.status_laporan} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          title="Preview laporan"
-                          onClick={() => bukaPreview(report)}
-                        >
-                          <Eye className="size-4" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* MOBILE */}
-            <div className="divide-y divide-border md:hidden">
-              {filteredReports.map((report, index) => (
-                <div key={report.id} className="space-y-3 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-[11px] text-muted-foreground">
-                        No. {index + 1} · {formatTanggal(report.tanggal_kegiatan)}
-                      </p>
-                      <p className="mt-1 truncate font-semibold">
-                        {report.materi || "Tanpa materi"}
-                      </p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {report.trainers?.nama_lengkap || "—"}
-                      </p>
-                    </div>
-                    <StatusPill status={report.status_laporan} />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted/30 p-3 text-xs">
-                    <div>
-                      <p className="text-muted-foreground">Jenis</p>
-                      <p className="mt-0.5 font-medium">
-                        {report.jenis_kegiatan || "Lainnya"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Hadir</p>
-                      <p className="num mt-0.5 font-medium">
-                        {report.jumlah_hadir ?? 0}
-                      </p>
-                    </div>
-                    <div className="col-span-2">
-                      <p className="text-muted-foreground">Lokasi</p>
-                      <p className="mt-0.5 font-medium">{report.lokasi || "—"}</p>
-                    </div>
-                  </div>
-
-                  <Button
-                    className="w-full"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => bukaPreview(report)}
-                  >
-                    <Eye className="mr-2 size-4" />
-                    Lihat Detail
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </Panel>
-
-      {/* PREVIEW MODAL */}
-      {preview ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) tutupPreview();
-          }}
-        >
-          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-border bg-background shadow-2xl">
-            <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-background/95 px-5 py-4 backdrop-blur">
-              <div>
-                <p className="text-lg font-semibold">Detail Laporan</p>
-                <p className="text-xs text-muted-foreground">
-                  {formatTanggalPanjang(preview.tanggal_kegiatan)}
-                </p>
-              </div>
-              <Button size="icon" variant="outline" onClick={tutupPreview}>
-                <XCircle className="size-4" />
-              </Button>
-            </div>
-
-            <div className="space-y-5 p-5">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <DetailItem
-                  label="Trainer"
-                  value={preview.trainers?.nama_lengkap || "—"}
-                />
-                <DetailItem
-                  label="ID Trainer"
-                  value={preview.trainers?.nomor_id_trainer || "—"}
-                />
-                <DetailItem label="Jabatan" value={preview.trainers?.jabatan || "—"} />
-                <DetailItem
-                  label="Tanggal"
-                  value={formatTanggalPanjang(preview.tanggal_kegiatan)}
-                />
-                <DetailItem
-                  label="Jam"
-                  value={
-                    preview.jam_mulai && preview.jam_selesai
-                      ? `${preview.jam_mulai.slice(0, 5)} – ${preview.jam_selesai.slice(0, 5)}`
-                      : "Belum lengkap"
-                  }
-                />
-                <DetailItem
-                  label="Jenis Kegiatan"
-                  value={preview.jenis_kegiatan || "—"}
-                />
-                <DetailItem label="Materi / Kegiatan" value={preview.materi || "—"} />
-                <DetailItem label="Kelas" value={preview.kelas || "—"} />
-                <DetailItem label="Lokasi" value={preview.lokasi || "—"} />
-                <DetailItem
-                  label="Penanggung Jawab"
-                  value={preview.penanggung_jawab || "—"}
-                />
-              </div>
-
-              <div className="rounded-xl border border-border bg-muted/20 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Data Peserta
-                </p>
-                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <DetailNumber label="Peserta" value={preview.jumlah_peserta} />
-                  <DetailNumber label="Hadir" value={preview.jumlah_hadir} />
-                  <DetailNumber
-                    label="Tidak Hadir"
-                    value={preview.jumlah_tidak_hadir}
-                  />
-                  <DetailNumber label="Tambahan" value={preview.jumlah_tambahan} />
-                </div>
-              </div>
-
-              {/* FOTO DOKUMENTASI */}
-              <div className="rounded-xl border border-border p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <ImageIcon className="size-4 text-primary" />
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Dokumentasi Foto
-                    </p>
-                  </div>
-                  {!previewLoadingPhotos && previewPhotos.length > 0 && (
-                    <span className="text-[11px] text-muted-foreground">
-                      {previewPhotos.length} foto
-                    </span>
-                  )}
-                </div>
-
-                {previewLoadingPhotos ? (
-                  <p className="py-6 text-center text-xs text-muted-foreground">
-                    Memuat foto…
-                  </p>
-                ) : previewPhotos.length === 0 ? (
-                  <div className="grid place-items-center rounded-lg border border-dashed border-border py-8">
-                    <ImageIcon className="size-6 text-muted-foreground/50" />
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Belum ada foto dokumentasi
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-                    {previewPhotos
-                      .filter((p) => p.url)
-                      .map((photo, i) => (
-                        <button
-                          key={photo.id ?? i}
-                          type="button"
-                          onClick={() =>
-                            setLightbox({
-                              url: photo.url!,
-                              nama: photo.nama_file || `Foto ${i + 1}`,
-                            })
-                          }
-                          className="group relative aspect-4/3 overflow-hidden rounded-lg border border-border bg-muted"
-                        >
-                          <img
-                            src={photo.url!}
-                            alt={photo.nama_file || `Foto ${i + 1}`}
-                            className="size-full object-cover transition-transform group-hover:scale-105"
-                          />
-                        </button>
-                      ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-border p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Status Laporan
-                  </p>
-                  <StatusPill status={preview.status_laporan} />
-                </div>
-              </div>
-
-              {preview.keterangan ? (
-                <div className="rounded-xl border border-border p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Keterangan
-                  </p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm">
-                    {preview.keterangan}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="flex justify-end border-t border-border px-5 py-4">
-              <Button onClick={tutupPreview}>Tutup</Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {/* LIGHTBOX */}
-      {lightbox ? (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4"
-          onClick={() => setLightbox(null)}
-        >
-          <div
-            className="relative max-h-[90vh] max-w-[90vw]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <img
-              src={lightbox.url}
-              alt={lightbox.nama}
-              className="max-h-[85vh] rounded-lg object-contain"
-            />
-            <div className="mt-3 flex items-center justify-between gap-3 text-white">
-              <p className="truncate text-sm">{lightbox.nama}</p>
-              <Button size="sm" variant="outline" onClick={() => setLightbox(null)}>
-                Tutup
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </AppShell>
-  );
-}
-
-function DetailItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-border/70 bg-card/40 p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm font-medium">{value}</p>
-    </div>
-  );
-}
-
-function DetailNumber({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl border border-border/70 bg-background p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="num mt-1 text-xl font-bold">{value ?? 0}</p>
-    </div>
-  );
-}
+          <div class="summary-section
