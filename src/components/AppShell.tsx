@@ -121,6 +121,7 @@ const NAV_MASTER: NavItem[] = [
     icon: CalendarDays,
   },
   {
+    to: "/pesan-whatsapp",
     label: "Pesan WhatsApp",
     icon: MessageCircle,
   },
