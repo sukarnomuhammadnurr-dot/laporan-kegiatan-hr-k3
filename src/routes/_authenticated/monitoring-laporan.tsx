@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import {
   BarChart3,
   CalendarDays,
@@ -15,7 +17,6 @@ import {
   RefreshCcw,
   RotateCcw,
   Search,
-  Send,
   Users,
   XCircle,
 } from "lucide-react";
@@ -400,11 +401,41 @@ function ActivityChart({ reports }: { reports: ReportWithTrainer[] }) {
 }
 
 // =============================================================
-// PART 2 — Komponen utama + verifikasi + PDF
+// Helper: fetch gambar → data URL (base64) buat embed jspdf
+// =============================================================
+
+async function urlToDataUrl(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function urlToDataUrlWithTimeout(
+  url: string,
+  timeoutMs = 8000,
+): Promise<string | null> {
+  return Promise.race([
+    urlToDataUrl(url),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+  ]);
+}
+
+// =============================================================
+// Komponen utama
 // =============================================================
 
 function MonitoringLaporanPage() {
-  const { isStaff, isTrainer, trainer, loading, user, nama } = useCurrentUser();
+  const { isStaff, isTrainer, trainer, loading, user } = useCurrentUser();
   const qc = useQueryClient();
 
   const [dari, setDari] = useState("");
@@ -419,7 +450,6 @@ function MonitoringLaporanPage() {
   const [lightbox, setLightbox] = useState<{ url: string; nama: string } | null>(null);
   const [downloading, setDownloading] = useState(false);
 
-  // Aksi verifikasi
   const [verifAction, setVerifAction] = useState<{
     report: ReportWithTrainer;
     action: "verifikasi" | "revisi" | "batalkan";
@@ -650,61 +680,107 @@ function MonitoringLaporanPage() {
     return `${jamBulat} jam ${menit} menit`;
   }
 
-  function escapeHtml(value: string | number | null | undefined) {
-    if (value === null || value === undefined) return "";
-    return String(value)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
-
-  function statusHarian(reports: ReportWithTrainer[]) {
-    if (reports.every((item) => item.status_laporan === "terverifikasi"))
+  function statusHarian(list: ReportWithTrainer[]) {
+    if (list.every((item) => item.status_laporan === "terverifikasi"))
       return "Terverifikasi";
-    if (reports.some((item) => item.status_laporan === "perlu_revisi"))
+    if (list.some((item) => item.status_laporan === "perlu_revisi"))
       return "Perlu Revisi";
-    if (reports.some((item) => item.status_laporan === "menunggu_verifikasi"))
+    if (list.some((item) => item.status_laporan === "menunggu_verifikasi"))
       return "Menunggu Verifikasi";
     return "Terkirim";
   }
 
-  // ---------- DOWNLOAD PDF ----------
+  // =============================================================
+  // DOWNLOAD PDF — jspdf native
+  // =============================================================
+
   async function downloadLaporanBulanan() {
     if (filteredReports.length === 0) {
-      window.alert("Tidak ada laporan untuk diunduh.");
+      toast.error("Tidak ada laporan untuk diunduh.");
       return;
     }
 
     setDownloading(true);
 
     try {
+      // 1. Tentukan bulan
       const now = new Date();
-      const bulan =
-        dari && dari.length >= 7
-          ? dari.slice(0, 7)
-          : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      let bulan = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-      const laporanPeriode = filteredReports
+      if (dari && /^\d{4}-\d{2}/.test(dari)) {
+        bulan = dari.slice(0, 7);
+      } else {
+        // Fallback: pakai bulan dari laporan pertama yang ada
+        const firstWithDate = filteredReports.find(
+          (r) => r.tanggal_kegiatan && r.tanggal_kegiatan.length >= 7,
+        );
+        if (firstWithDate?.tanggal_kegiatan) {
+          bulan = firstWithDate.tanggal_kegiatan.slice(0, 7);
+        }
+      }
+
+      let laporanPeriode = filteredReports
         .filter((r) => r.tanggal_kegiatan?.startsWith(bulan))
         .sort((a, b) => {
           const tA = a.tanggal_kegiatan || "";
           const tB = b.tanggal_kegiatan || "";
           return (
-            tA.localeCompare(tB) || (a.jam_mulai || "").localeCompare(b.jam_mulai || "")
+            tA.localeCompare(tB) ||
+            (a.jam_mulai || "").localeCompare(b.jam_mulai || "")
           );
         });
 
+      // Kalau kosong, ambil semua (biar gak stuck)
       if (laporanPeriode.length === 0) {
-        window.alert(`Tidak ada laporan untuk periode ${namaBulan(bulan)}.`);
-        return;
+        laporanPeriode = [...filteredReports].sort((a, b) => {
+          const tA = a.tanggal_kegiatan || "";
+          const tB = b.tanggal_kegiatan || "";
+          return tA.localeCompare(tB);
+        });
       }
 
-      const photosMap = await getReportPhotosBatch(
-        laporanPeriode.map((r) => r.id),
+      // 2. Fetch foto + convert ke data URL
+      let photosMap = new Map<string, ReportPhoto[]>();
+      try {
+        photosMap = await getReportPhotosBatch(laporanPeriode.map((r) => r.id));
+      } catch (err) {
+        console.error("Gagal ambil foto:", err);
+      }
+
+      const photoDataMap = new Map<string, string[]>();
+      await Promise.all(
+        laporanPeriode.map(async (r) => {
+          const fotos = (photosMap.get(r.id) ?? []).filter((p) => p.url);
+          const dataUrls: string[] = [];
+          for (const foto of fotos.slice(0, 6)) {
+            if (!foto.url) continue;
+            const dataUrl = await urlToDataUrlWithTimeout(foto.url);
+            if (dataUrl) dataUrls.push(dataUrl);
+          }
+          photoDataMap.set(r.id, dataUrls);
+        }),
       );
 
+      // 3. Branding logo → data URL
+      let logoDataUrl: string | null = null;
+      if (brandingLogo) {
+        logoDataUrl = await urlToDataUrlWithTimeout(brandingLogo);
+      }
+
+      // 4. Setup PDF A4 landscape
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const PAGE_W = doc.internal.pageSize.getWidth();
+      const PAGE_H = doc.internal.pageSize.getHeight();
+      const MARGIN = 10;
+
+      const bulanLabel = namaBulan(bulan);
+
+      // Group by tanggal
       const byTanggal = new Map<string, ReportWithTrainer[]>();
       for (const r of laporanPeriode) {
         const key = r.tanggal_kegiatan || "tanpa-tanggal";
@@ -713,6 +789,288 @@ function MonitoringLaporanPage() {
         byTanggal.set(key, cur);
       }
 
+      const tanggalList = [...byTanggal.entries()].sort(([a], [b]) =>
+        a.localeCompare(b),
+      );
+
+      let isFirstPage = true;
+
+      // 5. Render per tanggal
+      for (const [tanggal, list] of tanggalList) {
+        if (!isFirstPage) doc.addPage();
+        isFirstPage = false;
+
+        let y = MARGIN;
+
+        // Header: logo + brand
+        if (logoDataUrl) {
+          try {
+            doc.addImage(logoDataUrl, "PNG", MARGIN, y, 14, 11);
+          } catch {
+            /* skip logo */
+          }
+        }
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(13);
+        doc.setTextColor(18, 74, 130);
+        doc.text("LAPORAN KEGIATAN TRAINER K3", MARGIN + 17, y + 5);
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.text("PT IWIP", MARGIN + 17, y + 10);
+
+        // Kanan atas: label bulan
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.text("LAPORAN BULANAN", PAGE_W - MARGIN, y + 4, { align: "right" });
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.text(bulanLabel, PAGE_W - MARGIN, y + 9, { align: "right" });
+
+        y += 14;
+
+        // Garis pemisah
+        doc.setDrawColor(11, 90, 165);
+        doc.setLineWidth(0.6);
+        doc.line(MARGIN, y, PAGE_W - MARGIN, y);
+        y += 5;
+
+        // Header tanggal + status
+        const status = statusHarian(list);
+        doc.setFillColor(240, 247, 255);
+        doc.setDrawColor(184, 217, 247);
+        doc.roundedRect(MARGIN, y, PAGE_W - MARGIN * 2, 8, 1.5, 1.5, "FD");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(18, 63, 109);
+        doc.text(`HARI / TANGGAL: ${formatTanggalPanjang(tanggal)}`, MARGIN + 2, y + 5.5);
+
+        doc.setTextColor(18, 131, 79);
+        doc.setFontSize(8);
+        doc.text(`✓ ${status}`, PAGE_W - MARGIN - 2, y + 5.5, {
+          align: "right",
+        });
+
+        y += 12;
+
+        // Kartu identitas trainer (per trainer unik)
+        const trainerMap = new Map<
+          string,
+          { nama: string; nomor: string; jabatan: string; departemen: string }
+        >();
+        for (const r of list) {
+          const tid = r.trainer_id ?? "unknown";
+          if (!trainerMap.has(tid)) {
+            trainerMap.set(tid, {
+              nama: r.trainers?.nama_lengkap || "—",
+              nomor: r.trainers?.nomor_id_trainer || "—",
+              jabatan: r.trainers?.jabatan || "—",
+              departemen: r.trainers?.departemen || "—",
+            });
+          }
+        }
+
+        for (const t of trainerMap.values()) {
+          const colW = (PAGE_W - MARGIN * 2) / 4;
+
+          doc.setFillColor(247, 251, 255);
+          doc.setDrawColor(184, 217, 247);
+          doc.roundedRect(MARGIN, y, PAGE_W - MARGIN * 2, 12, 1.5, 1.5, "FD");
+
+          const cells = [
+            { label: "NAMA TRAINER", value: t.nama },
+            { label: "NO. ID TRAINER", value: t.nomor },
+            { label: "JABATAN", value: t.jabatan },
+            { label: "DEPARTEMEN", value: t.departemen },
+          ];
+
+          cells.forEach((c, i) => {
+            const x = MARGIN + i * colW + 2;
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(6.5);
+            doc.setTextColor(23, 102, 166);
+            doc.text(c.label, x, y + 4);
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8.5);
+            doc.setTextColor(18, 63, 109);
+            const value = doc.splitTextToSize(c.value, colW - 4);
+            doc.text(value[0] ?? "—", x, y + 9);
+          });
+
+          y += 15;
+        }
+
+        y += 2;
+
+        // Tabel kegiatan
+        const body: any[] = [];
+        for (let idx = 0; idx < list.length; idx++) {
+          const item = list[idx]!;
+          const fotos = photoDataMap.get(item.id) ?? [];
+
+          const materiText = [
+            item.materi || "—",
+            item.jenis_kegiatan ? `(${item.jenis_kegiatan})` : "",
+            item.keterangan ? `\n${item.keterangan}` : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+          body.push([
+            String(idx + 1),
+            `${item.jam_mulai?.slice(0, 5) || "—"}\n${item.jam_selesai?.slice(0, 5) || ""}`,
+            materiText,
+            item.kelas || "—",
+            item.lokasi || "—",
+            `${item.jumlah_hadir ?? 0}\n(peserta: ${item.jumlah_peserta ?? 0})`,
+            fotos.length === 0 ? "Tidak ada foto" : "",
+          ]);
+        }
+
+        autoTable(doc, {
+          startY: y,
+          head: [[
+            "No",
+            "Jam",
+            "Materi / Kegiatan & Deskripsi",
+            "Kelas",
+            "Lokasi",
+            "Hadir",
+            "Dokumentasi",
+          ]],
+          body,
+          theme: "grid",
+          styles: {
+            fontSize: 7,
+            cellPadding: 1.5,
+            textColor: [18, 63, 109],
+            lineColor: [185, 216, 242],
+            lineWidth: 0.15,
+            valign: "middle",
+            overflow: "linebreak",
+          },
+          headStyles: {
+            fillColor: [11, 90, 165],
+            textColor: [255, 255, 255],
+            fontStyle: "bold",
+            fontSize: 7.5,
+            halign: "center",
+            cellPadding: 2,
+          },
+          alternateRowStyles: {
+            fillColor: [248, 251, 255],
+          },
+          columnStyles: {
+            0: { cellWidth: 8, halign: "center" },
+            1: { cellWidth: 18, halign: "center" },
+            2: { cellWidth: 85 },
+            3: { cellWidth: 15, halign: "center" },
+            4: { cellWidth: 25 },
+            5: { cellWidth: 18, halign: "center" },
+            6: { cellWidth: 75, halign: "center" },
+          },
+          didDrawCell: (data) => {
+            // Render foto di kolom terakhir
+            if (data.section !== "body" || data.column.index !== 6) return;
+            const rowIdx = data.row.index;
+            const item = list[rowIdx];
+            if (!item) return;
+            const fotos = photoDataMap.get(item.id) ?? [];
+            if (fotos.length === 0) return;
+
+            const maxPerRow = 3;
+            const availableW = data.cell.width - 3;
+            const availableH = data.cell.height - 3;
+            const imgW = Math.min(
+              availableW / Math.min(fotos.length, maxPerRow),
+              availableH / Math.ceil(fotos.length / maxPerRow),
+            );
+            const imgH = imgW * 0.75;
+
+            let fx = data.cell.x + 1.5;
+            let fy = data.cell.y + 1.5;
+
+            fotos.forEach((src, i) => {
+              if (i > 0 && i % maxPerRow === 0) {
+                fx = data.cell.x + 1.5;
+                fy += imgH + 1;
+              }
+              if (fy + imgH > data.cell.y + data.cell.height) return;
+              try {
+                doc.addImage(src, "JPEG", fx, fy, imgW, imgH);
+              } catch {
+                /* skip */
+              }
+              fx += imgW + 1;
+            });
+          },
+          margin: { left: MARGIN, right: MARGIN },
+        });
+
+        // Summary hari ini
+        const totalHadirHari = list.reduce(
+          (s, r) => s + Number(r.jumlah_hadir || 0),
+          0,
+        );
+
+        const finalY = (doc as any).lastAutoTable?.finalY ?? y + 40;
+
+        doc.setFillColor(240, 247, 255);
+        doc.roundedRect(MARGIN, finalY + 2, PAGE_W - MARGIN * 2, 7, 1.5, 1.5, "F");
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(18, 63, 109);
+        doc.text(
+          `Total kegiatan hari ini: ${list.length}  ·  Total peserta hadir: ${totalHadirHari.toLocaleString(
+            "id-ID",
+          )} orang`,
+          MARGIN + 2,
+          finalY + 6.5,
+        );
+      }
+
+      // ============================================================
+      // Halaman rekap bulanan
+      // ============================================================
+      doc.addPage();
+
+      let ry = MARGIN;
+
+      if (logoDataUrl) {
+        try {
+          doc.addImage(logoDataUrl, "PNG", MARGIN, ry, 14, 11);
+        } catch {
+          /* skip */
+        }
+      }
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(18, 74, 130);
+      doc.text("REKAPITULASI BULANAN", MARGIN + 17, ry + 5);
+
+      doc.setFontSize(9);
+      doc.text("PT IWIP", MARGIN + 17, ry + 10);
+
+      doc.setFontSize(11);
+      doc.text("PERIODE", PAGE_W - MARGIN, ry + 4, { align: "right" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text(bulanLabel, PAGE_W - MARGIN, ry + 9, { align: "right" });
+
+      ry += 14;
+
+      doc.setDrawColor(11, 90, 165);
+      doc.setLineWidth(0.6);
+      doc.line(MARGIN, ry, PAGE_W - MARGIN, ry);
+      ry += 5;
+
+      // Rekap per materi
       const rekapMateri = new Map<string, { kegiatan: number; hadir: number }>();
       for (const r of laporanPeriode) {
         const key = r.materi?.trim() || "Tanpa Materi";
@@ -735,496 +1093,136 @@ function MonitoringLaporanPage() {
         0,
       );
 
-      const tanggalSections = [...byTanggal.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([tanggal, list]) => {
-          const status = statusHarian(list);
-
-          const trainerMap = new Map<
-            string,
-            { nama: string; nomor: string; jabatan: string; departemen: string }
-          >();
-          for (const r of list) {
-            const tid = r.trainer_id ?? "unknown";
-            if (!trainerMap.has(tid)) {
-              trainerMap.set(tid, {
-                nama: r.trainers?.nama_lengkap || "—",
-                nomor: r.trainers?.nomor_id_trainer || "—",
-                jabatan: r.trainers?.jabatan || "—",
-                departemen: r.trainers?.departemen || "—",
-              });
-            }
+      autoTable(doc, {
+        startY: ry,
+        head: [["Materi", "Jumlah Kegiatan", "Peserta Hadir"]],
+        body: [
+          ...rekapRows.map(([materi, v]) => [
+            materi,
+            String(v.kegiatan),
+            v.hadir.toLocaleString("id-ID"),
+          ]),
+          [
+            "TOTAL",
+            String(totalKegiatan),
+            totalHadir.toLocaleString("id-ID"),
+          ],
+        ],
+        theme: "grid",
+        styles: {
+          fontSize: 9,
+          cellPadding: 2.5,
+          textColor: [18, 63, 109],
+          lineColor: [185, 216, 242],
+          lineWidth: 0.15,
+        },
+        headStyles: {
+          fillColor: [11, 90, 165],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+          halign: "center",
+        },
+        columnStyles: {
+          0: { cellWidth: 120 },
+          1: { cellWidth: 40, halign: "center" },
+          2: { cellWidth: 40, halign: "center" },
+        },
+        didParseCell: (data) => {
+          if (
+            data.section === "body" &&
+            data.row.index === rekapRows.length
+          ) {
+            data.cell.styles.fontStyle = "bold";
+            data.cell.styles.fillColor = [231, 241, 251];
           }
-          const trainersList = [...trainerMap.values()];
+        },
+        margin: { left: MARGIN, right: MARGIN },
+      });
 
-          const trainerCards = trainersList
-            .map(
-              (t) => `
-                <div class="trainer-card">
-                  <div class="trainer-cell">
-                    <div class="trainer-label">NAMA TRAINER</div>
-                    <div class="trainer-value">${escapeHtml(t.nama)}</div>
-                  </div>
-                  <div class="trainer-cell">
-                    <div class="trainer-label">NO. ID TRAINER</div>
-                    <div class="trainer-value">${escapeHtml(t.nomor)}</div>
-                  </div>
-                  <div class="trainer-cell">
-                    <div class="trainer-label">JABATAN</div>
-                    <div class="trainer-value">${escapeHtml(t.jabatan)}</div>
-                  </div>
-                  <div class="trainer-cell">
-                    <div class="trainer-label">DEPARTEMEN</div>
-                    <div class="trainer-value">${escapeHtml(t.departemen)}</div>
-                  </div>
-                </div>
-              `,
-            )
-            .join("");
+      const rekapFinalY = (doc as any).lastAutoTable?.finalY ?? ry + 40;
+      let sy = rekapFinalY + 6;
 
-          const listHtml = list
-            .map((item, idx) => {
-              const fotos = (photosMap.get(item.id) ?? []).filter((p) => p.url);
-              const fotoHtml =
-                fotos.length === 0
-                  ? `<div class="no-photo">Tidak ada foto</div>`
-                  : `<div class="photo-strip">${fotos
-                      .map(
-                        (p) =>
-                          `<img src="${p.url}" class="activity-photo" alt="${escapeHtml(
-                            p.nama_file || "Dokumentasi",
-                          )}" />`,
-                      )
-                      .join("")}</div>`;
+      // Ringkasan periode
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(18, 74, 130);
+      doc.text("RINGKASAN PERIODE", MARGIN, sy);
+      sy += 4;
 
-              return `
-                <tr>
-                  <td class="center number-cell">${idx + 1}</td>
-                  <td class="time-cell">
-                    <strong>${escapeHtml(item.jam_mulai?.slice(0, 5) || "—")}</strong>
-                    ${
-                      item.jam_selesai
-                        ? `<span class="time-end">- ${escapeHtml(
-                            item.jam_selesai.slice(0, 5),
-                          )}</span>`
-                        : ""
-                    }
-                  </td>
-                  <td class="activity-cell">
-                    <div class="activity-title">${escapeHtml(
-                      item.materi || "—",
-                    )}</div>
-                    ${
-                      item.jenis_kegiatan
-                        ? `<div class="activity-type">${escapeHtml(
-                            item.jenis_kegiatan,
-                          )}</div>`
-                        : ""
-                    }
-                    ${
-                      item.keterangan
-                        ? `<div class="activity-desc">${escapeHtml(
-                            item.keterangan,
-                          )}</div>`
-                        : ""
-                    }
-                  </td>
-                  <td>${escapeHtml(item.kelas || "—")}</td>
-                  <td>${escapeHtml(item.lokasi || "—")}</td>
-                  <td class="center participant-cell">
-                    <strong>${Number(item.jumlah_hadir || 0).toLocaleString(
-                      "id-ID",
-                    )}</strong>
-                    <div class="small-info">
-                      Peserta: ${Number(item.jumlah_peserta || 0).toLocaleString(
-                        "id-ID",
-                      )}
-                    </div>
-                  </td>
-                  <td class="photo-cell">${fotoHtml}</td>
-                </tr>
-              `;
-            })
-            .join("");
+      const cardW = (PAGE_W - MARGIN * 2 - 6) / 4;
+      const cards = [
+        { label: "Total Kegiatan", value: String(totalKegiatan), unit: "kegiatan" },
+        {
+          label: "Total Peserta Hadir",
+          value: totalHadir.toLocaleString("id-ID"),
+          unit: "orang",
+        },
+        {
+          label: "Total Jam Training",
+          value: formatJamTraining(totalJam),
+          unit: "durasi",
+        },
+        {
+          label: "Jumlah Trainer",
+          value: String(new Set(laporanPeriode.map((r) => r.trainer_id)).size),
+          unit: "orang",
+        },
+      ];
 
-          const totalHadirHari = list.reduce(
-            (s, r) => s + Number(r.jumlah_hadir || 0),
-            0,
-          );
+      cards.forEach((c, i) => {
+        const x = MARGIN + i * (cardW + 2);
+        doc.setFillColor(248, 251, 255);
+        doc.setDrawColor(199, 224, 246);
+        doc.roundedRect(x, sy, cardW, 18, 1.5, 1.5, "FD");
 
-          return `
-            <section class="page">
-              <header class="report-header">
-                <div class="brand-block">
-                  ${
-                    brandingLogo
-                      ? `<img src="${brandingLogo}" class="company-logo" alt="Logo" />`
-                      : `<div class="logo-fallback">K3</div>`
-                  }
-                  <div>
-                    <div class="brand-title">LAPORAN KEGIATAN TRAINER K3</div>
-                    <div class="brand-subtitle">PT IWIP</div>
-                  </div>
-                </div>
-                <div class="month-block">
-                  <div class="month-label">LAPORAN BULANAN</div>
-                  <div class="month-value">${escapeHtml(namaBulan(bulan))}</div>
-                </div>
-              </header>
-              <div class="header-line"></div>
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        doc.setTextColor(57, 120, 171);
+        doc.text(c.label, x + 2, sy + 4);
 
-              <div class="date-header">
-                <div class="date-label">HARI / TANGGAL</div>
-                <div class="date-value">${escapeHtml(
-                  formatTanggalPanjang(tanggal),
-                )}</div>
-                <div class="date-status status-${status
-                  .toLowerCase()
-                  .replaceAll(" ", "-")}">✓ ${escapeHtml(status)}</div>
-              </div>
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(13);
+        doc.setTextColor(18, 74, 130);
+        doc.text(c.value, x + 2, sy + 12);
 
-              ${trainerCards}
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6.5);
+        doc.setTextColor(109, 135, 158);
+        doc.text(c.unit, x + 2, sy + 16);
+      });
 
-              <div class="activity-wrapper">
-                <table>
-                  <colgroup>
-                    <col style="width: 4%" />
-                    <col style="width: 9%" />
-                    <col style="width: 24%" />
-                    <col style="width: 9%" />
-                    <col style="width: 12%" />
-                    <col style="width: 8%" />
-                    <col style="width: 34%" />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>No.</th>
-                      <th>Jam</th>
-                      <th>Materi / Kegiatan & Deskripsi</th>
-                      <th>Kelas</th>
-                      <th>Lokasi</th>
-                      <th>Hadir</th>
-                      <th>Dokumentasi</th>
-                    </tr>
-                  </thead>
-                  <tbody>${listHtml}</tbody>
-                </table>
-              </div>
+      // Footer
+      const printed = new Date().toLocaleDateString("id-ID", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      });
 
-              <div class="day-summary">
-                Total kegiatan hari ini: <b>${list.length}</b> ·
-                Total peserta hadir: <b>${totalHadirHari.toLocaleString(
-                  "id-ID",
-                )}</b> orang
-              </div>
-            </section>
-          `;
-        })
-        .join("");
-
-      const rekapHtml = `
-        <section class="page recap-page">
-          <header class="report-header">
-            <div class="brand-block">
-              ${
-                brandingLogo
-                  ? `<img src="${brandingLogo}" class="company-logo" alt="Logo" />`
-                  : `<div class="logo-fallback">K3</div>`
-              }
-              <div>
-                <div class="brand-title">REKAPITULASI BULANAN</div>
-                <div class="brand-subtitle">PT IWIP</div>
-              </div>
-            </div>
-            <div class="month-block">
-              <div class="month-label">PERIODE</div>
-              <div class="month-value">${escapeHtml(namaBulan(bulan))}</div>
-            </div>
-          </header>
-          <div class="header-line"></div>
-
-          <div class="activity-wrapper">
-            <table>
-              <colgroup>
-                <col style="width: 55%" />
-                <col style="width: 22%" />
-                <col style="width: 23%" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th style="text-align:left;padding-left:10px">Materi</th>
-                  <th>Jumlah Kegiatan</th>
-                  <th>Peserta Hadir</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rekapRows
-                  .map(
-                    ([materi, v]) => `
-                    <tr>
-                      <td style="padding-left:10px"><b>${escapeHtml(
-                        materi,
-                      )}</b></td>
-                      <td class="center">${v.kegiatan}</td>
-                      <td class="center"><b>${v.hadir.toLocaleString(
-                        "id-ID",
-                      )}</b></td>
-                    </tr>
-                  `,
-                  )
-                  .join("")}
-                <tr class="total-row">
-                  <td style="padding-left:10px"><b>TOTAL</b></td>
-                  <td class="center"><b>${totalKegiatan}</b></td>
-                  <td class="center"><b>${totalHadir.toLocaleString(
-                    "id-ID",
-                  )}</b></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div class="summary-section">
-            <div class="summary-heading">RINGKASAN PERIODE</div>
-            <div class="summary-grid">
-              <div class="summary-card">
-                <div class="summary-label">Total Kegiatan</div>
-                <div class="summary-value">${totalKegiatan}</div>
-                <div class="summary-unit">kegiatan</div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-label">Total Peserta Hadir</div>
-                <div class="summary-value">${totalHadir.toLocaleString(
-                  "id-ID",
-                )}</div>
-                <div class="summary-unit">orang</div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-label">Total Jam Training</div>
-                <div class="summary-value">${escapeHtml(
-                  formatJamTraining(totalJam),
-                )}</div>
-                <div class="summary-unit">durasi</div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-label">Jumlah Trainer</div>
-                <div class="summary-value">${
-                  new Set(laporanPeriode.map((r) => r.trainer_id)).size
-                }</div>
-                <div class="summary-unit">orang</div>
-              </div>
-            </div>
-          </div>
-
-          <footer class="footer">
-            <span>Dicetak pada: ${escapeHtml(
-              new Date().toLocaleDateString("id-ID", {
-                day: "2-digit",
-                month: "long",
-                year: "numeric",
-              }),
-            )} &nbsp; | &nbsp; PT IWIP</span>
-            <span class="document-number">Rekap Bulanan K3 — ${escapeHtml(
-              namaBulan(bulan),
-            )}</span>
-          </footer>
-        </section>
-      `;
-
-      const html = `
-        <!DOCTYPE html>
-        <html lang="id">
-        <head>
-          <meta charset="UTF-8" />
-          <title>Laporan Bulanan Trainer K3 - ${escapeHtml(namaBulan(bulan))}</title>
-          <style>
-            * { box-sizing: border-box; }
-            html, body { margin: 0; padding: 0; }
-            body {
-              font-family: Arial, Helvetica, sans-serif;
-              color: #124a82;
-              background: #fff;
-              font-size: 9px;
-            }
-            .page {
-              width: 100%;
-              min-height: 180mm;
-              page-break-after: always;
-              padding-bottom: 2mm;
-            }
-            .page:last-child { page-break-after: auto; }
-            .report-header {
-              display: flex; justify-content: space-between;
-              align-items: flex-start; gap: 20px;
-            }
-            .brand-block { display: flex; align-items: center; gap: 10px; }
-            .company-logo { width: 58px; height: 46px; object-fit: contain; }
-            .logo-fallback {
-              width: 58px; height: 46px; display: grid; place-items: center;
-              border-radius: 10px; background: #0b5aa5; color: #fff;
-              font-size: 17px; font-weight: 900;
-            }
-            .brand-title {
-              color: #124a82; font-size: 18px; font-weight: 900;
-              line-height: 1.05; letter-spacing: .2px;
-            }
-            .brand-subtitle {
-              margin-top: 3px; color: #124a82; font-size: 12px; font-weight: 700;
-            }
-            .month-block { text-align: right; }
-            .month-label { color: #124a82; font-size: 15px; font-weight: 900; }
-            .month-value {
-              margin-top: 4px; color: #124a82; font-size: 12px; font-weight: 700;
-            }
-            .header-line {
-              height: 2px; margin: 8px 0 9px;
-              background: #0b5aa5; border-radius: 999px;
-            }
-            .date-header {
-              display: flex; align-items: center; gap: 12px;
-              padding: 8px 10px; margin-bottom: 8px;
-              background: #f0f7ff; border: 1px solid #b8d9f7;
-              border-radius: 7px;
-            }
-            .date-label { color: #1766a6; font-size: 8px; font-weight: 700; }
-            .date-value { color: #123f6d; font-size: 12px; font-weight: 900; flex: 1; }
-            .date-status {
-              padding: 4px 8px; border-radius: 999px;
-              background: #dcf7e8; color: #12834f;
-              font-size: 8px; font-weight: 800;
-            }
-            .trainer-card {
-              display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr;
-              border: 1px solid #b8d9f7; border-radius: 7px;
-              background: #f7fbff; overflow: hidden; margin-bottom: 8px;
-            }
-            .trainer-cell {
-              padding: 7px 9px; border-right: 1px solid #cfe5f8;
-            }
-            .trainer-cell:last-child { border-right: 0; }
-            .trainer-label {
-              color: #1766a6; font-size: 7px; margin-bottom: 4px;
-              font-weight: 700; letter-spacing: .3px;
-            }
-            .trainer-value {
-              color: #123f6d; font-size: 9.5px; font-weight: 800; line-height: 1.2;
-            }
-            .activity-wrapper { margin-top: 4px; }
-            table {
-              width: 100%; border-collapse: collapse; table-layout: fixed;
-            }
-            th {
-              padding: 6px 4px; border: 1px solid #0b5aa5;
-              background: #0b5aa5; color: white; text-align: center;
-              font-size: 8px; font-weight: 800;
-            }
-            td {
-              padding: 4px 5px; border: 1px solid #b9d8f2;
-              color: #123f6d; font-size: 7.7px;
-              vertical-align: middle; overflow-wrap: anywhere;
-            }
-            tbody tr:nth-child(even) { background: #f8fbff; }
-            .center { text-align: center; }
-            .number-cell { font-size: 9px; font-weight: 800; }
-            .time-cell { text-align: center; white-space: nowrap; }
-            .time-end { display: block; color: #5d7894; font-size: 7px; }
-            .activity-title { font-size: 8.4px; font-weight: 800; color: #124a82; }
-            .activity-type { margin-top: 2px; color: #63809a; font-size: 6.9px; }
-            .activity-desc { margin-top: 3px; color: #4a5f75; font-size: 6.8px; font-style: italic; }
-            .participant-cell strong { font-size: 9px; }
-            .small-info { margin-top: 2px; color: #63809a; font-size: 6.6px; }
-            .photo-cell { padding: 3px; }
-            .photo-strip {
-              display: flex; flex-wrap: wrap; justify-content: center; gap: 3px;
-            }
-            .activity-photo {
-              width: 82px; height: 54px; object-fit: cover;
-              border-radius: 4px; border: 1px solid #b9d8f2;
-              background: #eef6fc;
-            }
-            .no-photo {
-              min-height: 45px; display: grid; place-items: center;
-              color: #8ba0b3; font-size: 7px;
-            }
-            .day-summary {
-              margin-top: 6px; padding: 6px 10px;
-              background: #f0f7ff; border-radius: 6px;
-              color: #123f6d; font-size: 8px;
-            }
-            .summary-section {
-              margin-top: 8px; border: 1px solid #b8d9f7;
-              border-radius: 7px; padding: 7px; background: #f8fbff;
-            }
-            .summary-heading {
-              margin-bottom: 6px; color: #124a82;
-              font-size: 9px; font-weight: 900;
-            }
-            .summary-grid {
-              display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
-            }
-            .summary-card {
-              min-height: 53px; border: 1px solid #c7e0f6;
-              border-radius: 6px; padding: 7px 8px; background: white;
-            }
-            .summary-label { color: #3978ab; font-size: 7px; }
-            .summary-value {
-              margin-top: 2px; color: #124a82; font-size: 14px; font-weight: 900;
-            }
-            .summary-unit { color: #6d879e; font-size: 6.5px; }
-            .total-row td { background: #e7f1fb; border-top: 2px solid #0b5aa5; }
-            .footer {
-              display: flex; justify-content: space-between; gap: 15px;
-              margin-top: 6px; padding-top: 5px;
-              border-top: 1px solid #d4e4f2;
-              color: #6b8297; font-size: 6.7px;
-            }
-            .document-number { font-weight: 700; color: #124a82; }
-            @page { size: A4 landscape; margin: 8mm; }
-            @media print {
-              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-              tr { page-break-inside: avoid; }
-            }
-          </style>
-        </head>
-        <body>
-          ${tanggalSections}
-          ${rekapHtml}
-        </body>
-        </html>
-      `;
-
-      const win = window.open("", "_blank", "width=1400,height=900");
-      if (!win) {
-        window.alert(
-          "Popup diblokir browser. Izinkan popup untuk membuka Preview PDF.",
-        );
-        return;
-      }
-
-      win.document.open();
-      win.document.write(html);
-      win.document.close();
-
-      const images = Array.from(win.document.images);
-      await Promise.all(
-        images.map(
-          (img) =>
-            new Promise<void>((resolve) => {
-              if (img.complete) return resolve();
-              img.onload = () => resolve();
-              img.onerror = () => resolve();
-            }),
-        ),
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(107, 130, 151);
+      doc.text(
+        `Dicetak pada: ${printed}  |  PT IWIP`,
+        MARGIN,
+        PAGE_H - 6,
+      );
+      doc.text(
+        `Rekap Bulanan K3 — ${bulanLabel}`,
+        PAGE_W - MARGIN,
+        PAGE_H - 6,
+        { align: "right" },
       );
 
-      setTimeout(() => {
-        win.focus();
-        win.print();
-      }, 500);
+      // 6. Save PDF
+      const namaFile = `Laporan-Bulanan-K3-${bulan}.pdf`;
+      doc.save(namaFile);
+      toast.success(`PDF diunduh: ${namaFile}`);
     } catch (error) {
-      console.error("Gagal menyiapkan laporan bulanan:", error);
-      window.alert(
-        error instanceof Error ? error.message : "Gagal menyiapkan laporan bulanan.",
+      console.error("Gagal menyiapkan PDF:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Gagal menyiapkan PDF.",
       );
     } finally {
       setDownloading(false);
@@ -1266,7 +1264,7 @@ function MonitoringLaporanPage() {
           disabled={filteredReports.length === 0 || downloading}
         >
           <Download className="mr-2 size-4" />
-          {downloading ? "Menyiapkan…" : "Download Laporan Bulanan"}
+          {downloading ? "Menyiapkan PDF…" : "Download Laporan Bulanan"}
         </Button>
       }
     >
@@ -1580,7 +1578,7 @@ function MonitoringLaporanPage() {
             disabled={filteredReports.length === 0 || downloading}
           >
             <Download className="mr-2 size-4" />
-            {downloading ? "Menyiapkan…" : "Download Bulanan"}
+            {downloading ? "Menyiapkan PDF…" : "Download Bulanan"}
           </Button>
         </div>
 
@@ -1911,7 +1909,6 @@ function MonitoringLaporanPage() {
                 )}
               </div>
 
-              {/* KETERANGAN */}
               {preview.keterangan ? (
                 <div className="rounded-xl border border-border p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1923,7 +1920,6 @@ function MonitoringLaporanPage() {
                 </div>
               ) : null}
 
-              {/* CATATAN REVISI (kalau ada) */}
               {preview.catatan_revisi ? (
                 <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-destructive">
@@ -1935,7 +1931,6 @@ function MonitoringLaporanPage() {
                 </div>
               ) : null}
 
-              {/* STATUS LAPORAN */}
               <div className="rounded-xl border border-border p-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1945,7 +1940,6 @@ function MonitoringLaporanPage() {
                 </div>
               </div>
 
-              {/* AKSI VERIFIKASI */}
               {isStaff ? (
                 <div className="rounded-xl border border-border bg-muted/20 p-4">
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
