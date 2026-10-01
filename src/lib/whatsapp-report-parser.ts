@@ -1,21 +1,15 @@
 /**
- * WhatsApp Report Parser
- * =======================
+ * WhatsApp Report Parser (v2 — fleksibel)
+ * ========================================
+ * Bisa baca pesan:
+ * - Multi-baris (dipisah enter)
+ * - 1 baris (dipisah spasi)
+ * - Dipisah koma
+ * - Tanpa spasi setelah titik dua
+ * - Tanpa titik dua sama sekali
  *
- * Parser laporan trainer dari WhatsApp.
- *
- * Format contoh:
- *
- * Materi K3 H1A, PERATURAN PERUSAHAAN, PEDOMAN PERILAKU,
- * Trainer Sufri Hi Rajak
- * Jumlah peserta: 34
- * Hadir: 32
- * Tidak Hadir: 2
- * Tambahan:-
- *
- * Identifikasi trainer:
- * 1. Nomor WhatsApp = prioritas utama
- * 2. Nama trainer = fallback
+ * Yang penting kata kuncinya ada: Materi, Trainer, Jumlah peserta,
+ * Hadir, Tidak Hadir, Tambahan.
  */
 
 export type ParsedWhatsAppReport = {
@@ -53,14 +47,6 @@ function normalizeForMatch(value: string) {
  * =========================
  * NORMALISASI NOMOR WA
  * =========================
- *
- * 08123456789
- * +628123456789
- * 628123456789
- *
- * semuanya akan dianggap:
- *
- * 628123456789
  */
 
 export function normalizeWhatsAppNumber(
@@ -83,14 +69,10 @@ export function normalizeWhatsAppNumber(
  * =========================
  */
 
-function parseNumber(
-  value: string | undefined,
-): number | null {
+function parseNumber(value: string | undefined): number | null {
   if (!value) return null;
 
-  const cleaned = value
-    .replace(/[^\d-]/g, "")
-    .trim();
+  const cleaned = value.replace(/[^\d-]/g, "").trim();
 
   if (!cleaned) return null;
 
@@ -100,9 +82,7 @@ function parseNumber(
 }
 
 function removeTrailingPunctuation(value: string) {
-  return value
-    .replace(/[,\s;:]+$/g, "")
-    .trim();
+  return value.replace(/[,\s;:]+$/g, "").trim();
 }
 
 /**
@@ -114,11 +94,7 @@ function removeTrailingPunctuation(value: string) {
 function parseMaterials(value: string) {
   return value
     .split(/[,;\n]+/)
-    .map((item) =>
-      removeTrailingPunctuation(
-        normalizeText(item),
-      ),
-    )
+    .map((item) => removeTrailingPunctuation(normalizeText(item)))
     .filter(Boolean);
 }
 
@@ -126,14 +102,21 @@ function parseMaterials(value: string) {
  * =========================
  * PARSE LAPORAN WHATSAPP
  * =========================
+ *
+ * Strategi:
+ * 1. Newline dinormalisasi jadi spasi — biar 1 baris / multi-baris sama
+ * 2. Regex pakai \b word boundary (gak butuh newline)
+ * 3. Materi diambil dari "Materi" sampai sebelum "Trainer" / field lain
  */
 
-export function parseWhatsAppReport(
-  text: string,
-): ParsedWhatsAppReport {
+export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
+  // Normalisasi newline → spasi
   const source = text
     .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n");
+    .replace(/\r/g, "\n")
+    .replace(/\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
   let trainerNama: string | null = null;
   let materi: string[] = [];
@@ -144,37 +127,23 @@ export function parseWhatsAppReport(
   let jumlahTambahan = 0;
 
   /**
-   * =========================
    * TRAINER
-   * =========================
+   * Stop di field berikutnya (jumlah peserta / hadir / tidak hadir / tambahan)
    */
-
   const trainerMatch = source.match(
-    /(?:^|\n)\s*trainer\s*:?\s*(.+?)(?=\n|$)/i,
+    /\btrainer\s*:?\s*(.+?)(?=\s*(?:jumlah\s+peserta|hadir|tidak\s+hadir|tambahan)\s*:?\s*|$)/i,
   );
 
   if (trainerMatch?.[1]) {
-    trainerNama = removeTrailingPunctuation(
-      normalizeText(trainerMatch[1]),
-    );
+    trainerNama = removeTrailingPunctuation(normalizeText(trainerMatch[1]));
   }
 
   /**
-   * =========================
    * MATERI
-   * =========================
-   *
-   * Mendukung:
-   *
-   * Materi K3 H1A, PERATURAN PERUSAHAAN
-   *
-   * maupun:
-   *
-   * Materi: K3 H1A, PERATURAN PERUSAHAAN
+   * Stop di: trainer / jumlah peserta / hadir / tidak hadir / tambahan
    */
-
   const materiMatch = source.match(
-    /(?:^|\n)\s*materi\s*:?\s*(.+?)(?=\n\s*(?:trainer|jumlah\s+peserta|hadir|tidak\s+hadir|tambahan)\s*:?\s*|$)/is,
+    /\bmateri\s*:?\s*(.+?)(?=\s*(?:trainer|jumlah\s+peserta|hadir|tidak\s+hadir|tambahan)\s*:?\s*|$)/i,
   );
 
   if (materiMatch?.[1]) {
@@ -182,67 +151,39 @@ export function parseWhatsAppReport(
   }
 
   /**
-   * =========================
    * JUMLAH PESERTA
-   * =========================
    */
-
   const jumlahPesertaMatch = source.match(
-    /jumlah\s+peserta\s*:?\s*([0-9.,]+)/i,
+    /\bjumlah\s+peserta\s*:?\s*([0-9.,]+)/i,
   );
-
-  jumlahPeserta = parseNumber(
-    jumlahPesertaMatch?.[1],
-  );
+  jumlahPeserta = parseNumber(jumlahPesertaMatch?.[1]);
 
   /**
-   * =========================
-   * HADIR
-   * =========================
+   * HADIR — hati-hati jangan match "tidak hadir"
+   * Pakai negative lookbehind sederhana: pastikan sebelumnya bukan "tidak"
    */
-
   const hadirMatch = source.match(
-    /(?:^|\n)\s*hadir\s*:?\s*([0-9.,]+)/i,
+    /(?:^|\s)hadir\s*:?\s*([0-9.,]+)/i,
   );
-
-  jumlahHadir = parseNumber(
-    hadirMatch?.[1],
-  );
+  jumlahHadir = parseNumber(hadirMatch?.[1]);
 
   /**
-   * =========================
    * TIDAK HADIR
-   * =========================
    */
-
   const tidakHadirMatch = source.match(
-    /(?:^|\n)\s*tidak\s+hadir\s*:?\s*([0-9.,]+)/i,
+    /\btidak\s+hadir\s*:?\s*([0-9.,]+)/i,
   );
-
-  jumlahTidakHadir = parseNumber(
-    tidakHadirMatch?.[1],
-  );
+  jumlahTidakHadir = parseNumber(tidakHadirMatch?.[1]);
 
   /**
-   * =========================
-   * TAMBAHAN
-   * =========================
-   *
-   * Mendukung:
-   *
-   * Tambahan:-
-   * Tambahan: -
-   * Tambahan: 0
-   * Tambahan: 2
+   * TAMBAHAN — support "-", "0", "2"
    */
-
   const tambahanMatch = source.match(
-    /(?:^|\n)\s*tambahan\s*:?\s*([0-9.,-]+)/i,
+    /\btambahan\s*:?\s*([0-9.,-]+|-)/i,
   );
 
   if (tambahanMatch?.[1]) {
-    const rawTambahan =
-      tambahanMatch[1].trim();
+    const rawTambahan = tambahanMatch[1].trim();
 
     if (
       rawTambahan === "-" ||
@@ -251,8 +192,7 @@ export function parseWhatsAppReport(
     ) {
       jumlahTambahan = 0;
     } else {
-      jumlahTambahan =
-        parseNumber(rawTambahan) ?? 0;
+      jumlahTambahan = parseNumber(rawTambahan) ?? 0;
     }
   }
 
@@ -279,59 +219,25 @@ export type WhatsAppTrainerCandidate = {
 };
 
 export type TrainerMatchResult = {
-  status:
-    | "matched"
-    | "ambiguous"
-    | "not_found";
-
-  trainer:
-    | WhatsAppTrainerCandidate
-    | null;
-
+  status: "matched" | "ambiguous" | "not_found";
+  trainer: WhatsAppTrainerCandidate | null;
   candidates: WhatsAppTrainerCandidate[];
-
-  matchedBy:
-    | "nomor_whatsapp"
-    | "nama"
-    | null;
+  matchedBy: "nomor_whatsapp" | "nama" | null;
 };
-
-/**
- * Cocokkan trainer.
- *
- * PRIORITAS:
- *
- * 1. Nomor WhatsApp
- * 2. Nama trainer
- *
- * Jadi nomor WA menjadi identitas utama.
- */
 
 export function matchWhatsAppTrainer(
   trainerNama: string | null,
   nomorWhatsapp: string | null,
   trainers: WhatsAppTrainerCandidate[],
 ): TrainerMatchResult {
-  /**
-   * =========================
-   * PRIORITAS 1
-   * NOMOR WHATSAPP
-   * =========================
-   */
-
-  const targetPhone =
-    normalizeWhatsAppNumber(
-      nomorWhatsapp,
-    );
+  // PRIORITAS 1: NOMOR WHATSAPP
+  const targetPhone = normalizeWhatsAppNumber(nomorWhatsapp);
 
   if (targetPhone) {
-    const phoneMatches =
-      trainers.filter(
-        (trainer) =>
-          normalizeWhatsAppNumber(
-            trainer.nomor_whatsapp,
-          ) === targetPhone,
-      );
+    const phoneMatches = trainers.filter(
+      (trainer) =>
+        normalizeWhatsAppNumber(trainer.nomor_whatsapp) === targetPhone,
+    );
 
     if (phoneMatches.length === 1) {
       return {
@@ -352,28 +258,13 @@ export function matchWhatsAppTrainer(
     }
   }
 
-  /**
-   * =========================
-   * PRIORITAS 2
-   * NAMA TRAINER
-   * =========================
-   */
-
+  // PRIORITAS 2: NAMA TRAINER
   if (trainerNama) {
-    const target =
-      normalizeForMatch(trainerNama);
+    const target = normalizeForMatch(trainerNama);
 
-    /**
-     * Cocok persis
-     */
-
-    const exactMatches =
-      trainers.filter(
-        (trainer) =>
-          normalizeForMatch(
-            trainer.nama_lengkap,
-          ) === target,
-      );
+    const exactMatches = trainers.filter(
+      (trainer) => normalizeForMatch(trainer.nama_lengkap) === target,
+    );
 
     if (exactMatches.length === 1) {
       return {
@@ -393,22 +284,10 @@ export function matchWhatsAppTrainer(
       };
     }
 
-    /**
-     * Cocok sebagian
-     */
-
-    const containsMatches =
-      trainers.filter((trainer) => {
-        const name =
-          normalizeForMatch(
-            trainer.nama_lengkap,
-          );
-
-        return (
-          name.includes(target) ||
-          target.includes(name)
-        );
-      });
+    const containsMatches = trainers.filter((trainer) => {
+      const name = normalizeForMatch(trainer.nama_lengkap);
+      return name.includes(target) || target.includes(name);
+    });
 
     if (containsMatches.length === 1) {
       return {
@@ -428,10 +307,6 @@ export function matchWhatsAppTrainer(
       };
     }
   }
-
-  /**
-   * Tidak ditemukan
-   */
 
   return {
     status: "not_found",
@@ -455,43 +330,21 @@ export type WhatsAppMaterialCandidate = {
 
 export type MaterialMatch = {
   input: string;
-
-  status:
-    | "matched"
-    | "ambiguous"
-    | "not_found";
-
-  material:
-    | WhatsAppMaterialCandidate
-    | null;
-
+  status: "matched" | "ambiguous" | "not_found";
+  material: WhatsAppMaterialCandidate | null;
   candidates: WhatsAppMaterialCandidate[];
 };
-
-/**
- * Cocokkan semua materi yang dikirim trainer
- * dengan Master Materi.
- */
 
 export function matchWhatsAppMaterials(
   materiInput: string[],
   materials: WhatsAppMaterialCandidate[],
 ): MaterialMatch[] {
   return materiInput.map((input) => {
-    const target =
-      normalizeForMatch(input);
+    const target = normalizeForMatch(input);
 
-    /**
-     * Cocok persis
-     */
-
-    const exactMatches =
-      materials.filter(
-        (material) =>
-          normalizeForMatch(
-            material.nama,
-          ) === target,
-      );
+    const exactMatches = materials.filter(
+      (material) => normalizeForMatch(material.nama) === target,
+    );
 
     if (exactMatches.length === 1) {
       return {
@@ -511,22 +364,10 @@ export function matchWhatsAppMaterials(
       };
     }
 
-    /**
-     * Cocok sebagian
-     */
-
-    const containsMatches =
-      materials.filter((material) => {
-        const name =
-          normalizeForMatch(
-            material.nama,
-          );
-
-        return (
-          name.includes(target) ||
-          target.includes(name)
-        );
-      });
+    const containsMatches = materials.filter((material) => {
+      const name = normalizeForMatch(material.nama);
+      return name.includes(target) || target.includes(name);
+    });
 
     if (containsMatches.length === 1) {
       return {
@@ -566,92 +407,37 @@ export function validateParsedWhatsAppReport(
 ) {
   const errors: string[] = [];
 
-  if (!report.trainerNama) {
-    errors.push(
-      "Nama trainer tidak ditemukan.",
-    );
-  }
-
-  if (report.materi.length === 0) {
-    errors.push(
-      "Materi tidak ditemukan.",
-    );
-  }
-
-  if (report.jumlahPeserta === null) {
-    errors.push(
-      "Jumlah peserta tidak ditemukan.",
-    );
-  }
-
-  if (report.jumlahHadir === null) {
-    errors.push(
-      "Jumlah hadir tidak ditemukan.",
-    );
-  }
-
-  if (
-    report.jumlahTidakHadir === null
-  ) {
-    errors.push(
-      "Jumlah tidak hadir tidak ditemukan.",
-    );
-  }
-
-  /**
-   * Hadir tidak boleh lebih besar
-   * daripada jumlah peserta.
-   */
+  if (!report.trainerNama) errors.push("Nama trainer tidak ditemukan.");
+  if (report.materi.length === 0) errors.push("Materi tidak ditemukan.");
+  if (report.jumlahPeserta === null)
+    errors.push("Jumlah peserta tidak ditemukan.");
+  if (report.jumlahHadir === null) errors.push("Jumlah hadir tidak ditemukan.");
+  if (report.jumlahTidakHadir === null)
+    errors.push("Jumlah tidak hadir tidak ditemukan.");
 
   if (
     report.jumlahHadir !== null &&
     report.jumlahPeserta !== null &&
-    report.jumlahHadir >
-      report.jumlahPeserta
+    report.jumlahHadir > report.jumlahPeserta
   ) {
-    errors.push(
-      "Jumlah hadir lebih besar daripada jumlah peserta.",
-    );
+    errors.push("Jumlah hadir lebih besar daripada jumlah peserta.");
   }
-
-  /**
-   * Tidak hadir tidak boleh lebih besar
-   * daripada jumlah peserta.
-   */
 
   if (
     report.jumlahTidakHadir !== null &&
     report.jumlahPeserta !== null &&
-    report.jumlahTidakHadir >
-      report.jumlahPeserta
+    report.jumlahTidakHadir > report.jumlahPeserta
   ) {
-    errors.push(
-      "Jumlah tidak hadir lebih besar daripada jumlah peserta.",
-    );
+    errors.push("Jumlah tidak hadir lebih besar daripada jumlah peserta.");
   }
-
-  /**
-   * Validasi jumlah peserta.
-   *
-   * Hadir + Tidak Hadir harus sama
-   * dengan Jumlah Peserta.
-   *
-   * Tambahan tidak dihitung sebagai
-   * bagian dari peserta awal.
-   */
 
   if (
     report.jumlahPeserta !== null &&
     report.jumlahHadir !== null &&
     report.jumlahTidakHadir !== null
   ) {
-    const total =
-      report.jumlahHadir +
-      report.jumlahTidakHadir;
-
-    if (
-      total !== report.jumlahPeserta
-    ) {
+    const total = report.jumlahHadir + report.jumlahTidakHadir;
+    if (total !== report.jumlahPeserta) {
       errors.push(
         `Hadir (${report.jumlahHadir}) + Tidak Hadir (${report.jumlahTidakHadir}) tidak sama dengan Jumlah Peserta (${report.jumlahPeserta}).`,
       );
