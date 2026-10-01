@@ -152,7 +152,9 @@ function BuatLaporan() {
   }, []);
 
   useEffect(() => {
-    if (!trainer?.id || !editId) return;
+    const trainerId = trainer?.id;
+    const reportId = editId;
+    if (!trainerId || !reportId) return;
 
     let cancelled = false;
 

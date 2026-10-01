@@ -1186,7 +1186,7 @@ function FormTrainer({
       const payload = {
         nomor_id_trainer: id,
         nama_lengkap: nama,
-        jabatan: jabatan || null,
+        jabatan: (jabatan || null) as string,
         email: email || null,
         nomor_whatsapp: wa || null,
         role: f.role,
