@@ -1140,12 +1140,15 @@ function FormTrainer({
     }
 
     if (
-  !["trainer", "supervisor", "superintendent", "admin"].includes(
-    f.role,
-  )
-) {
-  return setErr("Role tidak valid.");
-}
+      ![
+        "trainer",
+        "supervisor",
+        "superintendent",
+        "admin",
+      ].includes(f.role)
+    ) {
+      return setErr("Role tidak valid.");
+    }
 
     setBusy(true);
 
@@ -1347,12 +1350,6 @@ function FormTrainer({
                 set("email", e.target.value)
               }
             />
-
-            <p className="text-xs text-muted-foreground">
-              Untuk akun login, Admin dapat membuat akun
-              menggunakan email ini setelah trainer
-              tersimpan.
-            </p>
           </div>
 
           <div className="space-y-1.5">
@@ -1393,23 +1390,24 @@ function FormTrainer({
                   <SelectValue />
                 </SelectTrigger>
 
-               <SelectContent>
-  <SelectItem value="trainer">
-    Trainer
-  </SelectItem>
+                <SelectContent>
+                  <SelectItem value="trainer">
+                    Trainer
+                  </SelectItem>
 
-  <SelectItem value="supervisor">
-    Supervisor
-  </SelectItem>
+                  <SelectItem value="supervisor">
+                    Supervisor
+                  </SelectItem>
 
-  <SelectItem value="superintendent">
-    Superintendent
-  </SelectItem>
+                  <SelectItem value="superintendent">
+                    Superintendent
+                  </SelectItem>
 
-  <SelectItem value="admin">
-    Admin
-  </SelectItem>
-</SelectContent>
+                  <SelectItem value="admin">
+                    Admin
+                  </SelectItem>
+                </SelectContent>
+              </Select>
 
               {akunSendiri && (
                 <p className="text-xs text-muted-foreground">
