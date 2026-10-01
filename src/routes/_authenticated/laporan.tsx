@@ -311,7 +311,7 @@ function hitungDurasiJam(
     return 0;
   }
 
-  let menit = h2 * 60 + m2 - (h1 * 60 + m1);
+  let menit = h2! * 60 + m2! - (h1! * 60 + m1!);
 
   if (menit < 0) {
     menit += 24 * 60;
