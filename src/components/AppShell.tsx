@@ -303,6 +303,7 @@ function SidebarInner(props: {
 const ROLE_LABEL: Record<string, string> = {
   admin: "Admin",
   supervisor: "Supervisor",
+  superintendent: "Superintendent",
   trainer: "Trainer",
 };
 
