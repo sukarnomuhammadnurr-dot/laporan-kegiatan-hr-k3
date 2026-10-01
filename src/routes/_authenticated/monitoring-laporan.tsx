@@ -67,6 +67,8 @@ export const Route = createFileRoute("/_authenticated/monitoring-laporan")({
   component: MonitoringLaporanPage,
 });
 
+const DEPARTEMEN_LABEL = "HR K3";
+
 type FilterStatus =
   | "semua"
   | "terkirim"
@@ -458,7 +460,6 @@ function MonitoringLaporanPage() {
   const [previewLoadingPhotos, setPreviewLoadingPhotos] = useState(false);
   const [lightbox, setLightbox] = useState<{ url: string; nama: string } | null>(null);
 
-  // Preview PDF (HTML)
   const [pdfHtml, setPdfHtml] = useState<string | null>(null);
   const [pdfFileName, setPdfFileName] = useState("");
   const [pdfBuilding, setPdfBuilding] = useState(false);
@@ -674,19 +675,8 @@ function MonitoringLaporanPage() {
     setLightbox(null);
   }
 
-  // ---------- Util ----------
-  function statusHarian(list: ReportWithTrainer[]) {
-    if (list.every((item) => item.status_laporan === "terverifikasi"))
-      return "Terverifikasi";
-    if (list.some((item) => item.status_laporan === "perlu_revisi"))
-      return "Perlu Revisi";
-    if (list.some((item) => item.status_laporan === "menunggu_verifikasi"))
-      return "Menunggu Verifikasi";
-    return "Terkirim";
-  }
-
   // =============================================================
-  // BUILD HTML PREVIEW
+  // BUILD HTML PDF — Group per Trainer ID
   // =============================================================
 
   async function buildHTML(): Promise<{ html: string; fileName: string } | null> {
@@ -742,7 +732,8 @@ function MonitoringLaporanPage() {
       laporanPeriode.map(async (r) => {
         const fotos = (photosMap.get(r.id) ?? []).filter((p) => p.url);
         const dataUrls: string[] = [];
-        for (const foto of fotos) {
+        // MAX 5 FOTO per kegiatan
+        for (const foto of fotos.slice(0, 5)) {
           if (!foto.url) continue;
           const dataUrl = await urlToDataUrlWithTimeout(foto.url);
           if (dataUrl) dataUrls.push(dataUrl);
@@ -759,88 +750,220 @@ function MonitoringLaporanPage() {
 
     const bulanLabel = namaBulan(bulan);
 
-    // Group by tanggal
-    const byTanggal = new Map<string, ReportWithTrainer[]>();
+    // ========== GROUP BY TRAINER_ID ==========
+    const byTrainer = new Map<string, ReportWithTrainer[]>();
     for (const r of laporanPeriode) {
-      const key = r.tanggal_kegiatan || "tanpa-tanggal";
-      const cur = byTanggal.get(key) ?? [];
+      const key = r.trainer_id || "tanpa-trainer";
+      const cur = byTrainer.get(key) ?? [];
       cur.push(r);
-      byTanggal.set(key, cur);
+      byTrainer.set(key, cur);
     }
 
-    const tanggalList = [...byTanggal.entries()].sort(([a], [b]) =>
-      a.localeCompare(b),
-    );
-
-    // ========== RENDER TABEL (group per tanggal, rowspan) ==========
-    let noUrut = 1;
-    const tbodyHtml = tanggalList
-      .map(([tanggal, list]) => {
-        return list
-          .map((item, idx) => {
-            const fotos = photoDataMap.get(item.id) ?? [];
-            const rowSpan = list.length;
-            const isFirstRow = idx === 0;
-            const currentNo = noUrut++;
-
-            const tanggalCell = isFirstRow
-              ? `<td class="col-tanggal" rowspan="${rowSpan}">${escapeHtml(
-                  formatTanggal(tanggal),
-                )}</td>`
-              : "";
-
-            const materiText = [
-              escapeHtml(item.materi || "—"),
-              item.jenis_kegiatan
-                ? `<div class="materi-jenis">${escapeHtml(item.jenis_kegiatan)}</div>`
-                : "",
-            ].join("");
-
-            const fotoHtml =
-              fotos.length === 0
-                ? `<div class="no-photo">Tidak ada foto</div>`
-                : `<div class="photo-grid">${fotos
-                    .map(
-                      (src) =>
-                        `<img src="${src}" class="photo" alt="Dokumentasi" />`,
-                    )
-                    .join("")}</div>`;
-
-            return `
-              <tr>
-                <td class="col-no">${currentNo}</td>
-                ${tanggalCell}
-                <td class="col-jam">
-                  ${escapeHtml(item.jam_mulai?.slice(0, 5) || "-")} - 
-                  ${escapeHtml(item.jam_selesai?.slice(0, 5) || "-")}
-                </td>
-                <td class="col-materi">${materiText}</td>
-                <td class="col-kelas">${escapeHtml(item.kelas || "-")}</td>
-                <td class="col-lokasi">${escapeHtml(item.lokasi || "-")}</td>
-                <td class="col-hadir">${item.jumlah_hadir ?? 0}</td>
-                <td class="col-pj">${escapeHtml(item.penanggung_jawab || "-")}</td>
-                <td class="col-foto">${fotoHtml}</td>
-              </tr>
-            `;
-          })
-          .join("");
-      })
-      .join("");
-
-    const totalHadirAll = laporanPeriode.reduce(
-      (s, r) => s + Number(r.jumlah_hadir || 0),
-      0,
-    );
-
-    const printed = new Date().toLocaleDateString("id-ID", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
+    // Urutkan trainer berdasarkan nama
+    const trainerSections = [...byTrainer.entries()].sort(([, a], [, b]) => {
+      const nA = a[0]?.trainers?.nama_lengkap || "";
+      const nB = b[0]?.trainers?.nama_lengkap || "";
+      return nA.localeCompare(nB);
     });
 
-    const logoHtml = logoDataUrl
-      ? `<img src="${logoDataUrl}" class="logo" alt="Logo" />`
-      : `<div class="logo-fallback">K3</div>`;
+    const totalTrainer = trainerSections.length;
+
+    // ========== RENDER SECTION PER TRAINER ==========
+    const sections = trainerSections
+      .map(([trainerId, list], trainerIdx) => {
+        // Info trainer (dari record pertama)
+        const firstReport = list[0];
+        const trainerInfo = {
+          nama: firstReport?.trainers?.nama_lengkap || "—",
+          nomorId: firstReport?.trainers?.nomor_id_trainer || "—",
+          jabatan: firstReport?.trainers?.jabatan || "—",
+          departemen: DEPARTEMEN_LABEL,
+        };
+
+        // Group by tanggal (untuk rowspan)
+        const byTanggal = new Map<string, ReportWithTrainer[]>();
+        for (const r of list) {
+          const key = r.tanggal_kegiatan || "tanpa-tanggal";
+          const cur = byTanggal.get(key) ?? [];
+          cur.push(r);
+          byTanggal.set(key, cur);
+        }
+        const tanggalList = [...byTanggal.entries()].sort(([a], [b]) =>
+          a.localeCompare(b),
+        );
+
+        // Bangun row tabel
+        let noUrut = 1;
+        const tbodyHtml = tanggalList
+          .map(([tanggal, tglList]) => {
+            return tglList
+              .map((item, idx) => {
+                const fotos = photoDataMap.get(item.id) ?? [];
+                const rowSpan = tglList.length;
+                const isFirstRow = idx === 0;
+                const currentNo = noUrut++;
+
+                const tanggalCell = isFirstRow
+                  ? `<td class="col-tanggal" rowspan="${rowSpan}">${escapeHtml(
+                      formatTanggal(tanggal),
+                    )}</td>`
+                  : "";
+
+                const materiText = [
+                  escapeHtml(item.materi || "—"),
+                  item.jenis_kegiatan
+                    ? `<div class="materi-jenis">${escapeHtml(
+                        item.jenis_kegiatan,
+                      )}</div>`
+                    : "",
+                  item.keterangan
+                    ? `<div class="materi-desc">${escapeHtml(
+                        item.keterangan,
+                      )}</div>`
+                    : "",
+                ].join("");
+
+                // FOTO GRID — MAX 5, layout 2x3
+                const fotoHtml =
+                  fotos.length === 0
+                    ? `<div class="no-photo">Tidak ada foto</div>`
+                    : `<div class="photo-grid">${fotos
+                        .map(
+                          (src) =>
+                            `<img src="${src}" class="photo" alt="Dokumentasi" />`,
+                        )
+                        .join("")}</div>`;
+
+                return `
+                  <tr>
+                    <td class="col-no">${currentNo}</td>
+                    ${tanggalCell}
+                    <td class="col-jam">
+                      ${escapeHtml(item.jam_mulai?.slice(0, 5) || "-")} - 
+                      ${escapeHtml(item.jam_selesai?.slice(0, 5) || "-")}
+                    </td>
+                    <td class="col-materi">${materiText}</td>
+                    <td class="col-kelas">${escapeHtml(item.kelas || "-")}</td>
+                    <td class="col-lokasi">${escapeHtml(
+                      item.lokasi || "-",
+                    )}</td>
+                    <td class="col-hadir">${item.jumlah_hadir ?? 0}</td>
+                    <td class="col-pj">${escapeHtml(
+                      item.penanggung_jawab || "-",
+                    )}</td>
+                    <td class="col-foto">${fotoHtml}</td>
+                  </tr>
+                `;
+              })
+              .join("");
+          })
+          .join("");
+
+        const totalHadirTrainer = list.reduce(
+          (s, r) => s + Number(r.jumlah_hadir || 0),
+          0,
+        );
+
+        const isFirst = trainerIdx === 0;
+
+        const logoHtml = logoDataUrl
+          ? `<img src="${logoDataUrl}" class="logo" alt="Logo" />`
+          : `<div class="logo-fallback">K3</div>`;
+
+        return `
+          <section class="page ${isFirst ? "" : "page-break"}">
+            <!-- HEADER -->
+            <div class="header">
+              <div class="brand">
+                ${logoHtml}
+                <div>
+                  <div class="brand-title">LAPORAN KEGIATAN TRAINER K3</div>
+                  <div class="brand-sub">PT IWIP</div>
+                </div>
+              </div>
+              <div class="header-right">
+                <div class="lbl">LAPORAN BULANAN</div>
+                <div class="val">${escapeHtml(bulanLabel)}</div>
+              </div>
+            </div>
+            <div class="divider"></div>
+
+            <!-- KARTU IDENTITAS TRAINER -->
+            <div class="trainer-card">
+              <div class="trainer-cell">
+                <div class="trainer-label">NAMA TRAINER</div>
+                <div class="trainer-value">${escapeHtml(trainerInfo.nama)}</div>
+              </div>
+              <div class="trainer-cell">
+                <div class="trainer-label">NO. ID TRAINER</div>
+                <div class="trainer-value">${escapeHtml(trainerInfo.nomorId)}</div>
+              </div>
+              <div class="trainer-cell">
+                <div class="trainer-label">JABATAN</div>
+                <div class="trainer-value">${escapeHtml(trainerInfo.jabatan)}</div>
+              </div>
+              <div class="trainer-cell">
+                <div class="trainer-label">DEPARTEMEN</div>
+                <div class="trainer-value">${escapeHtml(
+                  trainerInfo.departemen,
+                )}</div>
+              </div>
+            </div>
+
+            <!-- TABEL KEGIATAN -->
+            <table>
+              <colgroup>
+                <col style="width:4%">
+                <col style="width:8%">
+                <col style="width:8%">
+                <col style="width:22%">
+                <col style="width:5%">
+                <col style="width:9%">
+                <col style="width:5%">
+                <col style="width:9%">
+                <col style="width:30%">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>No</th>
+                  <th>Tanggal</th>
+                  <th>Jam</th>
+                  <th>Materi / Kegiatan &amp; Deskripsi</th>
+                  <th>Kelas</th>
+                  <th>Lokasi</th>
+                  <th>Hadir</th>
+                  <th>Penanggung Jawab</th>
+                  <th>Dokumentasi</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${tbodyHtml}
+              </tbody>
+            </table>
+
+            <!-- SUMMARY PER TRAINER -->
+            <div class="summary">
+              Total kegiatan: ${list.length} &nbsp;•&nbsp; 
+              Total peserta hadir: ${totalHadirTrainer.toLocaleString("id-ID")} orang
+            </div>
+
+            <!-- FOOTER -->
+            <div class="footer">
+              <span>Trainer ${trainerIdx + 1} dari ${totalTrainer} &nbsp;|&nbsp; Periode: <strong>${escapeHtml(
+                bulanLabel,
+              )}</strong></span>
+              <span>Dicetak: <strong>${escapeHtml(
+                new Date().toLocaleDateString("id-ID", {
+                  day: "2-digit",
+                  month: "long",
+                  year: "numeric",
+                }),
+              )}</strong></span>
+            </div>
+          </section>
+        `;
+      })
+      .join("");
 
     // HTML lengkap
     const html = `
@@ -855,8 +978,15 @@ function MonitoringLaporanPage() {
       font-family: Arial, Helvetica, sans-serif;
       color: #124a82;
       background: #fff;
-      padding: 12mm 8mm;
       font-size: 9px;
+    }
+
+    .page {
+      padding: 12mm 8mm;
+      min-height: 100vh;
+    }
+    .page-break {
+      page-break-before: always;
     }
 
     /* ============ HEADER ============ */
@@ -866,97 +996,29 @@ function MonitoringLaporanPage() {
       align-items: flex-start;
       gap: 20px;
     }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .logo {
-      width: 56px;
-      height: 46px;
-      object-fit: contain;
-    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .logo { width: 56px; height: 46px; object-fit: contain; }
     .logo-fallback {
-      width: 56px;
-      height: 46px;
-      display: grid;
-      place-items: center;
-      border-radius: 8px;
-      background: #0b5aa5;
-      color: #fff;
-      font-size: 18px;
-      font-weight: 900;
+      width: 56px; height: 46px; display: grid; place-items: center;
+      border-radius: 8px; background: #0b5aa5; color: #fff;
+      font-size: 18px; font-weight: 900;
     }
     .brand-title {
-      font-size: 19px;
-      font-weight: 900;
-      color: #124a82;
-      line-height: 1.1;
-      letter-spacing: 0.2px;
+      font-size: 19px; font-weight: 900; color: #124a82;
+      line-height: 1.1; letter-spacing: 0.2px;
     }
     .brand-sub {
-      font-size: 12px;
-      font-weight: 800;
-      color: #124a82;
-      margin-top: 3px;
+      font-size: 12px; font-weight: 800; color: #124a82; margin-top: 3px;
     }
-    .header-right {
-      text-align: right;
-    }
-    .header-right .lbl {
-      font-size: 15px;
-      font-weight: 900;
-      color: #124a82;
-    }
+    .header-right { text-align: right; }
+    .header-right .lbl { font-size: 15px; font-weight: 900; color: #124a82; }
     .header-right .val {
-      font-size: 11px;
-      font-weight: 700;
-      color: #124a82;
-      margin-top: 4px;
+      font-size: 11px; font-weight: 700; color: #124a82; margin-top: 4px;
     }
 
-    /* ============ GARIS PEMISAH ============ */
+    /* ============ DIVIDER ============ */
     .divider {
-      height: 3px;
-      background: #0b5aa5;
-      margin: 8px 0 12px;
-      border-radius: 2px;
-    }
-
-    /* ============ KARTU TANGGAL ============ */
-    .date-card {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 12px;
-      border: 1.5px solid #b8d9f7;
-      border-radius: 6px;
-      background: #f5faff;
-      margin-bottom: 8px;
-    }
-    .date-icon {
-      width: 24px;
-      height: 24px;
-      border-radius: 4px;
-      background: #0b5aa5;
-      color: #fff;
-      display: grid;
-      place-items: center;
-      font-size: 13px;
-      flex-shrink: 0;
-    }
-    .date-label {
-      font-size: 10px;
-      font-weight: 700;
-      color: #3978ab;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-right: 6px;
-    }
-    .date-value {
-      font-size: 12px;
-      font-weight: 900;
-      color: #124a82;
+      height: 3px; background: #0b5aa5; margin: 8px 0 12px; border-radius: 2px;
     }
 
     /* ============ KARTU TRAINER ============ */
@@ -970,92 +1032,80 @@ function MonitoringLaporanPage() {
       overflow: hidden;
     }
     .trainer-cell {
-      padding: 7px 10px;
+      padding: 8px 10px;
       border-right: 1.5px solid #d4e4f2;
     }
-    .trainer-cell:last-child {
-      border-right: none;
-    }
+    .trainer-cell:last-child { border-right: none; }
     .trainer-label {
-      font-size: 7px;
-      font-weight: 700;
-      color: #3978ab;
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
-      margin-bottom: 4px;
+      font-size: 7px; font-weight: 700; color: #3978ab;
+      text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;
     }
     .trainer-value {
-      font-size: 10px;
-      font-weight: 900;
-      color: #124a82;
-      line-height: 1.2;
+      font-size: 11px; font-weight: 900; color: #124a82; line-height: 1.2;
     }
 
     /* ============ TABEL ============ */
     table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
+      width: 100%; border-collapse: collapse; table-layout: fixed;
       margin-bottom: 8px;
     }
-    thead {
-      background: #0b5aa5;
-    }
+    thead { background: #0b5aa5; }
     th {
-      color: #fff;
-      font-size: 8.5px;
-      font-weight: 800;
-      padding: 7px 5px;
-      border: 1.5px solid #0b5aa5;
-      text-align: center;
-      vertical-align: middle;
+      color: #fff; font-size: 8.5px; font-weight: 800;
+      padding: 8px 5px; border: 1.5px solid #0b5aa5;
+      text-align: center; vertical-align: middle;
     }
     td {
-      border: 1px solid #b9d8f2;
-      padding: 5px 6px;
-      color: #124a82;
-      font-size: 8px;
-      vertical-align: middle;
-      overflow-wrap: anywhere;
+      border: 1px solid #b9d8f2; padding: 6px;
+      color: #124a82; font-size: 8px;
+      vertical-align: middle; overflow-wrap: anywhere;
       word-break: break-word;
     }
 
-    .col-no { text-align: center; font-weight: 800; width: 4%; }
-    .col-tanggal { text-align: center; width: 8%; font-weight: 700; vertical-align: middle; }
-    .col-jam { text-align: center; width: 8%; white-space: nowrap; }
-    .col-materi { width: 22%; }
-    .col-kelas { text-align: center; width: 6%; }
-    .col-lokasi { text-align: center; width: 10%; }
-    .col-hadir { text-align: center; width: 5%; font-weight: 700; }
-    .col-pj { text-align: center; width: 9%; }
-    .col-foto { text-align: center; width: 28%; padding: 4px; }
+    .col-no { text-align: center; font-weight: 800; }
+    .col-tanggal {
+      text-align: center; font-weight: 700;
+      vertical-align: middle; background: #f8fbff;
+    }
+    .col-jam { text-align: center; white-space: nowrap; }
+    .col-materi { font-size: 8.5px; }
+    .col-kelas { text-align: center; }
+    .col-lokasi { text-align: center; }
+    .col-hadir { text-align: center; font-weight: 800; font-size: 10px; }
+    .col-pj { text-align: center; font-size: 7.5px; }
+    .col-foto { text-align: center; padding: 4px; }
 
     .materi-jenis {
-      font-size: 7px;
-      color: #63809a;
-      margin-top: 3px;
-      font-style: italic;
+      font-size: 7px; color: #63809a; margin-top: 3px; font-style: italic;
+    }
+    .materi-desc {
+      font-size: 7px; color: #4a5f75; margin-top: 3px; font-style: italic;
     }
 
-    /* ============ FOTO GRID ============ */
+    /* ============ FOTO GRID — MAX 5, GEDE ============ */
     .photo-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 3px;
+      gap: 4px;
+      width: 100%;
     }
     .photo {
       width: 100%;
-      height: 62px;
+      height: 95px;
       object-fit: cover;
       border-radius: 3px;
       border: 1px solid #b9d8f2;
       background: #eef6fc;
       display: block;
     }
+    /* Foto ke-5 (index 4) tampil lebih besar full width */
+    .photo-grid .photo:only-child,
+    .photo-grid .photo:nth-child(5):last-child {
+      grid-column: span 2;
+      height: 130px;
+    }
     .no-photo {
-      padding: 14px 4px;
-      color: #8ba0b3;
-      font-size: 8px;
+      padding: 20px 4px; color: #8ba0b3; font-size: 8px;
     }
 
     /* ============ SUMMARY ============ */
@@ -1080,9 +1130,7 @@ function MonitoringLaporanPage() {
       font-size: 7px;
       color: #6b8297;
     }
-    .footer strong {
-      color: #124a82;
-    }
+    .footer strong { color: #124a82; }
 
     /* ============ PRINT ============ */
     @page {
@@ -1090,71 +1138,16 @@ function MonitoringLaporanPage() {
       margin: 8mm;
     }
     @media print {
-      body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .page { padding: 0; min-height: auto; }
+      .page-break { page-break-before: always; }
       thead { display: table-header-group; }
       tr { page-break-inside: avoid; }
     }
   </style>
 </head>
 <body>
-  <!-- HEADER -->
-  <div class="header">
-    <div class="brand">
-      ${logoHtml}
-      <div>
-        <div class="brand-title">LAPORAN KEGIATAN TRAINER K3</div>
-        <div class="brand-sub">PT IWIP</div>
-      </div>
-    </div>
-    <div class="header-right">
-      <div class="lbl">LAPORAN BULANAN</div>
-      <div class="val">${escapeHtml(bulanLabel)}</div>
-    </div>
-  </div>
-  <div class="divider"></div>
-
-  <!-- TABEL UTAMA -->
-  <table>
-    <colgroup>
-      <col style="width:4%">
-      <col style="width:8%">
-      <col style="width:8%">
-      <col style="width:22%">
-      <col style="width:6%">
-      <col style="width:10%">
-      <col style="width:5%">
-      <col style="width:9%">
-      <col style="width:28%">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>No</th>
-        <th>Tanggal</th>
-        <th>Jam</th>
-        <th>Materi / Kegiatan &amp; Deskripsi</th>
-        <th>Kelas</th>
-        <th>Lokasi</th>
-        <th>Hadir</th>
-        <th>Penanggung Jawab</th>
-        <th>Dokumentasi</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${tbodyHtml}
-    </tbody>
-  </table>
-
-  <!-- SUMMARY -->
-  <div class="summary">
-    Total kegiatan: ${laporanPeriode.length} &nbsp;•&nbsp; 
-    Total peserta hadir: ${totalHadirAll.toLocaleString("id-ID")} orang
-  </div>
-
-  <!-- FOOTER -->
-  <div class="footer">
-    <span>Dicetak pada: <strong>${escapeHtml(printed)}</strong> &nbsp;|&nbsp; PT IWIP</span>
-    <span>Laporan Bulanan K3 — <strong>${escapeHtml(bulanLabel)}</strong></span>
-  </div>
+  ${sections}
 </body>
 </html>
     `;
@@ -1197,7 +1190,6 @@ function MonitoringLaporanPage() {
     win.document.write(pdfHtml);
     win.document.close();
 
-    // Tunggu semua gambar ke-load
     const images = Array.from(win.document.images);
     Promise.all(
       images.map(
@@ -1840,6 +1832,7 @@ function MonitoringLaporanPage() {
                   label="Jabatan"
                   value={preview.trainers?.jabatan || "—"}
                 />
+                <DetailItem label="Departemen" value={DEPARTEMEN_LABEL} />
                 <DetailItem
                   label="Tanggal"
                   value={formatTanggalPanjang(preview.tanggal_kegiatan)}
