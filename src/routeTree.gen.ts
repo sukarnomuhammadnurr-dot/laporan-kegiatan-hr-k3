@@ -17,10 +17,12 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedBuatLaporanRouteImport } from './routes/_authenticated/buat-laporan'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedLaporanRouteImport } from './routes/_authenticated/laporan'
+import { Route as AuthenticatedMasterJadwalRouteImport } from './routes/_authenticated/master-jadwal'
 import { Route as AuthenticatedMasterMateriRouteImport } from './routes/_authenticated/master-materi'
 import { Route as AuthenticatedMasterTrainerRouteImport } from './routes/_authenticated/master-trainer'
 import { Route as AuthenticatedMonitoringLaporanRouteImport } from './routes/_authenticated/monitoring-laporan'
 import { Route as AuthenticatedPengaturanSistemRouteImport } from './routes/_authenticated/pengaturan-sistem'
+import { Route as AuthenticatedPesanWhatsappRouteImport } from './routes/_authenticated/pesan-whatsapp'
 import { Route as AuthenticatedUbahPasswordRouteImport } from './routes/_authenticated/ubah-password'
 
 const IndexRoute = IndexRouteImport.update({
@@ -63,6 +65,12 @@ const AuthenticatedLaporanRoute = AuthenticatedLaporanRouteImport.update({
   path: '/laporan',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedMasterJadwalRoute =
+  AuthenticatedMasterJadwalRouteImport.update({
+    id: '/master-jadwal',
+    path: '/master-jadwal',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedMasterMateriRoute =
   AuthenticatedMasterMateriRouteImport.update({
     id: '/master-materi',
@@ -87,6 +95,12 @@ const AuthenticatedPengaturanSistemRoute =
     path: '/pengaturan-sistem',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPesanWhatsappRoute =
+  AuthenticatedPesanWhatsappRouteImport.update({
+    id: '/pesan-whatsapp',
+    path: '/pesan-whatsapp',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedUbahPasswordRoute =
   AuthenticatedUbahPasswordRouteImport.update({
     id: '/ubah-password',
@@ -102,10 +116,12 @@ export interface FileRoutesByFullPath {
   '/buat-laporan': typeof AuthenticatedBuatLaporanRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/laporan': typeof AuthenticatedLaporanRoute
+  '/master-jadwal': typeof AuthenticatedMasterJadwalRoute
   '/master-materi': typeof AuthenticatedMasterMateriRoute
   '/master-trainer': typeof AuthenticatedMasterTrainerRoute
   '/monitoring-laporan': typeof AuthenticatedMonitoringLaporanRoute
   '/pengaturan-sistem': typeof AuthenticatedPengaturanSistemRoute
+  '/pesan-whatsapp': typeof AuthenticatedPesanWhatsappRoute
   '/ubah-password': typeof AuthenticatedUbahPasswordRoute
 }
 export interface FileRoutesByTo {
@@ -116,10 +132,12 @@ export interface FileRoutesByTo {
   '/buat-laporan': typeof AuthenticatedBuatLaporanRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/laporan': typeof AuthenticatedLaporanRoute
+  '/master-jadwal': typeof AuthenticatedMasterJadwalRoute
   '/master-materi': typeof AuthenticatedMasterMateriRoute
   '/master-trainer': typeof AuthenticatedMasterTrainerRoute
   '/monitoring-laporan': typeof AuthenticatedMonitoringLaporanRoute
   '/pengaturan-sistem': typeof AuthenticatedPengaturanSistemRoute
+  '/pesan-whatsapp': typeof AuthenticatedPesanWhatsappRoute
   '/ubah-password': typeof AuthenticatedUbahPasswordRoute
 }
 export interface FileRoutesById {
@@ -132,10 +150,12 @@ export interface FileRoutesById {
   '/_authenticated/buat-laporan': typeof AuthenticatedBuatLaporanRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/laporan': typeof AuthenticatedLaporanRoute
+  '/_authenticated/master-jadwal': typeof AuthenticatedMasterJadwalRoute
   '/_authenticated/master-materi': typeof AuthenticatedMasterMateriRoute
   '/_authenticated/master-trainer': typeof AuthenticatedMasterTrainerRoute
   '/_authenticated/monitoring-laporan': typeof AuthenticatedMonitoringLaporanRoute
   '/_authenticated/pengaturan-sistem': typeof AuthenticatedPengaturanSistemRoute
+  '/_authenticated/pesan-whatsapp': typeof AuthenticatedPesanWhatsappRoute
   '/_authenticated/ubah-password': typeof AuthenticatedUbahPasswordRoute
 }
 export interface FileRouteTypes {
@@ -148,10 +168,12 @@ export interface FileRouteTypes {
     | '/buat-laporan'
     | '/dashboard'
     | '/laporan'
+    | '/master-jadwal'
     | '/master-materi'
     | '/master-trainer'
     | '/monitoring-laporan'
     | '/pengaturan-sistem'
+    | '/pesan-whatsapp'
     | '/ubah-password'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -162,10 +184,12 @@ export interface FileRouteTypes {
     | '/buat-laporan'
     | '/dashboard'
     | '/laporan'
+    | '/master-jadwal'
     | '/master-materi'
     | '/master-trainer'
     | '/monitoring-laporan'
     | '/pengaturan-sistem'
+    | '/pesan-whatsapp'
     | '/ubah-password'
   id:
     | '__root__'
@@ -177,10 +201,12 @@ export interface FileRouteTypes {
     | '/_authenticated/buat-laporan'
     | '/_authenticated/dashboard'
     | '/_authenticated/laporan'
+    | '/_authenticated/master-jadwal'
     | '/_authenticated/master-materi'
     | '/_authenticated/master-trainer'
     | '/_authenticated/monitoring-laporan'
     | '/_authenticated/pengaturan-sistem'
+    | '/_authenticated/pesan-whatsapp'
     | '/_authenticated/ubah-password'
   fileRoutesById: FileRoutesById
 }
@@ -250,6 +276,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLaporanRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/master-jadwal': {
+      id: '/_authenticated/master-jadwal'
+      path: '/master-jadwal'
+      fullPath: '/master-jadwal'
+      preLoaderRoute: typeof AuthenticatedMasterJadwalRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/master-materi': {
       id: '/_authenticated/master-materi'
       path: '/master-materi'
@@ -278,6 +311,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPengaturanSistemRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/pesan-whatsapp': {
+      id: '/_authenticated/pesan-whatsapp'
+      path: '/pesan-whatsapp'
+      fullPath: '/pesan-whatsapp'
+      preLoaderRoute: typeof AuthenticatedPesanWhatsappRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/ubah-password': {
       id: '/_authenticated/ubah-password'
       path: '/ubah-password'
@@ -292,10 +332,12 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedBuatLaporanRoute: typeof AuthenticatedBuatLaporanRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedLaporanRoute: typeof AuthenticatedLaporanRoute
+  AuthenticatedMasterJadwalRoute: typeof AuthenticatedMasterJadwalRoute
   AuthenticatedMasterMateriRoute: typeof AuthenticatedMasterMateriRoute
   AuthenticatedMasterTrainerRoute: typeof AuthenticatedMasterTrainerRoute
   AuthenticatedMonitoringLaporanRoute: typeof AuthenticatedMonitoringLaporanRoute
   AuthenticatedPengaturanSistemRoute: typeof AuthenticatedPengaturanSistemRoute
+  AuthenticatedPesanWhatsappRoute: typeof AuthenticatedPesanWhatsappRoute
   AuthenticatedUbahPasswordRoute: typeof AuthenticatedUbahPasswordRoute
 }
 
@@ -303,10 +345,12 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBuatLaporanRoute: AuthenticatedBuatLaporanRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedLaporanRoute: AuthenticatedLaporanRoute,
+  AuthenticatedMasterJadwalRoute: AuthenticatedMasterJadwalRoute,
   AuthenticatedMasterMateriRoute: AuthenticatedMasterMateriRoute,
   AuthenticatedMasterTrainerRoute: AuthenticatedMasterTrainerRoute,
   AuthenticatedMonitoringLaporanRoute: AuthenticatedMonitoringLaporanRoute,
   AuthenticatedPengaturanSistemRoute: AuthenticatedPengaturanSistemRoute,
+  AuthenticatedPesanWhatsappRoute: AuthenticatedPesanWhatsappRoute,
   AuthenticatedUbahPasswordRoute: AuthenticatedUbahPasswordRoute,
 }
 
