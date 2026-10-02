@@ -56,7 +56,7 @@ export const Route = createFileRoute("/_authenticated/master-trainer")({
   component: MasterTrainer,
 });
 
-const ROLE_LABEL: Record<AppRole, string> = {
+const ROLE_LABEL: Record<string, string> = {
   trainer: "Trainer",
   supervisor: "Supervisor",
   superintendent: "Superintendent",
