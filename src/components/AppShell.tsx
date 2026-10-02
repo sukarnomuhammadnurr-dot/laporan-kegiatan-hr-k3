@@ -48,6 +48,7 @@ type NavItem = {
     | "/master-trainer"
     | "/master-materi"
     | "/master-jadwal"
+    | "/pesan-whatsapp"
     | "/ubah-password"
     | "/pengaturan-sistem";
   label: string;
