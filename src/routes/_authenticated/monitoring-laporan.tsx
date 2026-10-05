@@ -847,7 +847,9 @@ function MonitoringLaporanPage() {
                     <td class="col-lokasi">${escapeHtml(
                       item.lokasi || "-",
                     )}</td>
-                    <td class="col-hadir">${item.jumlah_hadir ?? 0}</td>
+                    ${idx === 0
+  ? `<td class="col-hadir" rowspan="${rowSpan}">${item.jumlah_hadir ?? 0}</td>`
+  : ""}
                    <td class="col-pj">Muhammad Halid (Superintendent)</td>
                     <td class="col-foto">${fotoHtml}</td>
                   </tr>
