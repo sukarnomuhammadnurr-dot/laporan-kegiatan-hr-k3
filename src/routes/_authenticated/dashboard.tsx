@@ -231,10 +231,10 @@ function TrainerProfileCard({
       const path = await uploadGambar(selectedFile, "trainer");
 
       // Update DB
-      const { error } = await supabase
-        .from("trainers")
-        .update({ foto_profil: path })
-        .eq("id", trainer.id);
+     const { error } = await supabase
+  .from("trainers")
+  .update({ foto_profil: path })
+  .eq("user_id", user?.id);  // pakai user_id dari auth session
 
       if (error) throw error;
 
