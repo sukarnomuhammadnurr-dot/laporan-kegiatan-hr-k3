@@ -1086,9 +1086,16 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
 
     .col-no { text-align: center; font-weight: 800; }
     .col-tanggal {
-      text-align: center; font-weight: 700;
-      vertical-align: middle; background: #f8fbff;
-    }
+  text-align: center; font-weight: 700;
+  vertical-align: middle; background: #f8fbff;
+}
+.col-tanggal .durasi-hari {
+  display: block;
+  margin-top: 3px;
+  font-size: 7px;
+  font-weight: 600;
+  color: #64748b;
+}
     .col-jam { text-align: center; white-space: nowrap; }
     .col-materi { font-size: 8.5px; }
     .col-kelas { text-align: center; }
