@@ -807,6 +807,16 @@ function MonitoringLaporanPage() {
 const tglSelesai = (item as any).tanggal_selesai as string | null | undefined;
 const isRange = Boolean(tglSelesai && tglSelesai !== item.tanggal_kegiatan);
 
+// DEBUG — hapus setelah masalah selesai
+console.log("[PDF DEBUG]", {
+  id: item.id,
+  materi: item.materi,
+  tanggal_kegiatan: item.tanggal_kegiatan,
+  tanggal_selesai: tglSelesai,
+  isRange,
+  raw_item: item,
+});
+
 // Hitung durasi hari
 let durasiHari = 0;
 if (isRange && item.tanggal_kegiatan && tglSelesai) {
