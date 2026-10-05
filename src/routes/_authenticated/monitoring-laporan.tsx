@@ -803,11 +803,25 @@ function MonitoringLaporanPage() {
                 const isFirstRow = idx === 0;
                 const currentNo = noUrut++;
 
-                const tanggalCell = isFirstRow
-                  ? `<td class="col-tanggal" rowspan="${rowSpan}">${escapeHtml(
-                      formatTanggal(tanggal),
-                    )}</td>`
-                  : "";
+                // Cek apakah cuti/izin/sakit (ada tanggal_selesai)
+const tglSelesai = (item as any).tanggal_selesai as string | null | undefined;
+const isRange = Boolean(tglSelesai && tglSelesai !== item.tanggal_kegiatan);
+
+// Hitung durasi hari
+let durasiHari = 0;
+if (isRange && item.tanggal_kegiatan && tglSelesai) {
+  const s = new Date(`${item.tanggal_kegiatan}T00:00:00`).getTime();
+  const e = new Date(`${tglSelesai}T00:00:00`).getTime();
+  durasiHari = Math.floor((e - s) / (1000 * 60 * 60 * 24)) + 1;
+}
+
+const tanggalText = isRange
+  ? `${formatTanggal(item.tanggal_kegiatan)} - ${formatTanggal(tglSelesai!)}<br><span class="durasi-hari">(${durasiHari} hari)</span>`
+  : formatTanggal(item.tanggal_kegiatan);
+
+const tanggalCell = isFirstRow
+  ? `<td class="col-tanggal" rowspan="${rowSpan}">${tanggalText}</td>`
+  : "";
 
                 const materiText = [
                   escapeHtml(item.materi || "—"),
