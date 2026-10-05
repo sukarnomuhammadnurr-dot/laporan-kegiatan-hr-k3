@@ -234,7 +234,7 @@ function TrainerProfileCard({
      const { error } = await supabase
   .from("trainers")
   .update({ foto_profil: path })
-  .eq("user_id", user?.id);  // pakai user_id dari auth session
+  .eq("id", trainer.id);
 
       if (error) throw error;
 
