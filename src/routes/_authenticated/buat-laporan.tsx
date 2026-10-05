@@ -46,7 +46,7 @@ type FormState = {
   jam_mulai: string;
   jam_selesai: string;
   jenis_kegiatan: string;
-  jenis_kegiatan_kategori: string; // "CUTI" | "IZIN" | "SAKIT" | "LAINNYA" | ""
+  jenis_kegiatan_kategori: string;
   keterangan_cuti: string;
   materi: string;
   material_id: string;
@@ -69,6 +69,7 @@ type ExistingPhoto = {
 };
 
 const MAX_PHOTOS = 10;
+const SEPARATOR_KETERANGAN = " | ";
 
 function hariIni() {
   return new Date().toISOString().slice(0, 10);
@@ -95,17 +96,11 @@ const FORM_AWAL: FormState = {
   keterangan: "",
 };
 
-// =========================================================
-// OPSI KHUSUS CUTI / IZIN / SAKIT
-// =========================================================
 const OPSI_CUTI = ["Cuti Tahunan", "Cuti Roster", "Cuti Public Holiday"];
 const OPSI_IZIN = ["Izin Resmi", "Izin Tidak Resmi"];
 const OPSI_SAKIT = ["Sakit"];
-
-// Semua opsi yang bikin field tanggal selesai muncul
 const SEMUA_OPSI_KHUSUS = [...OPSI_CUTI, ...OPSI_IZIN, ...OPSI_SAKIT];
 
-// Cek apakah jenis kegiatan termasuk cuti/izin/sakit
 function isCutiIzinSakit(value: string): boolean {
   return SEMUA_OPSI_KHUSUS.includes(value);
 }
@@ -122,10 +117,48 @@ function formatTanggalIndonesia(value: string) {
 
 function hitungHari(start: string, end: string) {
   if (!start || !end) return 0;
-  const s = new Date(`${start}T00:00:00`).getTime();
-  const e = new Date(`${end}T00:00:00`).getTime();
+  const [sy, sm, sd] = start.split("-").map(Number);
+  const [ey, em, ed] = end.split("-").map(Number);
+  if ([sy, sm, sd, ey, em, ed].some((n) => Number.isNaN(n))) return 0;
+  const s = Date.UTC(sy!, sm! - 1, sd!);
+  const e = Date.UTC(ey!, em! - 1, ed!);
   if (e < s) return 0;
   return Math.floor((e - s) / (1000 * 60 * 60 * 24)) + 1;
+}
+
+/**
+ * Pecah keterangan gabungan jadi keterangan_cuti + keterangan.
+ * Format DB: "keterangan_cuti | keterangan_tambahan"
+ * Kalau gak ada separator, anggap semua isinya keterangan_cuti.
+ */
+function pecahKeterangan(full: string): {
+  keterangan_cuti: string;
+  keterangan: string;
+} {
+  if (!full) return { keterangan_cuti: "", keterangan: "" };
+
+  const idx = full.indexOf(SEPARATOR_KETERANGAN);
+  if (idx === -1) {
+    return { keterangan_cuti: full, keterangan: "" };
+  }
+
+  return {
+    keterangan_cuti: full.slice(0, idx).trim(),
+    keterangan: full.slice(idx + SEPARATOR_KETERANGAN.length).trim(),
+  };
+}
+
+/**
+ * Gabung keterangan_cuti + keterangan jadi 1 string.
+ * Kalau salah satu kosong, hasilnya yang ada aja.
+ */
+function gabungKeterangan(
+  keteranganCuti: string,
+  keterangan: string,
+): string {
+  return [keteranganCuti.trim(), keterangan.trim()]
+    .filter(Boolean)
+    .join(SEPARATOR_KETERANGAN);
 }
 
 function BuatLaporan() {
@@ -229,18 +262,21 @@ function BuatLaporan() {
         if (cancelled) return;
 
         const jenis = report.jenis_kegiatan ?? "";
+        const cuti = isCutiIzinSakit(jenis);
+
+        // FIX: pisah keterangan yang udah digabung
+        const fullKeterangan = report.keterangan ?? "";
+        const { keterangan_cuti, keterangan } = pecahKeterangan(fullKeterangan);
 
         setForm({
           tanggal_kegiatan: report.tanggal_kegiatan ?? hariIni(),
-          tanggal_selesai:
-            (report as any).tanggal_selesai ?? "",
+          tanggal_selesai: (report as any).tanggal_selesai ?? "",
           jam_mulai: report.jam_mulai?.slice(0, 5) ?? "",
           jam_selesai: report.jam_selesai?.slice(0, 5) ?? "",
           jenis_kegiatan: jenis,
-          jenis_kegiatan_kategori: isCutiIzinSakit(jenis)
-            ? "KHUSUS"
-            : "LAINNYA",
-          keterangan_cuti: report.keterangan ?? "",
+          jenis_kegiatan_kategori: cuti ? "KHUSUS" : "LAINNYA",
+          // Kalau cuti, isi keterangan_cuti dari data, kalau bukan cuti isi keterangan umum
+          keterangan_cuti: cuti ? keterangan_cuti : "",
           materi: report.materi ?? "",
           material_id: report.material_id ?? "",
           schedule_id: report.schedule_id ?? "",
@@ -251,14 +287,13 @@ function BuatLaporan() {
           jumlah_hadir: report.jumlah_hadir ?? 0,
           jumlah_tidak_hadir: report.jumlah_tidak_hadir ?? 0,
           jumlah_tambahan: report.jumlah_tambahan ?? 0,
-          keterangan: report.keterangan ?? "",
+          // Kalau cuti, sisa keterangan jadi keterangan umum; kalau bukan, semua jadi keterangan umum
+          keterangan: cuti ? keterangan : fullKeterangan,
         });
 
         setRevisionNote(report.catatan_revisi ?? "");
 
-        if (
-          report.penanggung_jawab === "Muhammad Halid (Superintendent)"
-        ) {
+        if (report.penanggung_jawab === "Muhammad Halid (Superintendent)") {
           setPenanggungJawabOption("Muhammad Halid (Superintendent)");
         } else if (report.penanggung_jawab) {
           setPenanggungJawabOption("Lainnya");
@@ -377,7 +412,6 @@ function BuatLaporan() {
       return "Tanggal kegiatan wajib diisi.";
     }
 
-    // Validasi khusus cuti/izin/sakit
     if (isCutiIzinSakit(form.jenis_kegiatan)) {
       if (!form.tanggal_selesai) {
         return "Tanggal selesai wajib diisi untuk Cuti/Izin/Sakit.";
@@ -447,15 +481,11 @@ function BuatLaporan() {
 
       const isCuti = isCutiIzinSakit(form.jenis_kegiatan);
 
-      // Keterangan gabung: keterangan_cuti + keterangan
-      const keteranganFinal = [
-        isCuti ? form.keterangan_cuti.trim() : "",
-        form.keterangan.trim(),
-      ]
-        .filter(Boolean)
-        .join(" | ");
+      // FIX: pakai fungsi gabung biar konsisten
+      const keteranganFinal = isCuti
+        ? gabungKeterangan(form.keterangan_cuti, form.keterangan)
+        : form.keterangan.trim();
 
-      // Payload umum
       const payloadBase = {
         schedule_id: form.schedule_id || null,
         material_id: form.material_id || null,
@@ -479,9 +509,6 @@ function BuatLaporan() {
         updated_at: new Date().toISOString(),
       };
 
-      // ============================
-      // MODE EDIT / KIRIM ULANG
-      // ============================
       if (editId) {
         const { data: existingReport, error: existingError } = await supabase
           .from("reports")
@@ -517,7 +544,6 @@ function BuatLaporan() {
 
         if (updateError) throw updateError;
 
-        // Upload foto baru
         if (fotoFiles.length > 0) {
           for (const file of fotoFiles) {
             const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -560,9 +586,6 @@ function BuatLaporan() {
         return { mode: "edit" as const, id: editId };
       }
 
-      // ============================
-      // MODE LAPORAN BARU
-      // ============================
       const payload = {
         trainer_id: trainer.id,
         ...payloadBase,
@@ -715,6 +738,11 @@ function BuatLaporan() {
       ? hitungHari(form.tanggal_kegiatan, form.tanggal_selesai)
       : 0;
 
+    // FIX: tampilkan keterangan tanpa duplikat
+    const keteranganTampil = isCuti
+      ? gabungKeterangan(form.keterangan_cuti, form.keterangan)
+      : form.keterangan;
+
     return (
       <AppShell
         title={isEditMode ? "Preview Kirim Ulang" : "Preview Laporan"}
@@ -837,15 +865,13 @@ function BuatLaporan() {
             </div>
           )}
 
-          {(form.keterangan_cuti || form.keterangan) && (
+          {keteranganTampil && (
             <div className="mt-4 rounded-xl border border-border/70 bg-card/40 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Keterangan
               </p>
               <p className="mt-2 whitespace-pre-wrap text-sm">
-                {[form.keterangan_cuti, form.keterangan]
-                  .filter(Boolean)
-                  .join(" | ") || "-"}
+                {keteranganTampil}
               </p>
             </div>
           )}
@@ -989,7 +1015,6 @@ function BuatLaporan() {
         </div>
 
         <div className="space-y-6">
-          {/* JENIS KEGIATAN DULU — biar field lain bisa nyesuain */}
           <section>
             <h2 className="text-sm font-semibold">Jenis Kegiatan</h2>
 
@@ -1057,7 +1082,6 @@ function BuatLaporan() {
             </div>
           </section>
 
-          {/* WAKTU */}
           <section>
             <h2 className="text-sm font-semibold">
               {isCuti ? "Rentang Tanggal Cuti / Izin / Sakit" : "Waktu Kegiatan"}
@@ -1138,7 +1162,6 @@ function BuatLaporan() {
             )}
           </section>
 
-          {/* KEGIATAN (cuma muncul kalau bukan cuti) */}
           {!isCuti && (
             <section>
               <h2 className="text-sm font-semibold">Detail Kegiatan</h2>
@@ -1231,7 +1254,6 @@ function BuatLaporan() {
             </section>
           )}
 
-          {/* Kalau cuti, materi wajib diisi keterangan */}
           {isCuti && (
             <section>
               <h2 className="text-sm font-semibold">
@@ -1255,7 +1277,6 @@ function BuatLaporan() {
                 </p>
               </div>
 
-              {/* Materi dipakai untuk label cuti */}
               <div className="mt-4 space-y-2">
                 <Label htmlFor="materi">
                   Materi / kegiatan *
@@ -1270,7 +1291,6 @@ function BuatLaporan() {
             </section>
           )}
 
-          {/* PENANGGUNG JAWAB */}
           <section>
             <h2 className="text-sm font-semibold">Penanggung Jawab</h2>
             <div className="mt-3 space-y-2">
@@ -1313,7 +1333,6 @@ function BuatLaporan() {
             )}
           </section>
 
-          {/* PESERTA — cuma kalau bukan cuti */}
           {!isCuti && (
             <section>
               <h2 className="text-sm font-semibold">Jumlah Peserta</h2>
@@ -1354,7 +1373,6 @@ function BuatLaporan() {
             </section>
           )}
 
-          {/* KETERANGAN TAMBAHAN */}
           <section>
             <h2 className="text-sm font-semibold">Keterangan Tambahan</h2>
             <div className="mt-3 space-y-2">
@@ -1369,7 +1387,6 @@ function BuatLaporan() {
             </div>
           </section>
 
-          {/* FOTO */}
           <section className="rounded-xl border border-border/70 bg-card/30 p-4">
             <div className="flex items-start gap-3">
               <Camera className="mt-0.5 size-5 shrink-0 text-primary" />
