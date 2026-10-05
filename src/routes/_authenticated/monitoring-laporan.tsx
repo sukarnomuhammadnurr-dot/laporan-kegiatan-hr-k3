@@ -859,10 +859,18 @@ function MonitoringLaporanPage() {
           })
           .join("");
 
-        const totalHadirTrainer = list.reduce(
-          (s, r) => s + Number(r.jumlah_hadir || 0),
-          0,
-        );
+        // Hitung per tanggal (ambil 1 nilai per tanggal, bukan sum semua baris)
+const tanggalUnik = new Map<string, number>();
+for (const r of list) {
+  const tgl = r.tanggal_kegiatan || "tanpa-tanggal";
+  if (!tanggalUnik.has(tgl)) {
+    tanggalUnik.set(tgl, Number(r.jumlah_hadir || 0));
+  }
+}
+const totalHadirTrainer = [...tanggalUnik.values()].reduce(
+  (s, v) => s + v,
+  0,
+);
 
         const isFirst = trainerIdx === 0;
 
