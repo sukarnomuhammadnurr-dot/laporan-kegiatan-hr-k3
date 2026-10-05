@@ -42,9 +42,12 @@ export const Route = createFileRoute("/_authenticated/buat-laporan")({
 
 type FormState = {
   tanggal_kegiatan: string;
+  tanggal_selesai: string;
   jam_mulai: string;
   jam_selesai: string;
   jenis_kegiatan: string;
+  jenis_kegiatan_kategori: string; // "CUTI" | "IZIN" | "SAKIT" | "LAINNYA" | ""
+  keterangan_cuti: string;
   materi: string;
   material_id: string;
   schedule_id: string;
@@ -73,9 +76,12 @@ function hariIni() {
 
 const FORM_AWAL: FormState = {
   tanggal_kegiatan: hariIni(),
+  tanggal_selesai: "",
   jam_mulai: "",
   jam_selesai: "",
   jenis_kegiatan: "",
+  jenis_kegiatan_kategori: "",
+  keterangan_cuti: "",
   materi: "",
   material_id: "",
   schedule_id: "",
@@ -89,16 +95,37 @@ const FORM_AWAL: FormState = {
   keterangan: "",
 };
 
+// =========================================================
+// OPSI KHUSUS CUTI / IZIN / SAKIT
+// =========================================================
+const OPSI_CUTI = ["Cuti Tahunan", "Cuti Roster", "Cuti Public Holiday"];
+const OPSI_IZIN = ["Izin Resmi", "Izin Tidak Resmi"];
+const OPSI_SAKIT = ["Sakit"];
+
+// Semua opsi yang bikin field tanggal selesai muncul
+const SEMUA_OPSI_KHUSUS = [...OPSI_CUTI, ...OPSI_IZIN, ...OPSI_SAKIT];
+
+// Cek apakah jenis kegiatan termasuk cuti/izin/sakit
+function isCutiIzinSakit(value: string): boolean {
+  return SEMUA_OPSI_KHUSUS.includes(value);
+}
+
 function formatTanggalIndonesia(value: string) {
   if (!value) return "-";
-
   const date = new Date(`${value}T00:00:00`);
-
   return new Intl.DateTimeFormat("id-ID", {
     day: "2-digit",
     month: "long",
     year: "numeric",
   }).format(date);
+}
+
+function hitungHari(start: string, end: string) {
+  if (!start || !end) return 0;
+  const s = new Date(`${start}T00:00:00`).getTime();
+  const e = new Date(`${end}T00:00:00`).getTime();
+  if (e < s) return 0;
+  return Math.floor((e - s) / (1000 * 60 * 60 * 24)) + 1;
 }
 
 function BuatLaporan() {
@@ -123,18 +150,12 @@ function BuatLaporan() {
     queryFn: fetchMaterials,
   });
 
-  const {
-    data: activityTypes = [],
-    isLoading: loadingActivities,
-  } = useQuery({
+  const { data: activityTypes = [], isLoading: loadingActivities } = useQuery({
     queryKey: ["activity-types", "buat-laporan"],
     queryFn: fetchActivityTypes,
   });
 
-  const {
-    data: schedules = [],
-    isLoading: loadingSchedules,
-  } = useQuery({
+  const { data: schedules = [], isLoading: loadingSchedules } = useQuery({
     queryKey: ["schedules", "buat-laporan"],
     queryFn: fetchSchedules,
   });
@@ -147,7 +168,6 @@ function BuatLaporan() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("edit");
-
     setEditId(id);
   }, []);
 
@@ -178,9 +198,7 @@ function BuatLaporan() {
         }
 
         if (report.status_laporan !== "perlu_revisi") {
-          throw new Error(
-            "Laporan ini tidak sedang menunggu revisi.",
-          );
+          throw new Error("Laporan ini tidak sedang menunggu revisi.");
         }
 
         const { data: photos, error: photoError } = await supabase
@@ -210,11 +228,19 @@ function BuatLaporan() {
 
         if (cancelled) return;
 
+        const jenis = report.jenis_kegiatan ?? "";
+
         setForm({
           tanggal_kegiatan: report.tanggal_kegiatan ?? hariIni(),
+          tanggal_selesai:
+            (report as any).tanggal_selesai ?? "",
           jam_mulai: report.jam_mulai?.slice(0, 5) ?? "",
           jam_selesai: report.jam_selesai?.slice(0, 5) ?? "",
-          jenis_kegiatan: report.jenis_kegiatan ?? "",
+          jenis_kegiatan: jenis,
+          jenis_kegiatan_kategori: isCutiIzinSakit(jenis)
+            ? "KHUSUS"
+            : "LAINNYA",
+          keterangan_cuti: report.keterangan ?? "",
           materi: report.materi ?? "",
           material_id: report.material_id ?? "",
           schedule_id: report.schedule_id ?? "",
@@ -231,12 +257,9 @@ function BuatLaporan() {
         setRevisionNote(report.catatan_revisi ?? "");
 
         if (
-          report.penanggung_jawab ===
-          "Muhammad Halid (Superintendent)"
+          report.penanggung_jawab === "Muhammad Halid (Superintendent)"
         ) {
-          setPenanggungJawabOption(
-            "Muhammad Halid (Superintendent)",
-          );
+          setPenanggungJawabOption("Muhammad Halid (Superintendent)");
         } else if (report.penanggung_jawab) {
           setPenanggungJawabOption("Lainnya");
         } else {
@@ -252,9 +275,7 @@ function BuatLaporan() {
               : "Terjadi kesalahan saat memuat laporan.",
         });
 
-        navigate({
-          to: "/laporan",
-        });
+        navigate({ to: "/laporan" });
       } finally {
         if (!cancelled) {
           setLoadingEdit(false);
@@ -280,9 +301,7 @@ function BuatLaporan() {
   };
 
   function pilihMaterial(materialId: string) {
-    const material = materials.find(
-      (item) => item.id === materialId,
-    );
+    const material = materials.find((item) => item.id === materialId);
 
     setForm((current) => ({
       ...current,
@@ -292,9 +311,7 @@ function BuatLaporan() {
   }
 
   function pilihJadwal(scheduleId: string) {
-    const schedule = schedules.find(
-      (item) => item.id === scheduleId,
-    );
+    const schedule = schedules.find((item) => item.id === scheduleId);
 
     if (!schedule) {
       updateField("schedule_id", "");
@@ -304,24 +321,12 @@ function BuatLaporan() {
     setForm((current) => ({
       ...current,
       schedule_id: scheduleId,
-      jam_mulai:
-        schedule.jam_mulai?.slice(0, 5) ??
-        current.jam_mulai,
-      jam_selesai:
-        schedule.jam_selesai?.slice(0, 5) ??
-        current.jam_selesai,
-      kelas:
-        schedule.kelas ??
-        current.kelas,
-      jenis_kegiatan:
-        schedule.kategori ??
-        current.jenis_kegiatan,
-      materi:
-        schedule.nama_kegiatan ||
-        current.materi,
-      material_id:
-        schedule.material_id ??
-        current.material_id,
+      jam_mulai: schedule.jam_mulai?.slice(0, 5) ?? current.jam_mulai,
+      jam_selesai: schedule.jam_selesai?.slice(0, 5) ?? current.jam_selesai,
+      kelas: schedule.kelas ?? current.kelas,
+      jenis_kegiatan: schedule.kategori ?? current.jenis_kegiatan,
+      materi: schedule.nama_kegiatan || current.materi,
+      material_id: schedule.material_id ?? current.material_id,
     }));
   }
 
@@ -341,15 +346,10 @@ function BuatLaporan() {
       return;
     }
 
-    const sisaSlot = Math.max(
-      0,
-      MAX_PHOTOS - totalFoto(),
-    );
+    const sisaSlot = Math.max(0, MAX_PHOTOS - totalFoto());
 
     if (sisaSlot === 0) {
-      toast.error(
-        `Maksimal ${MAX_PHOTOS} foto per laporan.`,
-      );
+      toast.error(`Maksimal ${MAX_PHOTOS} foto per laporan.`);
       return;
     }
 
@@ -361,16 +361,11 @@ function BuatLaporan() {
       );
     }
 
-    setFotoFiles((current) => [
-      ...current,
-      ...accepted,
-    ]);
+    setFotoFiles((current) => [...current, ...accepted]);
   }
 
   function hapusFoto(index: number) {
-    setFotoFiles((current) =>
-      current.filter((_, i) => i !== index),
-    );
+    setFotoFiles((current) => current.filter((_, i) => i !== index));
   }
 
   function validasiForm() {
@@ -380,6 +375,17 @@ function BuatLaporan() {
 
     if (!form.tanggal_kegiatan) {
       return "Tanggal kegiatan wajib diisi.";
+    }
+
+    // Validasi khusus cuti/izin/sakit
+    if (isCutiIzinSakit(form.jenis_kegiatan)) {
+      if (!form.tanggal_selesai) {
+        return "Tanggal selesai wajib diisi untuk Cuti/Izin/Sakit.";
+      }
+
+      if (form.tanggal_selesai < form.tanggal_kegiatan) {
+        return "Tanggal selesai tidak boleh lebih awal dari tanggal mulai.";
+      }
     }
 
     if (!form.materi.trim()) {
@@ -394,18 +400,11 @@ function BuatLaporan() {
       return "Jumlah peserta tidak boleh negatif.";
     }
 
-    if (
-      form.jumlah_hadir < 0 ||
-      form.jumlah_tidak_hadir < 0
-    ) {
+    if (form.jumlah_hadir < 0 || form.jumlah_tidak_hadir < 0) {
       return "Jumlah hadir dan tidak hadir tidak boleh negatif.";
     }
 
-    if (
-      form.jumlah_hadir +
-        form.jumlah_tidak_hadir >
-      form.jumlah_peserta
-    ) {
+    if (form.jumlah_hadir + form.jumlah_tidak_hadir > form.jumlah_peserta) {
       return "Jumlah hadir + tidak hadir tidak boleh melebihi jumlah peserta.";
     }
 
@@ -439,27 +438,52 @@ function BuatLaporan() {
         throw new Error(errorValidasi);
       }
 
-      const { data: sessionData } =
-        await supabase.auth.getSession();
-
+      const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user.id;
 
       if (!userId) {
-        throw new Error(
-          "Sesi login tidak ditemukan. Silakan login kembali.",
-        );
+        throw new Error("Sesi login tidak ditemukan. Silakan login kembali.");
       }
 
-      /*
-       * ======================================
-       * MODE EDIT / KIRIM ULANG
-       * ======================================
-       */
+      const isCuti = isCutiIzinSakit(form.jenis_kegiatan);
+
+      // Keterangan gabung: keterangan_cuti + keterangan
+      const keteranganFinal = [
+        isCuti ? form.keterangan_cuti.trim() : "",
+        form.keterangan.trim(),
+      ]
+        .filter(Boolean)
+        .join(" | ");
+
+      // Payload umum
+      const payloadBase = {
+        schedule_id: form.schedule_id || null,
+        material_id: form.material_id || null,
+        tanggal_kegiatan: form.tanggal_kegiatan,
+        tanggal_selesai: isCuti ? form.tanggal_selesai || null : null,
+        jam_mulai: isCuti ? null : form.jam_mulai || null,
+        jam_selesai: isCuti ? null : form.jam_selesai || null,
+        jam_perlu_konfirmasi: isCuti
+          ? false
+          : !form.jam_mulai || !form.jam_selesai,
+        jenis_kegiatan: form.jenis_kegiatan || null,
+        materi: form.materi.trim(),
+        kelas: isCuti ? null : form.kelas.trim() || null,
+        lokasi: isCuti ? null : form.lokasi.trim() || null,
+        penanggung_jawab: form.penanggung_jawab.trim() || null,
+        jumlah_peserta: isCuti ? 0 : form.jumlah_peserta,
+        jumlah_hadir: isCuti ? 0 : form.jumlah_hadir,
+        jumlah_tidak_hadir: isCuti ? 0 : form.jumlah_tidak_hadir,
+        jumlah_tambahan: isCuti ? 0 : form.jumlah_tambahan,
+        keterangan: keteranganFinal || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      // ============================
+      // MODE EDIT / KIRIM ULANG
+      // ============================
       if (editId) {
-        const {
-          data: existingReport,
-          error: existingError,
-        } = await supabase
+        const { data: existingReport, error: existingError } = await supabase
           .from("reports")
           .select("id, trainer_id, status_laporan")
           .eq("id", editId)
@@ -474,303 +498,139 @@ function BuatLaporan() {
           );
         }
 
-        if (
-          existingReport.status_laporan !==
-          "perlu_revisi"
-        ) {
-          throw new Error(
-            "Laporan sudah tidak berada pada status Perlu Revisi.",
-          );
+        if (existingReport.status_laporan !== "perlu_revisi") {
+          throw new Error("Laporan sudah tidak berada pada status Perlu Revisi.");
         }
 
-        const { error: updateError } =
-          await supabase
-            .from("reports")
-            .update({
-              schedule_id:
-                form.schedule_id || null,
-              material_id:
-                form.material_id || null,
-              tanggal_kegiatan:
-                form.tanggal_kegiatan,
-              jam_mulai:
-                form.jam_mulai || null,
-              jam_selesai:
-                form.jam_selesai || null,
-              jam_perlu_konfirmasi:
-                !form.jam_mulai ||
-                !form.jam_selesai,
-              jenis_kegiatan:
-                form.jenis_kegiatan || null,
-              materi:
-                form.materi.trim(),
-              kelas:
-                form.kelas.trim() || null,
-              lokasi:
-                form.lokasi.trim() || null,
-              penanggung_jawab:
-                form.penanggung_jawab.trim() ||
-                null,
-              jumlah_peserta:
-                form.jumlah_peserta,
-              jumlah_hadir:
-                form.jumlah_hadir,
-              jumlah_tidak_hadir:
-                form.jumlah_tidak_hadir,
-              jumlah_tambahan:
-                form.jumlah_tambahan,
-              keterangan:
-                form.keterangan.trim() ||
-                null,
-              status_laporan:
-                "menunggu_verifikasi" as const,
-              verified_by: null,
-              verified_at: null,
-              catatan_revisi:
-                revisionNote || null,
-              waktu_laporan_dikirim:
-                new Date().toISOString(),
-              updated_at:
-                new Date().toISOString(),
-            })
-            .eq("id", editId)
-            .eq("trainer_id", trainer.id);
+        const { error: updateError } = await supabase
+          .from("reports")
+          .update({
+            ...payloadBase,
+            status_laporan: "menunggu_verifikasi" as const,
+            verified_by: null,
+            verified_at: null,
+            catatan_revisi: revisionNote || null,
+            waktu_laporan_dikirim: new Date().toISOString(),
+          })
+          .eq("id", editId)
+          .eq("trainer_id", trainer.id);
 
-        if (updateError) {
-          throw updateError;
-        }
+        if (updateError) throw updateError;
 
-        /*
-         * Foto lama TIDAK dihapus.
-         * Foto baru hanya bisa ditambahkan
-         * sampai total maksimal 10 foto.
-         */
+        // Upload foto baru
         if (fotoFiles.length > 0) {
           for (const file of fotoFiles) {
-            const safeName = file.name.replace(
-              /[^a-zA-Z0-9._-]/g,
-              "_",
-            );
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+            const storagePath = `${trainer.id}/${editId}/${crypto.randomUUID()}-${safeName}`;
 
-            const storagePath =
-              `${trainer.id}/${editId}/${crypto.randomUUID()}-${safeName}`;
-
-            const {
-              error: uploadError,
-            } = await supabase.storage
+            const { error: uploadError } = await supabase.storage
               .from("report-photos")
-              .upload(
-                storagePath,
-                file,
-                {
-                  cacheControl: "3600",
-                  upsert: false,
-                  contentType:
-                    file.type ||
-                    "image/jpeg",
-                },
-              );
+              .upload(storagePath, file, {
+                cacheControl: "3600",
+                upsert: false,
+                contentType: file.type || "image/jpeg",
+              });
 
             if (uploadError) {
               toast.warning(
                 "Data laporan sudah diperbarui, tetapi salah satu foto gagal diunggah.",
-                {
-                  description:
-                    uploadError.message,
-                },
+                { description: uploadError.message },
               );
-
               continue;
             }
 
-            const {
-              error: photoRowError,
-            } = await supabase
+            const { error: photoRowError } = await supabase
               .from("report_photos")
               .insert({
                 report_id: editId,
-                storage_path:
-                  storagePath,
-                nama_file:
-                  file.name,
-                uploaded_by:
-                  userId,
+                storage_path: storagePath,
+                nama_file: file.name,
+                uploaded_by: userId,
               });
 
             if (photoRowError) {
               toast.warning(
                 "Foto berhasil diunggah, tetapi data foto gagal dicatat.",
-                {
-                  description:
-                    photoRowError.message,
-                },
+                { description: photoRowError.message },
               );
             }
           }
         }
 
-        return {
-          mode: "edit" as const,
-          id: editId,
-        };
+        return { mode: "edit" as const, id: editId };
       }
 
-      /*
-       * ======================================
-       * MODE LAPORAN BARU
-       * ======================================
-       */
+      // ============================
+      // MODE LAPORAN BARU
+      // ============================
       const payload = {
         trainer_id: trainer.id,
-        schedule_id:
-          form.schedule_id || null,
-        material_id:
-          form.material_id || null,
-        tanggal_kegiatan:
-          form.tanggal_kegiatan,
-        jam_mulai:
-          form.jam_mulai || null,
-        jam_selesai:
-          form.jam_selesai || null,
-        jam_perlu_konfirmasi:
-          !form.jam_mulai ||
-          !form.jam_selesai,
-        jenis_kegiatan:
-          form.jenis_kegiatan || null,
-        materi:
-          form.materi.trim(),
-        kelas:
-          form.kelas.trim() || null,
-        lokasi:
-          form.lokasi.trim() || null,
-        penanggung_jawab:
-          form.penanggung_jawab.trim() ||
-          null,
-        jumlah_peserta:
-          form.jumlah_peserta,
-        jumlah_hadir:
-          form.jumlah_hadir,
-        jumlah_tidak_hadir:
-          form.jumlah_tidak_hadir,
-        jumlah_tambahan:
-          form.jumlah_tambahan,
-        keterangan:
-          form.keterangan.trim() ||
-          null,
-        sumber_laporan:
-          "manual" as const,
-        waktu_laporan_dikirim:
-          new Date().toISOString(),
-        status_laporan:
-          "menunggu_verifikasi" as const,
+        ...payloadBase,
+        sumber_laporan: "manual" as const,
+        waktu_laporan_dikirim: new Date().toISOString(),
+        status_laporan: "menunggu_verifikasi" as const,
         created_by: userId,
       };
 
-      const {
-        data,
-        error,
-      } = await supabase
+      const { data, error } = await supabase
         .from("reports")
         .insert(payload)
         .select("id")
         .single();
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       if (fotoFiles.length > 0) {
         for (const file of fotoFiles) {
-          const safeName =
-            file.name.replace(
-              /[^a-zA-Z0-9._-]/g,
-              "_",
-            );
+          const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const storagePath = `${trainer.id}/${data.id}/${crypto.randomUUID()}-${safeName}`;
 
-          const storagePath =
-            `${trainer.id}/${data.id}/${crypto.randomUUID()}-${safeName}`;
-
-          const {
-            error: uploadError,
-          } = await supabase.storage
+          const { error: uploadError } = await supabase.storage
             .from("report-photos")
-            .upload(
-              storagePath,
-              file,
-              {
-                cacheControl: "3600",
-                upsert: false,
-                contentType:
-                  file.type ||
-                  "image/jpeg",
-              },
-            );
+            .upload(storagePath, file, {
+              cacheControl: "3600",
+              upsert: false,
+              contentType: file.type || "image/jpeg",
+            });
 
           if (uploadError) {
-            toast.warning(
-              "Laporan tersimpan, tetapi foto belum berhasil diunggah.",
-              {
-                description:
-                  uploadError.message,
-              },
-            );
-
+            toast.warning("Laporan tersimpan, tetapi foto belum berhasil diunggah.", {
+              description: uploadError.message,
+            });
             continue;
           }
 
-          const {
-            error: photoRowError,
-          } = await supabase
+          const { error: photoRowError } = await supabase
             .from("report_photos")
             .insert({
               report_id: data.id,
-              storage_path:
-                storagePath,
-              nama_file:
-                file.name,
-              uploaded_by:
-                userId,
+              storage_path: storagePath,
+              nama_file: file.name,
+              uploaded_by: userId,
             });
 
           if (photoRowError) {
-            toast.warning(
-              "Laporan tersimpan, tetapi data foto belum tercatat.",
-              {
-                description:
-                  photoRowError.message,
-              },
-            );
+            toast.warning("Laporan tersimpan, tetapi data foto belum tercatat.", {
+              description: photoRowError.message,
+            });
           }
         }
       }
 
-      return {
-        mode: "new" as const,
-        id: data.id,
-      };
+      return { mode: "new" as const, id: data.id };
     },
 
     onSuccess: async (result) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["reports"],
-      });
+      await queryClient.invalidateQueries({ queryKey: ["reports"] });
 
       if (result.mode === "edit") {
-        toast.success(
-          "Laporan berhasil dikirim ulang.",
-          {
-            description:
-              "Status laporan: Menunggu Verifikasi.",
-          },
-        );
+        toast.success("Laporan berhasil dikirim ulang.", {
+          description: "Status laporan: Menunggu Verifikasi.",
+        });
       } else {
-        toast.success(
-          "Laporan berhasil dikirim.",
-          {
-            description:
-              "Status laporan: Menunggu Verifikasi.",
-          },
-        );
+        toast.success("Laporan berhasil dikirim.", {
+          description: "Status laporan: Menunggu Verifikasi.",
+        });
       }
 
       setPreview(false);
@@ -780,9 +640,7 @@ function BuatLaporan() {
       setPenanggungJawabOption("");
       setRevisionNote("");
 
-      navigate({
-        to: "/laporan",
-      });
+      navigate({ to: "/laporan" });
     },
 
     onError: (error) => {
@@ -801,37 +659,23 @@ function BuatLaporan() {
   });
 
   function bukaPreview() {
-    const errorValidasi =
-      validasiForm();
+    const errorValidasi = validasiForm();
 
     if (errorValidasi) {
-      toast.error(
-        "Periksa kembali laporan.",
-        {
-          description:
-            errorValidasi,
-        },
-      );
-
+      toast.error("Periksa kembali laporan.", {
+        description: errorValidasi,
+      });
       return;
     }
 
     setPreview(true);
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   if (loading || (isEditMode && loadingEdit)) {
     return (
       <AppShell
-        title={
-          isEditMode
-            ? "Edit Laporan"
-            : "Buat Laporan"
-        }
+        title={isEditMode ? "Edit Laporan" : "Buat Laporan"}
         eyebrow="Laporan Kegiatan Trainer"
       >
         <Panel>
@@ -847,16 +691,12 @@ function BuatLaporan() {
 
   if (!trainer) {
     return (
-      <AppShell
-        title="Buat Laporan"
-        eyebrow="Laporan Kegiatan Trainer"
-      >
+      <AppShell title="Buat Laporan" eyebrow="Laporan Kegiatan Trainer">
         <Panel>
           <div className="py-8 text-center">
             <p className="text-sm font-medium">
               Akun ini belum tertaut ke data trainer.
             </p>
-
             <p className="mt-2 text-sm text-muted-foreground">
               Hubungi Admin untuk menautkan akun ke Master Trainer.
             </p>
@@ -866,19 +706,18 @@ function BuatLaporan() {
     );
   }
 
-  /*
-   * ==========================================
-   * PREVIEW
-   * ==========================================
-   */
+  // ============================
+  // PREVIEW
+  // ============================
   if (preview) {
+    const isCuti = isCutiIzinSakit(form.jenis_kegiatan);
+    const jumlahHari = isCuti
+      ? hitungHari(form.tanggal_kegiatan, form.tanggal_selesai)
+      : 0;
+
     return (
       <AppShell
-        title={
-          isEditMode
-            ? "Preview Kirim Ulang"
-            : "Preview Laporan"
-        }
+        title={isEditMode ? "Preview Kirim Ulang" : "Preview Laporan"}
         eyebrow="Periksa sebelum dikirim"
         actions={
           <Button
@@ -895,23 +734,17 @@ function BuatLaporan() {
           {isEditMode && (
             <div className="mb-5 flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30">
               <RotateCcw className="mt-0.5 size-5 shrink-0 text-amber-600" />
-
               <div>
-                <p className="text-sm font-semibold">
-                  Laporan akan dikirim ulang
-                </p>
-
+                <p className="text-sm font-semibold">Laporan akan dikirim ulang</p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Setelah dikirim, status laporan akan kembali menjadi{" "}
                   <b>Menunggu Verifikasi</b>.
                 </p>
-
                 {revisionNote && (
                   <div className="mt-3 rounded-lg border border-amber-200 bg-background/60 p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Catatan Revisi
                     </p>
-
                     <p className="mt-1 whitespace-pre-wrap text-sm">
                       {revisionNote}
                     </p>
@@ -924,17 +757,11 @@ function BuatLaporan() {
           {!isEditMode && (
             <div className="mb-5 flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
               <Eye className="mt-0.5 size-5 shrink-0 text-primary" />
-
               <div>
-                <p className="text-sm font-semibold">
-                  Preview sebelum dikirim
-                </p>
-
+                <p className="text-sm font-semibold">Preview sebelum dikirim</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Periksa seluruh data di bawah.
-                  Data belum disimpan sampai lu
-                  menekan tombol{" "}
-                  <b>Konfirmasi & Kirim</b>.
+                  Periksa seluruh data di bawah. Data belum disimpan sampai lu
+                  menekan tombol <b>Konfirmasi & Kirim</b>.
                 </p>
               </div>
             </div>
@@ -943,103 +770,85 @@ function BuatLaporan() {
           <div className="grid gap-4 md:grid-cols-2">
             <PreviewItem
               label="Trainer"
-              value={
-                trainer.nama_lengkap ||
-                nama ||
-                "-"
-              }
-            />
-
-            <PreviewItem
-              label="Tanggal Kegiatan"
-              value={formatTanggalIndonesia(
-                form.tanggal_kegiatan,
-              )}
-            />
-
-            <PreviewItem
-              label="Jam Kegiatan"
-              value={
-                form.jam_mulai &&
-                form.jam_selesai
-                  ? `${form.jam_mulai} – ${form.jam_selesai}`
-                  : "Belum lengkap / perlu konfirmasi"
-              }
+              value={trainer.nama_lengkap || nama || "-"}
             />
 
             <PreviewItem
               label="Jenis Kegiatan"
-              value={
-                form.jenis_kegiatan ||
-                "-"
-              }
+              value={form.jenis_kegiatan || "-"}
             />
 
-            <PreviewItem
-              label="Materi / Kegiatan"
-              value={form.materi}
-            />
+            {isCuti ? (
+              <>
+                <PreviewItem
+                  label="Tanggal Mulai"
+                  value={formatTanggalIndonesia(form.tanggal_kegiatan)}
+                />
+                <PreviewItem
+                  label="Tanggal Selesai"
+                  value={formatTanggalIndonesia(form.tanggal_selesai)}
+                />
+                <PreviewItem
+                  label="Durasi"
+                  value={`${jumlahHari} hari`}
+                />
+              </>
+            ) : (
+              <>
+                <PreviewItem
+                  label="Tanggal Kegiatan"
+                  value={formatTanggalIndonesia(form.tanggal_kegiatan)}
+                />
+                <PreviewItem
+                  label="Jam Kegiatan"
+                  value={
+                    form.jam_mulai && form.jam_selesai
+                      ? `${form.jam_mulai} – ${form.jam_selesai}`
+                      : "Belum lengkap / perlu konfirmasi"
+                  }
+                />
+                <PreviewItem label="Kelas" value={form.kelas || "-"} />
+                <PreviewItem label="Lokasi" value={form.lokasi || "-"} />
+              </>
+            )}
 
-            <PreviewItem
-              label="Kelas"
-              value={
-                form.kelas || "-"
-              }
-            />
-
-            <PreviewItem
-              label="Lokasi"
-              value={
-                form.lokasi || "-"
-              }
-            />
+            <PreviewItem label="Materi / Kegiatan" value={form.materi} />
 
             <PreviewItem
               label="Penanggung Jawab"
-              value={
-                form.penanggung_jawab ||
-                "-"
-              }
+              value={form.penanggung_jawab || "-"}
             />
           </div>
 
-          <div className="mt-4 rounded-xl border border-border/70 bg-card/40 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Data Peserta
-            </p>
-
-            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <PreviewNumber
-                label="Jumlah Peserta"
-                value={form.jumlah_peserta}
-              />
-
-              <PreviewNumber
-                label="Hadir"
-                value={form.jumlah_hadir}
-              />
-
-              <PreviewNumber
-                label="Tidak Hadir"
-                value={form.jumlah_tidak_hadir}
-              />
-
-              <PreviewNumber
-                label="Tambahan"
-                value={form.jumlah_tambahan}
-              />
+          {!isCuti && (
+            <div className="mt-4 rounded-xl border border-border/70 bg-card/40 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Data Peserta
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <PreviewNumber label="Jumlah Peserta" value={form.jumlah_peserta} />
+                <PreviewNumber label="Hadir" value={form.jumlah_hadir} />
+                <PreviewNumber
+                  label="Tidak Hadir"
+                  value={form.jumlah_tidak_hadir}
+                />
+                <PreviewNumber label="Tambahan" value={form.jumlah_tambahan} />
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="mt-4 rounded-xl border border-border/70 bg-card/40 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Keterangan
-            </p>
-
-            <p className="mt-2 whitespace-pre-wrap text-sm">
-              {form.keterangan || "-"}
-            </p>
-          </div>
+          {(form.keterangan_cuti || form.keterangan) && (
+            <div className="mt-4 rounded-xl border border-border/70 bg-card/40 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Keterangan
+              </p>
+              <p className="mt-2 whitespace-pre-wrap text-sm">
+                {[form.keterangan_cuti, form.keterangan]
+                  .filter(Boolean)
+                  .join(" | ") || "-"}
+              </p>
+            </div>
+          )}
 
           <div className="mt-4 rounded-xl border border-border/70 bg-card/40 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1058,7 +867,6 @@ function BuatLaporan() {
                       alt={photo.nama_file ?? "Foto dokumentasi"}
                       className="aspect-square w-full object-cover"
                     />
-
                     <p className="truncate px-2 py-1.5 text-xs text-muted-foreground">
                       {photo.nama_file ?? "Foto lama"}
                     </p>
@@ -1075,7 +883,6 @@ function BuatLaporan() {
                       alt={file.name}
                       className="aspect-square w-full object-cover"
                     />
-
                     <p className="truncate px-2 py-1.5 text-xs text-muted-foreground">
                       {file.name}
                     </p>
@@ -1111,7 +918,6 @@ function BuatLaporan() {
               ) : (
                 <Send className="mr-2 size-4" />
               )}
-
               {kirimLaporan.isPending
                 ? "Mengirim…"
                 : isEditMode
@@ -1124,27 +930,22 @@ function BuatLaporan() {
     );
   }
 
-  /*
-   * ==========================================
-   * FORM UTAMA
-   * ==========================================
-   */
+  // ============================
+  // FORM UTAMA
+  // ============================
+  const isCuti = isCutiIzinSakit(form.jenis_kegiatan);
+  const jumlahHariCuti = isCuti
+    ? hitungHari(form.tanggal_kegiatan, form.tanggal_selesai)
+    : 0;
+
   return (
     <AppShell
-      title={
-        isEditMode
-          ? "Edit Laporan"
-          : "Buat Laporan"
-      }
+      title={isEditMode ? "Edit Laporan" : "Buat Laporan"}
       eyebrow="Laporan Kegiatan Trainer"
       actions={
         <Button
           variant="outline"
-          onClick={() =>
-            navigate({
-              to: "/laporan",
-            })
-          }
+          onClick={() => navigate({ to: "/laporan" })}
         >
           <ArrowLeft className="mr-2 size-4" />
           Kembali
@@ -1156,22 +957,16 @@ function BuatLaporan() {
           <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30">
             <div className="flex items-start gap-3">
               <FilePenLine className="mt-0.5 size-5 shrink-0 text-amber-600" />
-
               <div className="min-w-0">
-                <p className="text-sm font-semibold">
-                  Laporan Memerlukan Revisi
-                </p>
-
+                <p className="text-sm font-semibold">Laporan Memerlukan Revisi</p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Perbaiki data laporan sesuai catatan dari Admin/Supervisor,
                   lalu lakukan Preview sebelum mengirim ulang.
                 </p>
-
                 <div className="mt-3 rounded-lg border border-amber-200 bg-background/70 p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Catatan Revisi
                   </p>
-
                   <p className="mt-1 whitespace-pre-wrap text-sm font-medium">
                     {revisionNote || "Tidak ada catatan revisi."}
                   </p>
@@ -1185,313 +980,320 @@ function BuatLaporan() {
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Trainer
           </p>
-
           <p className="mt-1 text-sm font-semibold">
             {trainer.nama_lengkap || nama}
           </p>
-
           <p className="mt-1 text-xs text-muted-foreground">
             ID Trainer: {trainer.nomor_id_trainer}
           </p>
         </div>
 
         <div className="space-y-6">
+          {/* JENIS KEGIATAN DULU — biar field lain bisa nyesuain */}
+          <section>
+            <h2 className="text-sm font-semibold">Jenis Kegiatan</h2>
+
+            <div className="mt-3 space-y-2">
+              <Label htmlFor="jenis-kegiatan">Jenis kegiatan</Label>
+
+              <select
+                id="jenis-kegiatan"
+                value={form.jenis_kegiatan}
+                onChange={(e) =>
+                  updateField("jenis_kegiatan", e.target.value)
+                }
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">
+                  {loadingActivities ? "Memuat jenis kegiatan…" : "Pilih jenis kegiatan"}
+                </option>
+
+                <optgroup label="Kegiatan Training">
+                  {activityTypes
+                    .filter((item) => item.aktif)
+                    .map((item) => (
+                      <option key={item.id} value={item.nama}>
+                        {item.nama}
+                      </option>
+                    ))}
+                </optgroup>
+
+                <optgroup label="Cuti">
+                  {OPSI_CUTI.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </optgroup>
+
+                <optgroup label="Izin">
+                  {OPSI_IZIN.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </optgroup>
+
+                <optgroup label="Sakit">
+                  {OPSI_SAKIT.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </optgroup>
+
+                <option value="Lainnya">Lainnya (isi manual)</option>
+              </select>
+
+              {form.jenis_kegiatan === "Lainnya" && (
+                <Input
+                  placeholder="Tulis jenis kegiatan lainnya"
+                  value={form.jenis_kegiatan}
+                  onChange={(e) =>
+                    updateField("jenis_kegiatan", e.target.value)
+                  }
+                />
+              )}
+            </div>
+          </section>
 
           {/* WAKTU */}
           <section>
             <h2 className="text-sm font-semibold">
-              Waktu Kegiatan
+              {isCuti ? "Rentang Tanggal Cuti / Izin / Sakit" : "Waktu Kegiatan"}
             </h2>
 
-            <div className="mt-3 grid gap-4 sm:grid-cols-3">
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="tanggal">
-                  Tanggal kegiatan *
+                  {isCuti ? "Tanggal mulai *" : "Tanggal kegiatan *"}
                 </Label>
-
                 <Input
                   id="tanggal"
                   type="date"
                   value={form.tanggal_kegiatan}
                   onChange={(e) =>
-                    updateField(
-                      "tanggal_kegiatan",
-                      e.target.value,
-                    )
+                    updateField("tanggal_kegiatan", e.target.value)
                   }
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="jam-mulai">
-                  Jam mulai
-                </Label>
-
-                <Input
-                  id="jam-mulai"
-                  type="time"
-                  value={form.jam_mulai}
-                  onChange={(e) =>
-                    updateField(
-                      "jam_mulai",
-                      e.target.value,
-                    )
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="jam-selesai">
-                  Jam selesai
-                </Label>
-
-                <Input
-                  id="jam-selesai"
-                  type="time"
-                  value={form.jam_selesai}
-                  onChange={(e) =>
-                    updateField(
-                      "jam_selesai",
-                      e.target.value,
-                    )
-                  }
-                />
-              </div>
+              {isCuti && (
+                <div className="space-y-2">
+                  <Label htmlFor="tanggal-selesai">
+                    Tanggal selesai *
+                  </Label>
+                  <Input
+                    id="tanggal-selesai"
+                    type="date"
+                    min={form.tanggal_kegiatan}
+                    value={form.tanggal_selesai}
+                    onChange={(e) =>
+                      updateField("tanggal_selesai", e.target.value)
+                    }
+                  />
+                </div>
+              )}
             </div>
 
-            <p className="mt-2 text-xs text-muted-foreground">
-              Jika jam belum diketahui,
-              boleh dikosongkan. Sistem
-              akan menandai waktu tersebut
-              untuk konfirmasi.
-            </p>
+            {isCuti && jumlahHariCuti > 0 && (
+              <p className="mt-2 text-xs font-medium text-primary">
+                Durasi: {jumlahHariCuti} hari ({formatTanggalIndonesia(form.tanggal_kegiatan)} - {formatTanggalIndonesia(form.tanggal_selesai)})
+              </p>
+            )}
+
+            {!isCuti && (
+              <>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="jam-mulai">Jam mulai</Label>
+                    <Input
+                      id="jam-mulai"
+                      type="time"
+                      value={form.jam_mulai}
+                      onChange={(e) =>
+                        updateField("jam_mulai", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="jam-selesai">Jam selesai</Label>
+                    <Input
+                      id="jam-selesai"
+                      type="time"
+                      value={form.jam_selesai}
+                      onChange={(e) =>
+                        updateField("jam_selesai", e.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Jika jam belum diketahui, boleh dikosongkan. Sistem akan
+                  menandai waktu tersebut untuk konfirmasi.
+                </p>
+              </>
+            )}
           </section>
 
-          {/* KEGIATAN */}
-          <section>
-            <h2 className="text-sm font-semibold">
-              Kegiatan
-            </h2>
+          {/* KEGIATAN (cuma muncul kalau bukan cuti) */}
+          {!isCuti && (
+            <section>
+              <h2 className="text-sm font-semibold">Detail Kegiatan</h2>
 
-            <div className="mt-3 grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="jadwal">
-                  Gunakan jadwal master
-                </Label>
-
-                <select
-                  id="jadwal"
-                  value={form.schedule_id}
-                  onChange={(e) =>
-                    pilihJadwal(e.target.value)
-                  }
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">
-                    {loadingSchedules
-                      ? "Memuat jadwal…"
-                      : "Pilih jadwal (opsional)"}
-                  </option>
-
-                  {scheduleAktif.map(
-                    (schedule) => (
-                      <option
-                        key={schedule.id}
-                        value={schedule.id}
-                      >
-                        {schedule.jam_mulai &&
-                        schedule.jam_selesai
-                          ? `${schedule.jam_mulai.slice(
-                              0,
-                              5,
-                            )}–${schedule.jam_selesai.slice(
-                              0,
-                              5,
-                            )} · `
+              <div className="mt-3 grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="jadwal">Gunakan jadwal master</Label>
+                  <select
+                    id="jadwal"
+                    value={form.schedule_id}
+                    onChange={(e) => pilihJadwal(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">
+                      {loadingSchedules
+                        ? "Memuat jadwal…"
+                        : "Pilih jadwal (opsional)"}
+                    </option>
+                    {scheduleAktif.map((schedule) => (
+                      <option key={schedule.id} value={schedule.id}>
+                        {schedule.jam_mulai && schedule.jam_selesai
+                          ? `${schedule.jam_mulai.slice(0, 5)}–${schedule.jam_selesai.slice(0, 5)} · `
                           : ""}
                         {schedule.nama_kegiatan}
-                        {schedule.kelas
-                          ? ` · ${schedule.kelas}`
-                          : ""}
-                      </option>
-                    ),
-                  )}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="jenis-kegiatan">
-                  Jenis kegiatan
-                </Label>
-
-                <select
-                  id="jenis-kegiatan"
-                  value={form.jenis_kegiatan}
-                  onChange={(e) =>
-                    updateField(
-                      "jenis_kegiatan",
-                      e.target.value,
-                    )
-                  }
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">
-                    {loadingActivities
-                      ? "Memuat jenis kegiatan…"
-                      : "Pilih jenis kegiatan"}
-                  </option>
-
-                  {activityTypes
-                    .filter((item) => item.aktif)
-                    .map((item) => (
-                      <option
-                        key={item.id}
-                        value={item.nama}
-                      >
-                        {item.nama}
+                        {schedule.kelas ? ` · ${schedule.kelas}` : ""}
                       </option>
                     ))}
-                </select>
-              </div>
-            </div>
+                  </select>
+                </div>
 
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="master-materi">
-                  Materi dari master
-                </Label>
-
-                <select
-                  id="master-materi"
-                  value={form.material_id}
-                  onChange={(e) =>
-                    pilihMaterial(e.target.value)
-                  }
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">
-                    {loadingMaterials
-                      ? "Memuat materi…"
-                      : "Pilih materi (opsional)"}
-                  </option>
-
-                  {materials
-                    .filter((item) => item.aktif)
-                    .map((item) => (
-                      <option
-                        key={item.id}
-                        value={item.id}
-                      >
-                        {item.nama}
-                      </option>
-                    ))}
-                </select>
+                <div className="space-y-2">
+                  <Label htmlFor="master-materi">Materi dari master</Label>
+                  <select
+                    id="master-materi"
+                    value={form.material_id}
+                    onChange={(e) => pilihMaterial(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">
+                      {loadingMaterials
+                        ? "Memuat materi…"
+                        : "Pilih materi (opsional)"}
+                    </option>
+                    {materials
+                      .filter((item) => item.aktif)
+                      .map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.nama}
+                        </option>
+                      ))}
+                  </select>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="kelas">
-                  Kelas
-                </Label>
-
+              <div className="mt-4 space-y-2">
+                <Label htmlFor="materi">Materi / kegiatan *</Label>
                 <Input
-                  id="kelas"
-                  placeholder="Contoh: Kelas A / Kelas B"
-                  value={form.kelas}
-                  onChange={(e) =>
-                    updateField(
-                      "kelas",
-                      e.target.value,
-                    )
-                  }
+                  id="materi"
+                  placeholder="Contoh: K3 Umum"
+                  value={form.materi}
+                  onChange={(e) => updateField("materi", e.target.value)}
                 />
               </div>
-            </div>
 
-            <div className="mt-4 space-y-2">
-              <Label htmlFor="materi">
-                Materi / kegiatan *
-              </Label>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="kelas">Kelas</Label>
+                  <Input
+                    id="kelas"
+                    placeholder="Contoh: Kelas A / Kelas B"
+                    value={form.kelas}
+                    onChange={(e) => updateField("kelas", e.target.value)}
+                  />
+                </div>
 
-              <Input
-                id="materi"
-                placeholder="Contoh: K3 Umum"
-                value={form.materi}
-                onChange={(e) =>
-                  updateField(
-                    "materi",
-                    e.target.value,
-                  )
-                }
-              />
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lokasi">Lokasi</Label>
+                  <select
+                    id="lokasi"
+                    value={form.lokasi}
+                    onChange={(e) => updateField("lokasi", e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Pilih lokasi</option>
+                    <option value="Dalam Ruangan">Dalam Ruangan</option>
+                    <option value="Luar Ruangan">Luar Ruangan</option>
+                  </select>
+                </div>
+              </div>
+            </section>
+          )}
 
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="lokasi">
-                  Lokasi
+          {/* Kalau cuti, materi wajib diisi keterangan */}
+          {isCuti && (
+            <section>
+              <h2 className="text-sm font-semibold">
+                Keterangan Cuti / Izin / Sakit
+              </h2>
+              <div className="mt-3 space-y-2">
+                <Label htmlFor="keterangan-cuti">
+                  Keterangan *
                 </Label>
-
-                <select
-                  id="lokasi"
-                  value={form.lokasi}
+                <Textarea
+                  id="keterangan-cuti"
+                  rows={3}
+                  placeholder="Contoh: Cuti tahunan disetujui oleh atasan. / Izin resmi karena urusan keluarga."
+                  value={form.keterangan_cuti}
                   onChange={(e) =>
-                    updateField(
-                      "lokasi",
-                      e.target.value,
-                    )
+                    updateField("keterangan_cuti", e.target.value)
                   }
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">
-                    Pilih lokasi
-                  </option>
-
-                  <option value="Dalam Ruangan">
-                    Dalam Ruangan
-                  </option>
-
-                  <option value="Luar Ruangan">
-                    Luar Ruangan
-                  </option>
-                </select>
+                />
+                <p className="text-xs text-muted-foreground">
+                  Keterangan ini akan muncul di laporan bulanan.
+                </p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="penanggung-jawab">
-                  Penanggung jawab
+              {/* Materi dipakai untuk label cuti */}
+              <div className="mt-4 space-y-2">
+                <Label htmlFor="materi">
+                  Materi / kegiatan *
                 </Label>
-
-                <select
-                  id="penanggung-jawab"
-                  value={penanggungJawabOption}
-                  onChange={(e) => {
-                    const value = e.target.value;
-
-                    setPenanggungJawabOption(value);
-
-                    updateField(
-                      "penanggung_jawab",
-                      value ===
-                        "Muhammad Halid (Superintendent)"
-                        ? value
-                        : "",
-                    );
-                  }}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">
-                    Pilih penanggung jawab
-                  </option>
-
-                  <option value="Muhammad Halid (Superintendent)">
-                    Muhammad Halid (Superintendent)
-                  </option>
-
-                  <option value="Lainnya">
-                    Lainnya
-                  </option>
-                </select>
+                <Input
+                  id="materi"
+                  placeholder="Contoh: Cuti Tahunan"
+                  value={form.materi}
+                  onChange={(e) => updateField("materi", e.target.value)}
+                />
               </div>
+            </section>
+          )}
+
+          {/* PENANGGUNG JAWAB */}
+          <section>
+            <h2 className="text-sm font-semibold">Penanggung Jawab</h2>
+            <div className="mt-3 space-y-2">
+              <Label htmlFor="penanggung-jawab">Penanggung jawab</Label>
+              <select
+                id="penanggung-jawab"
+                value={penanggungJawabOption}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setPenanggungJawabOption(value);
+                  updateField(
+                    "penanggung_jawab",
+                    value === "Muhammad Halid (Superintendent)" ? value : "",
+                  );
+                }}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Pilih penanggung jawab</option>
+                <option value="Muhammad Halid (Superintendent)">
+                  Muhammad Halid (Superintendent)
+                </option>
+                <option value="Lainnya">Lainnya</option>
+              </select>
             </div>
 
             {penanggungJawabOption === "Lainnya" && (
@@ -1499,108 +1301,70 @@ function BuatLaporan() {
                 <Label htmlFor="penanggung-jawab-lainnya">
                   Nama penanggung jawab lainnya
                 </Label>
-
                 <Input
                   id="penanggung-jawab-lainnya"
                   placeholder="Tulis nama penanggung jawab"
                   value={form.penanggung_jawab}
                   onChange={(e) =>
-                    updateField(
-                      "penanggung_jawab",
-                      e.target.value,
-                    )
+                    updateField("penanggung_jawab", e.target.value)
                   }
                 />
               </div>
             )}
           </section>
 
-          {/* PESERTA */}
+          {/* PESERTA — cuma kalau bukan cuti */}
+          {!isCuti && (
+            <section>
+              <h2 className="text-sm font-semibold">Jumlah Peserta</h2>
+
+              <div className="mt-3 grid grid-cols-2 gap-4 md:grid-cols-4">
+                <NumberField
+                  id="jumlah-peserta"
+                  label="Jumlah peserta"
+                  value={form.jumlah_peserta}
+                  onChange={(value) => updateField("jumlah_peserta", value)}
+                />
+                <NumberField
+                  id="jumlah-hadir"
+                  label="Hadir"
+                  value={form.jumlah_hadir}
+                  onChange={(value) => updateField("jumlah_hadir", value)}
+                />
+                <NumberField
+                  id="jumlah-tidak-hadir"
+                  label="Tidak hadir"
+                  value={form.jumlah_tidak_hadir}
+                  onChange={(value) =>
+                    updateField("jumlah_tidak_hadir", value)
+                  }
+                />
+                <NumberField
+                  id="jumlah-tambahan"
+                  label="Tambahan"
+                  value={form.jumlah_tambahan}
+                  onChange={(value) => updateField("jumlah_tambahan", value)}
+                />
+              </div>
+
+              <p className="mt-2 text-xs text-muted-foreground">
+                Jumlah tambahan dicatat sebagai data terpisah dan tidak
+                otomatis ditambahkan ke jumlah peserta.
+              </p>
+            </section>
+          )}
+
+          {/* KETERANGAN TAMBAHAN */}
           <section>
-            <h2 className="text-sm font-semibold">
-              Jumlah Peserta
-            </h2>
-
-            <div className="mt-3 grid grid-cols-2 gap-4 md:grid-cols-4">
-              <NumberField
-                id="jumlah-peserta"
-                label="Jumlah peserta"
-                value={form.jumlah_peserta}
-                onChange={(value) =>
-                  updateField(
-                    "jumlah_peserta",
-                    value,
-                  )
-                }
-              />
-
-              <NumberField
-                id="jumlah-hadir"
-                label="Hadir"
-                value={form.jumlah_hadir}
-                onChange={(value) =>
-                  updateField(
-                    "jumlah_hadir",
-                    value,
-                  )
-                }
-              />
-
-              <NumberField
-                id="jumlah-tidak-hadir"
-                label="Tidak hadir"
-                value={form.jumlah_tidak_hadir}
-                onChange={(value) =>
-                  updateField(
-                    "jumlah_tidak_hadir",
-                    value,
-                  )
-                }
-              />
-
-              <NumberField
-                id="jumlah-tambahan"
-                label="Tambahan"
-                value={form.jumlah_tambahan}
-                onChange={(value) =>
-                  updateField(
-                    "jumlah_tambahan",
-                    value,
-                  )
-                }
-              />
-            </div>
-
-            <p className="mt-2 text-xs text-muted-foreground">
-              Jumlah tambahan dicatat
-              sebagai data terpisah dan
-              tidak otomatis ditambahkan
-              ke jumlah peserta.
-            </p>
-          </section>
-
-          {/* KETERANGAN */}
-          <section>
-            <h2 className="text-sm font-semibold">
-              Keterangan
-            </h2>
-
+            <h2 className="text-sm font-semibold">Keterangan Tambahan</h2>
             <div className="mt-3 space-y-2">
-              <Label htmlFor="keterangan">
-                Catatan / keterangan tambahan
-              </Label>
-
+              <Label htmlFor="keterangan">Catatan tambahan (opsional)</Label>
               <Textarea
                 id="keterangan"
-                rows={5}
-                placeholder="Tulis keterangan kegiatan jika diperlukan…"
+                rows={3}
+                placeholder="Tulis keterangan tambahan jika diperlukan…"
                 value={form.keterangan}
-                onChange={(e) =>
-                  updateField(
-                    "keterangan",
-                    e.target.value,
-                  )
-                }
+                onChange={(e) => updateField("keterangan", e.target.value)}
               />
             </div>
           </section>
@@ -1611,20 +1375,11 @@ function BuatLaporan() {
               <Camera className="mt-0.5 size-5 shrink-0 text-primary" />
 
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold">
-                  Dokumentasi foto
-                </p>
-
+                <p className="text-sm font-semibold">Dokumentasi foto</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Maksimal {MAX_PHOTOS} foto per laporan.
-                  Pada laporan revisi, foto lama tetap
-                  dipertahankan dan lu bisa menambahkan
-                  foto baru sampai batas maksimal.
-                </p>
-
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Foto dari WhatsApp Bot nantinya juga
-                  akan masuk otomatis ke laporan.
+                  Maksimal {MAX_PHOTOS} foto per laporan. Pada laporan revisi,
+                  foto lama tetap dipertahankan dan lu bisa menambahkan foto
+                  baru sampai batas maksimal.
                 </p>
 
                 <div className="mt-4">
@@ -1645,7 +1400,6 @@ function BuatLaporan() {
                     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Foto sebelumnya
                     </p>
-
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
                       {existingPhotos.map((photo) => (
                         <div
@@ -1654,16 +1408,11 @@ function BuatLaporan() {
                         >
                           <img
                             src={photo.url}
-                            alt={
-                              photo.nama_file ??
-                              "Foto dokumentasi"
-                            }
+                            alt={photo.nama_file ?? "Foto dokumentasi"}
                             className="aspect-square w-full object-cover"
                           />
-
                           <p className="truncate px-2 py-1.5 text-xs text-muted-foreground">
-                            {photo.nama_file ??
-                              "Foto lama"}
+                            {photo.nama_file ?? "Foto lama"}
                           </p>
                         </div>
                       ))}
@@ -1676,37 +1425,30 @@ function BuatLaporan() {
                     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Foto tambahan
                     </p>
-
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-                      {fotoFiles.map(
-                        (file, index) => (
-                          <div
-                            key={`${file.name}-${index}`}
-                            className="relative overflow-hidden rounded-lg border"
+                      {fotoFiles.map((file, index) => (
+                        <div
+                          key={`${file.name}-${index}`}
+                          className="relative overflow-hidden rounded-lg border"
+                        >
+                          <img
+                            src={URL.createObjectURL(file)}
+                            alt={file.name}
+                            className="aspect-square w-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => hapusFoto(index)}
+                            className="absolute right-1 top-1 rounded-full bg-black/70 p-1 text-white"
+                            title="Hapus foto"
                           >
-                            <img
-                              src={URL.createObjectURL(file)}
-                              alt={file.name}
-                              className="aspect-square w-full object-cover"
-                            />
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                hapusFoto(index)
-                              }
-                              className="absolute right-1 top-1 rounded-full bg-black/70 p-1 text-white"
-                              title="Hapus foto"
-                            >
-                              <X className="size-3" />
-                            </button>
-
-                            <p className="truncate px-2 py-1.5 text-xs text-muted-foreground">
-                              {file.name}
-                            </p>
-                          </div>
-                        ),
-                      )}
+                            <X className="size-3" />
+                          </button>
+                          <p className="truncate px-2 py-1.5 text-xs text-muted-foreground">
+                            {file.name}
+                          </p>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -1718,17 +1460,10 @@ function BuatLaporan() {
             </div>
           </section>
 
-          {/* PREVIEW */}
           <div className="flex justify-end">
-            <Button
-              onClick={bukaPreview}
-              size="lg"
-            >
+            <Button onClick={bukaPreview} size="lg">
               <Eye className="mr-2 size-4" />
-              Preview{" "}
-              {isEditMode
-                ? "Kirim Ulang"
-                : "Laporan"}
+              Preview {isEditMode ? "Kirim Ulang" : "Laporan"}
             </Button>
           </div>
         </div>
@@ -1750,10 +1485,7 @@ function NumberField({
 }) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>
-        {label}
-      </Label>
-
+      <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}
         type="number"
@@ -1762,55 +1494,27 @@ function NumberField({
         value={value}
         onChange={(e) => {
           const parsed = Number(e.target.value);
-
-          onChange(
-            Number.isFinite(parsed) &&
-              parsed >= 0
-              ? parsed
-              : 0,
-          );
+          onChange(Number.isFinite(parsed) && parsed >= 0 ? parsed : 0);
         }}
       />
     </div>
   );
 }
 
-function PreviewItem({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function PreviewItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-border/60 bg-card/30 p-3">
-      <p className="text-xs text-muted-foreground">
-        {label}
-      </p>
-
-      <p className="mt-1 text-sm font-medium">
-        {value}
-      </p>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-medium">{value}</p>
     </div>
   );
 }
 
-function PreviewNumber({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
+function PreviewNumber({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-xl border border-border/60 bg-background/40 p-3">
-      <p className="text-xs text-muted-foreground">
-        {label}
-      </p>
-
-      <p className="num mt-1 text-lg font-semibold">
-        {value}
-      </p>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="num mt-1 text-lg font-semibold">{value}</p>
     </div>
   );
 }
