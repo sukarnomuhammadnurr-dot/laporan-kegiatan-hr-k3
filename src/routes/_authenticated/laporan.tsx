@@ -29,14 +29,11 @@ import {
   type ReportWithTrainer,
 } from "@/lib/queries";
 import { cn } from "@/lib/utils";
+import { useBrandingUrl } from "@/lib/branding";
 
 export const Route = createFileRoute("/_authenticated/laporan")({
   head: () => ({
-    meta: [
-      {
-        title: "Laporan Kegiatan · Laporan Trainer K3 PT IWIP",
-      },
-    ],
+    meta: [{ title: "Laporan Kegiatan · Laporan Trainer K3 PT IWIP" }],
   }),
   component: LaporanPage,
 });
@@ -56,7 +53,6 @@ type ReportPhoto = {
 
 function formatTanggal(tanggal: string | null | undefined) {
   if (!tanggal) return "—";
-
   return new Date(`${tanggal}T00:00:00`).toLocaleDateString("id-ID", {
     day: "2-digit",
     month: "2-digit",
@@ -66,7 +62,6 @@ function formatTanggal(tanggal: string | null | undefined) {
 
 function formatTanggalPanjang(tanggal: string | null | undefined) {
   if (!tanggal) return "—";
-
   return new Date(`${tanggal}T00:00:00`).toLocaleDateString("id-ID", {
     weekday: "long",
     day: "2-digit",
@@ -75,11 +70,7 @@ function formatTanggalPanjang(tanggal: string | null | undefined) {
   });
 }
 
-function StatusPill({
-  status,
-}: {
-  status: string | null | undefined;
-}) {
+function StatusPill({ status }: { status: string | null | undefined }) {
   const label =
     status === "terverifikasi"
       ? "Terverifikasi"
@@ -97,12 +88,10 @@ function StatusPill({
         "inline-flex rounded-full px-2.5 py-1 text-xs font-medium",
         status === "terverifikasi" &&
           "bg-status-verified/15 text-status-verified",
-        status === "perlu_revisi" &&
-          "bg-destructive/10 text-destructive",
+        status === "perlu_revisi" && "bg-destructive/10 text-destructive",
         status === "menunggu_verifikasi" &&
           "bg-status-warning/15 text-status-warning",
-        status === "terkirim" &&
-          "bg-primary/10 text-primary",
+        status === "terkirim" && "bg-primary/10 text-primary",
         ![
           "terverifikasi",
           "perlu_revisi",
@@ -134,31 +123,25 @@ async function getReportPhotos(reportId: string) {
 
   return Promise.all(
     rows.map(async (photo) => {
-      const { data: signed, error: signedError } =
-        await supabase.storage
-          .from("report-photos")
-          .createSignedUrl(photo.storage_path, 60 * 60);
+      const { data: signed, error: signedError } = await supabase.storage
+        .from("report-photos")
+        .createSignedUrl(photo.storage_path, 60 * 60);
 
       return {
         ...photo,
-        url:
-          signedError || !signed?.signedUrl
-            ? null
-            : signed.signedUrl,
+        url: signedError || !signed?.signedUrl ? null : signed.signedUrl,
       };
     }),
   );
 }
 
 async function getDailyReportPhotos(reports: ReportWithTrainer[]) {
-  const result = await Promise.all(
+  return Promise.all(
     reports.map(async (report) => ({
       report,
       photos: await getReportPhotos(report.id),
     })),
   );
-
-  return result;
 }
 
 /* =========================================================
@@ -170,9 +153,7 @@ async function verifikasiLaporan(
   userId: string,
 ) {
   if (report.status_laporan !== "menunggu_verifikasi") {
-    throw new Error(
-      "Laporan ini tidak sedang menunggu verifikasi.",
-    );
+    throw new Error("Laporan ini tidak sedang menunggu verifikasi.");
   }
 
   const { error: updateError } = await supabase
@@ -199,25 +180,16 @@ async function verifikasiLaporan(
   if (verificationError) throw verificationError;
 }
 
-/* =========================================================
-   MINTA REVISI
-========================================================= */
-
 async function mintaRevisiLaporan(
   report: ReportWithTrainer,
   userId: string,
   catatan: string,
 ) {
   const trimmed = catatan.trim();
-
-  if (!trimmed) {
-    throw new Error("Catatan revisi wajib diisi.");
-  }
+  if (!trimmed) throw new Error("Catatan revisi wajib diisi.");
 
   if (report.status_laporan !== "menunggu_verifikasi") {
-    throw new Error(
-      "Laporan ini tidak sedang menunggu verifikasi.",
-    );
+    throw new Error("Laporan ini tidak sedang menunggu verifikasi.");
   }
 
   const { error: updateError } = await supabase
@@ -244,25 +216,16 @@ async function mintaRevisiLaporan(
   if (verificationError) throw verificationError;
 }
 
-/* =========================================================
-   KEMBALIKAN LAPORAN YANG SALAH TER VERIFIKASI
-========================================================= */
-
 async function kembalikanKeRevisiLaporan(
   report: ReportWithTrainer,
   userId: string,
   catatan: string,
 ) {
   const trimmed = catatan.trim();
-
-  if (!trimmed) {
-    throw new Error("Catatan revisi wajib diisi.");
-  }
+  if (!trimmed) throw new Error("Catatan revisi wajib diisi.");
 
   if (report.status_laporan !== "terverifikasi") {
-    throw new Error(
-      "Laporan ini tidak sedang berstatus terverifikasi.",
-    );
+    throw new Error("Laporan ini tidak sedang berstatus terverifikasi.");
   }
 
   const { error: updateError } = await supabase
@@ -312,53 +275,33 @@ function hitungDurasiJam(
   }
 
   let menit = h2! * 60 + m2! - (h1! * 60 + m1!);
-
-  if (menit < 0) {
-    menit += 24 * 60;
-  }
-
+  if (menit < 0) menit += 24 * 60;
   return menit / 60;
 }
 
 function formatJamTraining(jam: number) {
   if (!jam) return "0 jam";
-
   const jamBulat = Math.floor(jam);
   const menit = Math.round((jam - jamBulat) * 60);
-
-  if (menit === 0) {
-    return `${jamBulat} jam`;
-  }
-
+  if (menit === 0) return `${jamBulat} jam`;
   return `${jamBulat} jam ${menit} menit`;
 }
-
-/* =========================================================
-   NOMOR DOKUMEN
-========================================================= */
 
 function buatNomorDokumen(
   report: ReportWithTrainer,
   reports: ReportWithTrainer[],
 ) {
   const tanggal = report.tanggal_kegiatan || "";
-
   const tahun = tanggal.slice(0, 4) || "0000";
   const bulan = tanggal.slice(5, 7) || "00";
-
   const nomorTrainer =
     report.trainers?.nomor_id_trainer ||
     report.trainer_id.slice(0, 8).toUpperCase();
-
   const angkaTrainer =
     nomorTrainer.match(/\d+/)?.[0] ||
     String(
       Math.abs(
-        reports.reduce(
-          (sum, item) =>
-            sum + item.id.charCodeAt(0),
-          0,
-        ),
+        reports.reduce((sum, item) => sum + item.id.charCodeAt(0), 0),
       ),
     ).padStart(5, "0");
 
@@ -371,14 +314,11 @@ function buatNomorDokumen(
 
 async function downloadLaporan(
   report: ReportWithTrainer,
+  brandingLogoUrl?: string | null,
 ) {
-  const namaTrainer =
-    report.trainers?.nama_lengkap || "Trainer";
+  const namaTrainer = report.trainers?.nama_lengkap || "Trainer";
 
   try {
-    /*
-     * Ambil SEMUA laporan trainer pada tanggal yang sama.
-     */
     const dailyReports = await fetchReports({
       trainerId: report.trainer_id,
       dari: report.tanggal_kegiatan,
@@ -386,238 +326,130 @@ async function downloadLaporan(
     });
 
     if (dailyReports.length === 0) {
-      throw new Error(
-        "Tidak ditemukan kegiatan pada tanggal tersebut.",
-      );
+      throw new Error("Tidak ditemukan kegiatan pada tanggal tersebut.");
     }
 
-    const dailyPhotos =
-      await getDailyReportPhotos(dailyReports);
-
+    const dailyPhotos = await getDailyReportPhotos(dailyReports);
     const totalKegiatan = dailyReports.length;
 
-    const totalPeserta = dailyReports.reduce(
-      (sum, item) =>
-        sum + Number(item.jumlah_peserta || 0),
-      0,
-    );
+    // ============ FIX: HADIR & PESERTA (ambil 1 nilai, bukan sum) ============
+    // Karena di-rowspan, kita cuma ambil nilai dari laporan pertama
+    const nilaiHadirPertama = Number(dailyReports[0]?.jumlah_hadir || 0);
+    const nilaiPesertaPertama = Number(dailyReports[0]?.jumlah_peserta || 0);
 
-    const totalHadir = dailyReports.reduce(
-      (sum, item) =>
-        sum + Number(item.jumlah_hadir || 0),
-      0,
-    );
+    const totalPeserta = nilaiPesertaPertama;
+    const totalHadir = nilaiHadirPertama;
 
     const totalTambahan = dailyReports.reduce(
-      (sum, item) =>
-        sum + Number(item.jumlah_tambahan || 0),
+      (sum, item) => sum + Number(item.jumlah_tambahan || 0),
       0,
     );
 
     const totalJam = dailyReports.reduce(
       (sum, item) =>
-        sum +
-        hitungDurasiJam(
-          item.jam_mulai,
-          item.jam_selesai,
-        ),
+        sum + hitungDurasiJam(item.jam_mulai, item.jam_selesai),
       0,
     );
 
     const statusHarian = dailyReports.every(
-      (item) =>
-        item.status_laporan ===
-        "terverifikasi",
+      (item) => item.status_laporan === "terverifikasi",
     )
       ? "Terverifikasi"
-      : dailyReports.some(
-            (item) =>
-              item.status_laporan ===
-              "perlu_revisi",
-          )
+      : dailyReports.some((item) => item.status_laporan === "perlu_revisi")
         ? "Perlu Revisi"
         : dailyReports.some(
-              (item) =>
-                item.status_laporan ===
-                "menunggu_verifikasi",
+              (item) => item.status_laporan === "menunggu_verifikasi",
             )
           ? "Menunggu Verifikasi"
           : "Terkirim";
 
-    const nomorDokumen = buatNomorDokumen(
-      report,
-      dailyReports,
-    );
+    const nomorDokumen = buatNomorDokumen(report, dailyReports);
+    const rowSpanHadir = dailyReports.length;
 
     /* =====================================================
-       FOTO DI SAMPING KEGIATAN
+       FOTO — BESAR, PENUH KOLOM
     ===================================================== */
 
     const kegiatanRows = dailyPhotos
-      .map(
-        ({ report: item, photos }, index) => {
-          const fotoHtml =
-            photos.length === 0
-              ? `
-                <div class="no-photo">
-                  Tidak ada foto
-                </div>
-              `
-              : `
-                <div class="photo-strip">
-                  ${photos
-                    .map(
-                      (photo) =>
-                        photo.url
-                          ? `
-                            <img
-                              src="${photo.url}"
-                              class="activity-photo"
-                              alt="${escapeHtml(
-                                photo.nama_file ||
-                                  "Dokumentasi",
-                              )}"
-                            />
-                          `
-                          : "",
-                    )
-                    .join("")}
-                </div>
-              `;
+      .map(({ report: item, photos }, index) => {
+        const fotoHtml =
+          photos.length === 0
+            ? `<div class="no-photo">Tidak ada foto</div>`
+            : `<div class="photo-strip">${photos
+                .map((photo) =>
+                  photo.url
+                    ? `<img src="${photo.url}" class="activity-photo" alt="${escapeHtml(
+                        photo.nama_file || "Dokumentasi",
+                      )}" />`
+                    : "",
+                )
+                .join("")}</div>`;
 
-          return `
-            <tr>
-              <td class="center number-cell">
-                ${index + 1}
-              </td>
+        // Rowspan: hanya baris pertama tampil jumlah
+        const isFirstRow = index === 0;
+        const hadirCell = isFirstRow
+          ? `<td class="center participant-cell" rowspan="${rowSpanHadir}">
+               <strong>${item.jumlah_peserta ?? 0}</strong>
+               ${
+                 item.jumlah_hadir !== null
+                   ? `<div class="small-info">Hadir: ${item.jumlah_hadir}</div>`
+                   : ""
+               }
+             </td>`
+          : "";
 
-              <td class="time-cell">
-                <strong>
-                  ${escapeHtml(
-                    item.jam_mulai || "—",
-                  )}
-                </strong>
-
-                ${
-                  item.jam_selesai
-                    ? `
-                      <span class="time-end">
-                        - ${escapeHtml(
-                          item.jam_selesai,
-                        )}
-                      </span>
-                    `
-                    : ""
-                }
-              </td>
-
-              <td class="activity-cell">
-                <div class="activity-title">
-                  ${escapeHtml(
-                    item.materi || "—",
-                  )}
-                </div>
-
-                ${
-                  item.jenis_kegiatan
-                    ? `
-                      <div class="activity-type">
-                        ${escapeHtml(
-                          item.jenis_kegiatan,
-                        )}
-                      </div>
-                    `
-                    : ""
-                }
-              </td>
-
-              <td>
-                ${escapeHtml(
-                  item.kelas || "—",
-                )}
-              </td>
-
-              <td>
-                ${escapeHtml(
-                  item.lokasi || "—",
-                )}
-              </td>
-
-              <td class="center">
-                <strong>
-                  ${item.jumlah_peserta ?? 0}
-                </strong>
-
-                ${
-                  item.jumlah_hadir !==
-                  null
-                    ? `
-                      <div class="small-info">
-                        Hadir:
-                        ${item.jumlah_hadir}
-                      </div>
-                    `
-                    : ""
-                }
-              </td>
-
-              <td class="photo-cell">
-                ${fotoHtml}
-              </td>
-
-              <td>
-                ${escapeHtml(
-                  item.keterangan || "Selesai",
-                )}
-              </td>
-            </tr>
-          `;
-        },
-      )
+        return `
+          <tr>
+            <td class="center number-cell">${index + 1}</td>
+            <td class="time-cell">
+              <strong>${escapeHtml(item.jam_mulai || "—")}</strong>
+              ${
+                item.jam_selesai
+                  ? `<span class="time-end">- ${escapeHtml(item.jam_selesai)}</span>`
+                  : ""
+              }
+            </td>
+            <td class="activity-cell">
+              <div class="activity-title">${escapeHtml(item.materi || "—")}</div>
+              ${
+                item.jenis_kegiatan
+                  ? `<div class="activity-type">${escapeHtml(item.jenis_kegiatan)}</div>`
+                  : ""
+              }
+            </td>
+            <td>${escapeHtml(item.kelas || "—")}</td>
+            <td>${escapeHtml(item.lokasi || "—")}</td>
+            ${hadirCell}
+            <td class="photo-cell">${fotoHtml}</td>
+            <td>${escapeHtml(item.keterangan || "Selesai")}</td>
+          </tr>
+        `;
+      })
       .join("");
+
+    // Logo IWIP
+    const logoHtml = brandingLogoUrl
+      ? `<img src="${brandingLogoUrl}" class="iwip-logo" alt="IWIP" />`
+      : `<div class="iwip-mark">IWIP</div>`;
 
     const html = `
       <!DOCTYPE html>
       <html lang="id">
-
       <head>
         <meta charset="UTF-8" />
-
-        <title>
-          Daily Training Activity Report -
-          ${escapeHtml(namaTrainer)}
-        </title>
-
+        <title>Daily Training Activity Report - ${escapeHtml(namaTrainer)}</title>
         <style>
-          * {
-            box-sizing: border-box;
-          }
-
-          html,
+          * { box-sizing: border-box; }
+          html, body { margin: 0; padding: 0; }
           body {
-            margin: 0;
-            padding: 0;
-          }
-
-          body {
-            font-family:
-              Arial,
-              Helvetica,
-              sans-serif;
-
+            font-family: Arial, Helvetica, sans-serif;
             color: #17385f;
             background: white;
             font-size: 9px;
           }
+          .page { width: 100%; }
 
-          .page {
-            width: 100%;
-          }
-
-          /* =========================
-             HEADER
-          ========================= */
-
+          /* HEADER */
           .company-header {
             display: flex;
             align-items: center;
@@ -625,13 +457,12 @@ async function downloadLaporan(
             padding-bottom: 8px;
             border-bottom: 3px solid #173f70;
           }
-
-          .company-left {
-            display: flex;
-            align-items: center;
-            gap: 10px;
+          .company-left { display: flex; align-items: center; gap: 10px; }
+          .iwip-logo {
+            width: 65px;
+            height: 42px;
+            object-fit: contain;
           }
-
           .iwip-mark {
             width: 55px;
             height: 34px;
@@ -643,20 +474,17 @@ async function downloadLaporan(
             color: #173f70;
             font-style: italic;
           }
-
           .company-name {
             font-size: 13px;
             font-weight: 800;
             color: #173f70;
           }
-
           .company-tagline {
             margin-top: 2px;
             font-size: 7px;
             color: #6b7280;
             letter-spacing: 0.4px;
           }
-
           .report-title {
             margin-top: 10px;
             margin-bottom: 9px;
@@ -665,55 +493,33 @@ async function downloadLaporan(
             letter-spacing: 0.5px;
             color: #17385f;
           }
+          .title-line { height: 3px; background: #173f70; width: 100%; }
 
-          .title-line {
-            height: 3px;
-            background: #173f70;
-            width: 100%;
-          }
-
-          /* =========================
-             IDENTITAS
-          ========================= */
-
+          /* IDENTITAS */
           .identity {
             display: grid;
-            grid-template-columns:
-              1.25fr
-              1.05fr
-              1fr
-              1fr
-              1.1fr
-              0.9fr;
-
+            grid-template-columns: 1.25fr 1.05fr 1fr 1fr 1.1fr 0.9fr;
             margin-top: 10px;
             border: 1px solid #d8e1ec;
             border-radius: 8px;
             overflow: hidden;
             background: #f8fbff;
           }
-
           .identity-item {
             padding: 8px 10px;
             border-right: 1px solid #d8e1ec;
           }
-
-          .identity-item:last-child {
-            border-right: none;
-          }
-
+          .identity-item:last-child { border-right: none; }
           .identity-label {
             font-size: 7px;
             color: #64748b;
             margin-bottom: 3px;
           }
-
           .identity-value {
             font-size: 10px;
             font-weight: 800;
             color: #17385f;
           }
-
           .status {
             display: inline-block;
             padding: 3px 7px;
@@ -724,20 +530,9 @@ async function downloadLaporan(
             color: #168044;
           }
 
-          /* =========================
-             TABLE
-          ========================= */
-
-          .activity-wrapper {
-            margin-top: 10px;
-          }
-
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            table-layout: fixed;
-          }
-
+          /* TABLE */
+          .activity-wrapper { margin-top: 10px; }
+          table { width: 100%; border-collapse: collapse; table-layout: fixed; }
           th {
             padding: 6px 5px;
             background: #173f70;
@@ -747,7 +542,6 @@ async function downloadLaporan(
             font-weight: 800;
             text-align: center;
           }
-
           td {
             padding: 5px;
             border: 1px solid #d7e0ea;
@@ -756,139 +550,78 @@ async function downloadLaporan(
             font-size: 8px;
             overflow-wrap: anywhere;
           }
+          tbody tr:nth-child(even) { background: #f8fbff; }
+          .number-cell { font-weight: 800; }
+          .center { text-align: center; }
+          .time-cell { text-align: center; white-space: nowrap; }
+          .time-end { display: block; font-weight: 600; color: #64748b; }
+          .activity-title { font-size: 9px; font-weight: 800; color: #17385f; }
+          .activity-type { margin-top: 2px; font-size: 7px; color: #64748b; }
+          .small-info { margin-top: 2px; font-size: 6.5px; color: #64748b; }
+          .participant-cell strong { font-size: 11px; }
 
-          tbody tr:nth-child(even) {
-            background: #f8fbff;
-          }
-
-          .number-cell {
-            font-weight: 800;
-          }
-
-          .center {
-            text-align: center;
-          }
-
-          .time-cell {
-            text-align: center;
-            white-space: nowrap;
-          }
-
-          .time-end {
-            display: block;
-            font-weight: 600;
-            color: #64748b;
-          }
-
-          .activity-title {
-            font-size: 9px;
-            font-weight: 800;
-            color: #17385f;
-          }
-
-          .activity-type {
-            margin-top: 2px;
-            font-size: 7px;
-            color: #64748b;
-          }
-
-          .small-info {
-            margin-top: 2px;
-            font-size: 6.5px;
-            color: #64748b;
-          }
-
-          /* =========================
-             FOTO SAMPING
-          ========================= */
-
+          /* FOTO — BESAR */
           .photo-cell {
-            width: 18%;
-            padding: 4px;
+            width: 30%;
+            padding: 5px;
+            vertical-align: middle;
           }
-
           .photo-strip {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 3px;
-            align-items: center;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 4px;
           }
-
           .activity-photo {
-            width: 65px;
-            height: 48px;
+            width: 100%;
+            height: 105px;
             object-fit: cover;
             border-radius: 4px;
             border: 1px solid #cbd5e1;
             background: #f1f5f9;
+            display: block;
           }
-
+          /* Foto tunggal — full width & lebih tinggi */
+          .photo-strip .activity-photo:only-child {
+            grid-column: span 2;
+            height: 140px;
+          }
           .no-photo {
             color: #94a3b8;
             font-size: 7px;
             text-align: center;
-            padding: 8px 2px;
+            padding: 20px 2px;
           }
 
-          /* =========================
-             SUMMARY
-          ========================= */
-
+          /* SUMMARY */
           .bottom-grid {
             display: grid;
             grid-template-columns: 1.2fr 1.8fr;
             gap: 8px;
             margin-top: 9px;
           }
-
-          .summary {
-            display: grid;
-            grid-template-columns:
-              repeat(4, 1fr);
-            gap: 6px;
-          }
-
+          .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
           .summary-card {
             border: 1px solid #d7e0ea;
             border-radius: 7px;
             padding: 8px;
             background: #f8fbff;
           }
-
-          .summary-label {
-            font-size: 7px;
-            color: #64748b;
-          }
-
+          .summary-label { font-size: 7px; color: #64748b; }
           .summary-value {
             margin-top: 3px;
             font-size: 15px;
             font-weight: 900;
             color: #17385f;
           }
-
           .notes {
             border: 1px solid #d7e0ea;
             border-radius: 7px;
             padding: 8px;
           }
+          .notes-title { font-size: 8px; font-weight: 800; margin-bottom: 4px; }
+          .notes-text { color: #475569; font-size: 7px; line-height: 1.4; }
 
-          .notes-title {
-            font-size: 8px;
-            font-weight: 800;
-            margin-bottom: 4px;
-          }
-
-          .notes-text {
-            color: #475569;
-            font-size: 7px;
-            line-height: 1.4;
-          }
-
-          /* =========================
-             FOOTER
-          ========================= */
-
+          /* FOOTER */
           .footer {
             display: flex;
             justify-content: space-between;
@@ -899,168 +632,83 @@ async function downloadLaporan(
             color: #64748b;
             font-size: 7px;
           }
+          .document-number { font-weight: 800; color: #17385f; }
 
-          .document-number {
-            font-weight: 800;
-            color: #17385f;
-          }
-
-          @page {
-            size: A4 landscape;
-            margin: 8mm;
-          }
-
+          @page { size: A4 landscape; margin: 8mm; }
           @media print {
-            body {
-              padding: 0;
-            }
-
-            .page {
-              page-break-after: auto;
-            }
-
-            tr {
-              page-break-inside: avoid;
-            }
+            body { padding: 0; }
+            tr { page-break-inside: avoid; }
           }
         </style>
       </head>
-
       <body>
-
         <div class="page">
-
           <div class="company-header">
-
             <div class="company-left">
-
-              <div class="iwip-mark">
-                IWIP
-              </div>
-
+              ${logoHtml}
               <div>
                 <div class="company-name">
                   PT INDONESIA WEDA BAY INDUSTRIAL PARK (IWIP)
                 </div>
-
                 <div class="company-tagline">
                   SUSTAINABLE INDUSTRY FOR A BETTER TOMORROW
                 </div>
               </div>
-
             </div>
-
           </div>
 
-          <div class="report-title">
-            DAILY TRAINING ACTIVITY REPORT
-          </div>
-
+          <div class="report-title">DAILY TRAINING ACTIVITY REPORT</div>
           <div class="title-line"></div>
 
-          <!-- IDENTITAS -->
-
           <div class="identity">
-
             <div class="identity-item">
-              <div class="identity-label">
-                Nama Trainer
-              </div>
-
-              <div class="identity-value">
-                ${escapeHtml(namaTrainer)}
-              </div>
+              <div class="identity-label">Nama Trainer</div>
+              <div class="identity-value">${escapeHtml(namaTrainer)}</div>
             </div>
-
             <div class="identity-item">
-              <div class="identity-label">
-                No. ID Trainer
-              </div>
-
-              <div class="identity-value">
-                ${escapeHtml(
-                  report.trainers
-                    ?.nomor_id_trainer ||
-                    "—",
-                )}
-              </div>
+              <div class="identity-label">No. ID Trainer</div>
+              <div class="identity-value">${escapeHtml(
+                report.trainers?.nomor_id_trainer || "—",
+              )}</div>
             </div>
-
             <div class="identity-item">
-              <div class="identity-label">
-                Jabatan
-              </div>
-
-              <div class="identity-value">
-                ${escapeHtml(
-                  report.trainers
-                    ?.jabatan ||
-                    "—",
-                )}
-              </div>
+              <div class="identity-label">Jabatan</div>
+              <div class="identity-value">${escapeHtml(
+                report.trainers?.jabatan || "—",
+              )}</div>
             </div>
-
             <div class="identity-item">
-              <div class="identity-label">
-                Departemen
-              </div>
-
-              <div class="identity-value">
-                ${escapeHtml(
-                  report.trainers
-                    ?.departemen ||
-                    "—",
-                )}
-              </div>
+              <div class="identity-label">Departemen</div>
+              <div class="identity-value">${escapeHtml(
+                report.trainers?.departemen || "—",
+              )}</div>
             </div>
-
             <div class="identity-item">
-              <div class="identity-label">
-                Tanggal
-              </div>
-
-              <div class="identity-value">
-                ${escapeHtml(
-                  formatTanggalPanjang(
-                    report.tanggal_kegiatan,
-                  ),
-                )}
-              </div>
+              <div class="identity-label">Tanggal</div>
+              <div class="identity-value">${escapeHtml(
+                formatTanggalPanjang(report.tanggal_kegiatan),
+              )}</div>
             </div>
-
             <div class="identity-item">
-              <div class="identity-label">
-                Status
-              </div>
-
-              <div class="status">
-                ✓ ${escapeHtml(statusHarian)}
-              </div>
+              <div class="identity-label">Status</div>
+              <div class="status">✓ ${escapeHtml(statusHarian)}</div>
             </div>
-
           </div>
 
-          <!-- KEGIATAN -->
-
           <div class="activity-wrapper">
-
             <table>
-
               <colgroup>
                 <col style="width: 3.5%" />
-                <col style="width: 9%" />
-                <col style="width: 22%" />
-                <col style="width: 9%" />
-                <col style="width: 11%" />
                 <col style="width: 8%" />
-                <col style="width: 18%" />
-                <col style="width: 19.5%" />
+                <col style="width: 20%" />
+                <col style="width: 7%" />
+                <col style="width: 9%" />
+                <col style="width: 7%" />
+                <col style="width: 30%" />
+                <col style="width: 15.5%" />
               </colgroup>
-
               <thead>
-
                 <tr>
-
                   <th>No.</th>
                   <th>Jam</th>
                   <th>Materi / Kegiatan</th>
@@ -1069,129 +717,63 @@ async function downloadLaporan(
                   <th>Peserta</th>
                   <th>Dokumentasi</th>
                   <th>Keterangan</th>
-
                 </tr>
-
               </thead>
-
               <tbody>
                 ${kegiatanRows}
               </tbody>
-
             </table>
-
           </div>
 
-          <!-- SUMMARY -->
-
           <div class="bottom-grid">
-
             <div class="summary">
-
               <div class="summary-card">
-                <div class="summary-label">
-                  Total Kegiatan
-                </div>
-
-                <div class="summary-value">
-                  ${totalKegiatan}
-                </div>
+                <div class="summary-label">Total Kegiatan</div>
+                <div class="summary-value">${totalKegiatan}</div>
               </div>
-
               <div class="summary-card">
-                <div class="summary-label">
-                  Total Peserta
-                </div>
-
-                <div class="summary-value">
-                  ${totalPeserta}
-                </div>
+                <div class="summary-label">Total Peserta</div>
+                <div class="summary-value">${totalPeserta}</div>
               </div>
-
               <div class="summary-card">
-                <div class="summary-label">
-                  Total Hadir
-                </div>
-
-                <div class="summary-value">
-                  ${totalHadir}
-                </div>
+                <div class="summary-label">Total Hadir</div>
+                <div class="summary-value">${totalHadir}</div>
               </div>
-
               <div class="summary-card">
-                <div class="summary-label">
-                  Total Jam Training
-                </div>
-
-                <div class="summary-value">
-                  ${formatJamTraining(totalJam)}
-                </div>
+                <div class="summary-label">Total Jam Training</div>
+                <div class="summary-value">${formatJamTraining(totalJam)}</div>
               </div>
-
             </div>
 
             <div class="notes">
-
-              <div class="notes-title">
-                Catatan / Informasi Tambahan
-              </div>
-
+              <div class="notes-title">Catatan / Informasi Tambahan</div>
               <div class="notes-text">
-
                 ${
                   dailyReports
-                    .filter(
-                      (item) =>
-                        item.keterangan,
-                    )
-                    .map(
-                      (item) =>
-                        `• ${escapeHtml(
-                          item.keterangan!,
-                        )}`,
-                    )
-                    .join("<br />") ||
-                  "Tidak ada catatan tambahan."
+                    .filter((item) => item.keterangan)
+                    .map((item) => `• ${escapeHtml(item.keterangan!)}`)
+                    .join("<br />") || "Tidak ada catatan tambahan."
                 }
-
               </div>
-
             </div>
-
           </div>
 
           <div class="footer">
-
-            <div>
-              Generated from Trainer Activity Reporting System
-            </div>
-
+            <div>Generated from Trainer Activity Reporting System</div>
             <div class="document-number">
-              No. Dokumen: ${escapeHtml(
-                nomorDokumen,
-              )}
+              No. Dokumen: ${escapeHtml(nomorDokumen)}
             </div>
-
           </div>
-
         </div>
-
       </body>
-
       </html>
     `;
 
-    const win = window.open(
-      "",
-      "_blank",
-      "width=1200,height=850",
-    );
-
+    const win = window.open("", "_blank", "width=1200,height=850");
     if (!win) {
       alert(
         "Popup diblokir browser. Silakan izinkan popup untuk membuka Preview PDF.",
       );
-
       return;
     }
 
@@ -1199,10 +781,7 @@ async function downloadLaporan(
     win.document.write(html);
     win.document.close();
 
-    const images = Array.from(
-      win.document.images,
-    );
-
+    const images = Array.from(win.document.images);
     await Promise.all(
       images.map(
         (img) =>
@@ -1211,7 +790,6 @@ async function downloadLaporan(
               resolve();
               return;
             }
-
             img.onload = () => resolve();
             img.onerror = () => resolve();
           }),
@@ -1223,11 +801,7 @@ async function downloadLaporan(
       win.print();
     }, 500);
   } catch (error) {
-    console.error(
-      "Gagal menyiapkan Daily Training Activity Report:",
-      error,
-    );
-
+    console.error("Gagal menyiapkan Daily Training Activity Report:", error);
     alert(
       error instanceof Error
         ? error.message
@@ -1240,16 +814,8 @@ async function downloadLaporan(
    ESCAPE HTML
 ========================================================= */
 
-function escapeHtml(
-  value: string | number | null | undefined,
-) {
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return "";
-  }
-
+function escapeHtml(value: string | number | null | undefined) {
+  if (value === null || value === undefined) return "";
   return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -1263,54 +829,28 @@ function escapeHtml(
 ========================================================= */
 
 function LaporanPage() {
-  const {
-    isStaff,
-    isTrainer,
-    trainer,
-    user,
-    loading,
-  } = useCurrentUser();
-
+  const { isStaff, isTrainer, trainer, user, loading } = useCurrentUser();
   const queryClient = useQueryClient();
 
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
-  const [trainerFilter, setTrainerFilter] =
-    useState("semua");
-  const [status, setStatus] =
-    useState<FilterStatus>("semua");
+  const [trainerFilter, setTrainerFilter] = useState("semua");
+  const [status, setStatus] = useState<FilterStatus>("semua");
   const [cari, setCari] = useState("");
 
-  const [preview, setPreview] =
-    useState<ReportWithTrainer | null>(
-      null,
-    );
-
-  const [revisiReport, setRevisiReport] =
-    useState<ReportWithTrainer | null>(
-      null,
-    );
-
-  const [
-    kembalikanReport,
-    setKembalikanReport,
-  ] = useState<ReportWithTrainer | null>(
+  const [preview, setPreview] = useState<ReportWithTrainer | null>(null);
+  const [revisiReport, setRevisiReport] = useState<ReportWithTrainer | null>(
     null,
   );
+  const [kembalikanReport, setKembalikanReport] =
+    useState<ReportWithTrainer | null>(null);
+  const [catatanRevisi, setCatatanRevisi] = useState("");
+  const [processingId, setProcessingId] = useState<string | null>(null);
 
-  const [catatanRevisi, setCatatanRevisi] =
-    useState("");
+  const brandingLogo = useBrandingUrl("logo");
 
-  const [processingId, setProcessingId] =
-    useState<string | null>(null);
-
-  const {
-    data: trainers = [],
-  } = useQuery({
-    queryKey: [
-      "trainers",
-      "laporan-filter",
-    ],
+  const { data: trainers = [] } = useQuery({
+    queryKey: ["trainers", "laporan-filter"],
     enabled: isStaff,
     queryFn: fetchTrainers,
   });
@@ -1330,9 +870,7 @@ function LaporanPage() {
       status,
       cari,
     ],
-    enabled:
-      !loading &&
-      (isStaff || isTrainer),
+    enabled: !loading && (isStaff || isTrainer),
     queryFn: () =>
       fetchReports({
         trainerId:
@@ -1343,53 +881,23 @@ function LaporanPage() {
               : null,
         dari: dari || null,
         sampai: sampai || null,
-        status:
-          status !== "semua"
-            ? status
-            : null,
-        cari:
-          cari.trim()
-            ? cari.trim()
-            : null,
+        status: status !== "semua" ? status : null,
+        cari: cari.trim() ? cari.trim() : null,
       }),
   });
 
   async function refreshReports() {
-    await queryClient.invalidateQueries({
-      queryKey: ["reports", "laporan"],
-    });
-
-    await queryClient.invalidateQueries({
-      queryKey: ["report-photos"],
-    });
+    await queryClient.invalidateQueries({ queryKey: ["reports", "laporan"] });
+    await queryClient.invalidateQueries({ queryKey: ["report-photos"] });
   }
 
-  /* =========================================================
-     EDIT
-  ========================================================= */
-
-  function handleEditLaporan(
-    report: ReportWithTrainer,
-  ) {
+  function handleEditLaporan(report: ReportWithTrainer) {
     if (!isTrainer) return;
-
-    if (report.status_laporan !== "perlu_revisi") {
-      return;
-    }
-
-    window.location.href =
-      `/buat-laporan?edit=${encodeURIComponent(
-        report.id,
-      )}`;
+    if (report.status_laporan !== "perlu_revisi") return;
+    window.location.href = `/buat-laporan?edit=${encodeURIComponent(report.id)}`;
   }
 
-  /* =========================================================
-     VERIFIKASI
-  ========================================================= */
-
-  async function handleVerifikasi(
-    report: ReportWithTrainer,
-  ) {
+  async function handleVerifikasi(report: ReportWithTrainer) {
     if (!user?.id) {
       alert("User tidak ditemukan.");
       return;
@@ -1398,85 +906,45 @@ function LaporanPage() {
     const yakin = window.confirm(
       `Verifikasi laporan ${report.materi || "ini"}?`,
     );
-
     if (!yakin) return;
 
     try {
       setProcessingId(report.id);
-
-      await verifikasiLaporan(
-        report,
-        user.id,
-      );
-
-      alert(
-        "Laporan berhasil diverifikasi.",
-      );
-
+      await verifikasiLaporan(report, user.id);
+      alert("Laporan berhasil diverifikasi.");
       setPreview(null);
-
       await refreshReports();
     } catch (error) {
-      console.error(
-        "Gagal verifikasi:",
-        error,
-      );
-
+      console.error("Gagal verifikasi:", error);
       alert(
-        error instanceof Error
-          ? error.message
-          : "Gagal memverifikasi laporan.",
+        error instanceof Error ? error.message : "Gagal memverifikasi laporan.",
       );
     } finally {
       setProcessingId(null);
     }
   }
 
-  /* =========================================================
-     MINTA REVISI
-  ========================================================= */
-
   async function handleMintaRevisi() {
     if (!revisiReport) return;
-
     if (!user?.id) {
       alert("User tidak ditemukan.");
       return;
     }
-
     if (!catatanRevisi.trim()) {
-      alert(
-        "Catatan revisi wajib diisi.",
-      );
+      alert("Catatan revisi wajib diisi.");
       return;
     }
 
     try {
-      setProcessingId(
-        revisiReport.id,
-      );
-
-      await mintaRevisiLaporan(
-        revisiReport,
-        user.id,
-        catatanRevisi,
-      );
-
-      alert(
-        "Laporan dikembalikan untuk revisi.",
-      );
-
+      setProcessingId(revisiReport.id);
+      await mintaRevisiLaporan(revisiReport, user.id, catatanRevisi);
+      alert("Laporan dikembalikan untuk revisi.");
       setRevisiReport(null);
       setCatatanRevisi("");
       setPreview(null);
-
       await refreshReports();
     } catch (error) {
-      console.error(
-        "Gagal meminta revisi:",
-        error,
-      );
-
+      console.error("Gagal meminta revisi:", error);
       alert(
         error instanceof Error
           ? error.message
@@ -1487,51 +955,27 @@ function LaporanPage() {
     }
   }
 
-  /* =========================================================
-     KEMBALIKAN DARI TERVERIFIKASI KE REVISI
-  ========================================================= */
-
   async function handleKembalikanKeRevisi() {
     if (!kembalikanReport) return;
-
     if (!user?.id) {
       alert("User tidak ditemukan.");
       return;
     }
-
     if (!catatanRevisi.trim()) {
-      alert(
-        "Catatan revisi wajib diisi.",
-      );
+      alert("Catatan revisi wajib diisi.");
       return;
     }
 
     try {
-      setProcessingId(
-        kembalikanReport.id,
-      );
-
-      await kembalikanKeRevisiLaporan(
-        kembalikanReport,
-        user.id,
-        catatanRevisi,
-      );
-
-      alert(
-        "Laporan berhasil dikembalikan ke status revisi.",
-      );
-
+      setProcessingId(kembalikanReport.id);
+      await kembalikanKeRevisiLaporan(kembalikanReport, user.id, catatanRevisi);
+      alert("Laporan berhasil dikembalikan ke status revisi.");
       setKembalikanReport(null);
       setCatatanRevisi("");
       setPreview(null);
-
       await refreshReports();
     } catch (error) {
-      console.error(
-        "Gagal mengembalikan laporan:",
-        error,
-      );
-
+      console.error("Gagal mengembalikan laporan:", error);
       alert(
         error instanceof Error
           ? error.message
@@ -1542,17 +986,12 @@ function LaporanPage() {
     }
   }
 
-  if (
-    !loading &&
-    !isStaff &&
-    !isTrainer
-  ) {
+  if (!loading && !isStaff && !isTrainer) {
     return (
       <AppShell title="Laporan">
         <Panel>
           <p className="text-sm text-muted-foreground">
-            Anda tidak memiliki akses ke
-            halaman laporan.
+            Anda tidak memiliki akses ke halaman laporan.
           </p>
         </Panel>
       </AppShell>
@@ -1562,11 +1001,7 @@ function LaporanPage() {
   return (
     <AppShell
       eyebrow="Laporan Kegiatan"
-      title={
-        isTrainer
-          ? "Laporan Saya"
-          : "Semua Laporan"
-      }
+      title={isTrainer ? "Laporan Saya" : "Semua Laporan"}
     >
       <p className="-mt-2 mb-4 text-sm text-muted-foreground">
         {isTrainer
@@ -1574,22 +1009,16 @@ function LaporanPage() {
           : "Lihat, preview, verifikasi, minta revisi, dan download laporan seluruh trainer."}
       </p>
 
-      {/* FILTER */}
-
       <Panel className="mb-4">
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
-
           <div>
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Dari tanggal
             </p>
-
             <Input
               type="date"
               value={dari}
-              onChange={(e) =>
-                setDari(e.target.value)
-              }
+              onChange={(e) => setDari(e.target.value)}
             />
           </div>
 
@@ -1597,13 +1026,10 @@ function LaporanPage() {
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Sampai tanggal
             </p>
-
             <Input
               type="date"
               value={sampai}
-              onChange={(e) =>
-                setSampai(e.target.value)
-              }
+              onChange={(e) => setSampai(e.target.value)}
             />
           </div>
 
@@ -1612,27 +1038,14 @@ function LaporanPage() {
               <p className="mb-1.5 text-xs font-medium text-muted-foreground">
                 Trainer
               </p>
-
-              <Select
-                value={trainerFilter}
-                onValueChange={
-                  setTrainerFilter
-                }
-              >
+              <Select value={trainerFilter} onValueChange={setTrainerFilter}>
                 <SelectTrigger>
                   <SelectValue placeholder="Semua trainer" />
                 </SelectTrigger>
-
                 <SelectContent>
-                  <SelectItem value="semua">
-                    Semua Trainer
-                  </SelectItem>
-
+                  <SelectItem value="semua">Semua Trainer</SelectItem>
                   {trainers.map((t) => (
-                    <SelectItem
-                      key={t.id}
-                      value={t.id}
-                    >
+                    <SelectItem key={t.id} value={t.id}>
                       {t.nama_lengkap}
                     </SelectItem>
                   ))}
@@ -1645,39 +1058,21 @@ function LaporanPage() {
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Status
             </p>
-
             <Select
               value={status}
-              onValueChange={(value) =>
-                setStatus(
-                  value as FilterStatus,
-                )
-              }
+              onValueChange={(value) => setStatus(value as FilterStatus)}
             >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-
               <SelectContent>
-                <SelectItem value="semua">
-                  Semua Status
-                </SelectItem>
-
-                <SelectItem value="terkirim">
-                  Terkirim
-                </SelectItem>
-
+                <SelectItem value="semua">Semua Status</SelectItem>
+                <SelectItem value="terkirim">Terkirim</SelectItem>
                 <SelectItem value="menunggu_verifikasi">
                   Menunggu Verifikasi
                 </SelectItem>
-
-                <SelectItem value="terverifikasi">
-                  Terverifikasi
-                </SelectItem>
-
-                <SelectItem value="perlu_revisi">
-                  Perlu Revisi
-                </SelectItem>
+                <SelectItem value="terverifikasi">Terverifikasi</SelectItem>
+                <SelectItem value="perlu_revisi">Perlu Revisi</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1686,30 +1081,19 @@ function LaporanPage() {
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Cari
             </p>
-
             <Input
               value={cari}
-              onChange={(e) =>
-                setCari(e.target.value)
-              }
+              onChange={(e) => setCari(e.target.value)}
               placeholder="Materi, kegiatan, kelas..."
             />
           </div>
-
         </div>
       </Panel>
 
-      {/* DAFTAR */}
-
       <Panel className="p-0 sm:p-0">
-
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-
           <div>
-            <p className="font-semibold">
-              Daftar Laporan
-            </p>
-
+            <p className="font-semibold">Daftar Laporan</p>
             <p className="text-xs text-muted-foreground">
               {reports.length} laporan ditemukan
             </p>
@@ -1734,492 +1118,286 @@ function LaporanPage() {
               Reset Filter
             </Button>
           )}
-
         </div>
 
         {isLoading ? (
-          <p className="p-5 text-sm text-muted-foreground">
-            Memuat laporan…
-          </p>
+          <p className="p-5 text-sm text-muted-foreground">Memuat laporan…</p>
         ) : isError ? (
           <p className="p-5 text-sm text-destructive">
             Gagal mengambil data laporan.
           </p>
         ) : reports.length === 0 ? (
           <div className="p-8 text-center">
-            <p className="font-medium">
-              Belum ada laporan
-            </p>
-
+            <p className="font-medium">Belum ada laporan</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Tidak ada laporan yang sesuai
-              dengan filter.
+              Tidak ada laporan yang sesuai dengan filter.
             </p>
           </div>
         ) : (
           <>
-            {/* DESKTOP */}
-
             <div className="hidden overflow-x-auto md:block">
-
               <table className="w-full text-sm">
-
                 <thead>
                   <tr className="border-b border-border text-left">
-
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       No
                     </th>
-
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Tanggal
                     </th>
-
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Jam
                     </th>
-
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Trainer
                     </th>
-
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Materi
                     </th>
-
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Kelas
                     </th>
-
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Peserta
                     </th>
-
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Status
                     </th>
-
                     <th className="eyebrow px-4 py-3 text-muted-foreground">
                       Aksi
                     </th>
-
                   </tr>
                 </thead>
-
                 <tbody>
-
-                  {reports.map(
-                    (r, index) => (
-                      <tr
-                        key={r.id}
-                        className="border-b border-border/60 last:border-0"
-                      >
-
-                        <td className="num px-4 py-3 text-muted-foreground">
-                          {index + 1}
-                        </td>
-
-                        <td className="whitespace-nowrap px-4 py-3">
-                          {formatTanggal(
-                            r.tanggal_kegiatan,
-                          )}
-                        </td>
-
-                        <td className="num whitespace-nowrap px-4 py-3">
-                          {r.jam_mulai ||
-                            "—"}
-
-                          {r.jam_selesai
-                            ? ` - ${r.jam_selesai}`
-                            : ""}
-                        </td>
-
-                        <td className="whitespace-nowrap px-4 py-3">
-                          {r.trainers
-                            ?.nama_lengkap ||
-                            "—"}
-                        </td>
-
-                        <td className="max-w-[280px] px-4 py-3">
-
-                          <p className="font-medium">
-                            {r.materi ||
-                              "—"}
+                  {reports.map((r, index) => (
+                    <tr
+                      key={r.id}
+                      className="border-b border-border/60 last:border-0"
+                    >
+                      <td className="num px-4 py-3 text-muted-foreground">
+                        {index + 1}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        {formatTanggal(r.tanggal_kegiatan)}
+                      </td>
+                      <td className="num whitespace-nowrap px-4 py-3">
+                        {r.jam_mulai || "—"}
+                        {r.jam_selesai ? ` - ${r.jam_selesai}` : ""}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        {r.trainers?.nama_lengkap || "—"}
+                      </td>
+                      <td className="max-w-[280px] px-4 py-3">
+                        <p className="font-medium">{r.materi || "—"}</p>
+                        {r.jenis_kegiatan && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {r.jenis_kegiatan}
                           </p>
-
-                          {r.jenis_kegiatan && (
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                              {
-                                r.jenis_kegiatan
-                              }
+                        )}
+                        {r.status_laporan === "perlu_revisi" &&
+                          r.catatan_revisi && (
+                            <p className="mt-1 line-clamp-2 text-xs text-destructive">
+                              Revisi: {r.catatan_revisi}
                             </p>
                           )}
+                      </td>
+                      <td className="px-4 py-3">{r.kelas || "—"}</td>
+                      <td className="num px-4 py-3">{r.jumlah_peserta ?? "—"}</td>
+                      <td className="px-4 py-3">
+                        <StatusPill status={r.status_laporan} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            title="Preview laporan harian"
+                            onClick={() => setPreview(r)}
+                          >
+                            <Eye className="size-4" />
+                          </Button>
 
-                          {r.status_laporan ===
-                            "perlu_revisi" &&
-                            r.catatan_revisi && (
-                              <p className="mt-1 line-clamp-2 text-xs text-destructive">
-                                Revisi:{" "}
-                                {
-                                  r.catatan_revisi
-                                }
-                              </p>
-                            )}
+                          {isStaff &&
+                            r.status_laporan === "menunggu_verifikasi" && (
+                              <>
+                                <Button
+                                  size="icon"
+                                  title="Verifikasi laporan"
+                                  disabled={processingId === r.id}
+                                  onClick={() => handleVerifikasi(r)}
+                                >
+                                  <Check className="size-4" />
+                                </Button>
 
-                        </td>
-
-                        <td className="px-4 py-3">
-                          {r.kelas ||
-                            "—"}
-                        </td>
-
-                        <td className="num px-4 py-3">
-                          {r.jumlah_peserta ??
-                            "—"}
-                        </td>
-
-                        <td className="px-4 py-3">
-
-                          <StatusPill
-                            status={
-                              r.status_laporan
-                            }
-                          />
-
-                        </td>
-
-                        <td className="px-4 py-3">
-
-                          <div className="flex items-center gap-1.5">
-
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              title="Preview laporan harian"
-                              onClick={() =>
-                                setPreview(r)
-                              }
-                            >
-                              <Eye className="size-4" />
-                            </Button>
-
-                            {isStaff &&
-                              r.status_laporan ===
-                                "menunggu_verifikasi" && (
-                                <>
-                                  <Button
-                                    size="icon"
-                                    title="Verifikasi laporan"
-                                    disabled={
-                                      processingId ===
-                                      r.id
-                                    }
-                                    onClick={() =>
-                                      handleVerifikasi(
-                                        r,
-                                      )
-                                    }
-                                  >
-                                    <Check className="size-4" />
-                                  </Button>
-
-                                  <Button
-                                    size="icon"
-                                    variant="outline"
-                                    title="Minta revisi"
-                                    disabled={
-                                      processingId ===
-                                      r.id
-                                    }
-                                    onClick={() => {
-                                      setRevisiReport(
-                                        r,
-                                      );
-
-                                      setCatatanRevisi(
-                                        "",
-                                      );
-                                    }}
-                                  >
-                                    <RotateCcw className="size-4" />
-                                  </Button>
-                                </>
-                              )}
-
-                            {isStaff &&
-                              r.status_laporan ===
-                                "terverifikasi" && (
                                 <Button
                                   size="icon"
                                   variant="outline"
-                                  title="Kembalikan ke revisi"
-                                  disabled={
-                                    processingId ===
-                                    r.id
-                                  }
+                                  title="Minta revisi"
+                                  disabled={processingId === r.id}
                                   onClick={() => {
-                                    setKembalikanReport(
-                                      r,
-                                    );
-
-                                    setCatatanRevisi(
-                                      "",
-                                    );
+                                    setRevisiReport(r);
+                                    setCatatanRevisi("");
                                   }}
                                 >
                                   <RotateCcw className="size-4" />
                                 </Button>
-                              )}
+                              </>
+                            )}
 
-                            {isTrainer &&
-                              r.status_laporan ===
-                                "perlu_revisi" && (
-                                <Button
-                                  size="icon"
-                                  variant="outline"
-                                  title="Edit dan kirim ulang laporan"
-                                  onClick={() =>
-                                    handleEditLaporan(
-                                      r,
-                                    )
-                                  }
-                                >
-                                  <Pencil className="size-4" />
-                                </Button>
-                              )}
-
-                          </div>
-
-                        </td>
-
-                      </tr>
-                    ),
-                  )}
-
-                </tbody>
-
-              </table>
-
-            </div>
-
-            {/* MOBILE */}
-
-            <div className="divide-y divide-border md:hidden">
-
-              {reports.map(
-                (r, index) => (
-                  <div
-                    key={r.id}
-                    className="space-y-3 p-4"
-                  >
-
-                    <div className="flex items-start justify-between gap-3">
-
-                      <div>
-                        <p className="text-xs text-muted-foreground">
-                          No. {index + 1}
-                        </p>
-
-                        <p className="mt-1 font-semibold">
-                          {r.materi ||
-                            "Tanpa materi"}
-                        </p>
-
-                        <p className="text-xs text-muted-foreground">
-                          {r.trainers
-                            ?.nama_lengkap ||
-                            "—"}
-                        </p>
-                      </div>
-
-                      <StatusPill
-                        status={
-                          r.status_laporan
-                        }
-                      />
-
-                    </div>
-
-                    {r.status_laporan ===
-                      "perlu_revisi" &&
-                      r.catatan_revisi && (
-                        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-
-                          <p className="text-xs font-medium text-destructive">
-                            Catatan Revisi
-                          </p>
-
-                          <p className="mt-1 whitespace-pre-wrap text-xs">
-                            {r.catatan_revisi}
-                          </p>
-
-                        </div>
-                      )}
-
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-
-                      <div>
-                        <p className="text-xs text-muted-foreground">
-                          Tanggal
-                        </p>
-
-                        <p>
-                          {formatTanggal(
-                            r.tanggal_kegiatan,
-                          )}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-xs text-muted-foreground">
-                          Jam
-                        </p>
-
-                        <p>
-                          {r.jam_mulai ||
-                            "—"}
-
-                          {r.jam_selesai
-                            ? ` - ${r.jam_selesai}`
-                            : ""}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-xs text-muted-foreground">
-                          Kelas
-                        </p>
-
-                        <p>
-                          {r.kelas ||
-                            "—"}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-xs text-muted-foreground">
-                          Peserta
-                        </p>
-
-                        <p>
-                          {r.jumlah_peserta ??
-                            "—"}
-                        </p>
-                      </div>
-
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          setPreview(r)
-                        }
-                      >
-                        <Eye className="mr-2 size-4" />
-                        Preview
-                      </Button>
-
-                      {isStaff &&
-                        r.status_laporan ===
-                          "menunggu_verifikasi" && (
-                          <>
+                          {isStaff && r.status_laporan === "terverifikasi" && (
                             <Button
-                              size="sm"
-                              disabled={
-                                processingId ===
-                                r.id
-                              }
-                              onClick={() =>
-                                handleVerifikasi(
-                                  r,
-                                )
-                              }
-                            >
-                              <Check className="mr-2 size-4" />
-                              Verifikasi
-                            </Button>
-
-                            <Button
-                              size="sm"
+                              size="icon"
                               variant="outline"
-                              disabled={
-                                processingId ===
-                                r.id
-                              }
+                              title="Kembalikan ke revisi"
+                              disabled={processingId === r.id}
                               onClick={() => {
-                                setRevisiReport(
-                                  r,
-                                );
-
-                                setCatatanRevisi(
-                                  "",
-                                );
+                                setKembalikanReport(r);
+                                setCatatanRevisi("");
                               }}
                             >
-                              <RotateCcw className="mr-2 size-4" />
-                              Minta Revisi
+                              <RotateCcw className="size-4" />
                             </Button>
-                          </>
-                        )}
+                          )}
 
-                      {isStaff &&
-                        r.status_laporan ===
-                          "terverifikasi" && (
+                          {isTrainer &&
+                            r.status_laporan === "perlu_revisi" && (
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                title="Edit dan kirim ulang laporan"
+                                onClick={() => handleEditLaporan(r)}
+                              >
+                                <Pencil className="size-4" />
+                              </Button>
+                            )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="divide-y divide-border md:hidden">
+              {reports.map((r, index) => (
+                <div key={r.id} className="space-y-3 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">
+                        No. {index + 1}
+                      </p>
+                      <p className="mt-1 font-semibold">
+                        {r.materi || "Tanpa materi"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {r.trainers?.nama_lengkap || "—"}
+                      </p>
+                    </div>
+                    <StatusPill status={r.status_laporan} />
+                  </div>
+
+                  {r.status_laporan === "perlu_revisi" && r.catatan_revisi && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                      <p className="text-xs font-medium text-destructive">
+                        Catatan Revisi
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-xs">
+                        {r.catatan_revisi}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Tanggal</p>
+                      <p>{formatTanggal(r.tanggal_kegiatan)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Jam</p>
+                      <p>
+                        {r.jam_mulai || "—"}
+                        {r.jam_selesai ? ` - ${r.jam_selesai}` : ""}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Kelas</p>
+                      <p>{r.kelas || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Peserta</p>
+                      <p>{r.jumlah_peserta ?? "—"}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPreview(r)}
+                    >
+                      <Eye className="mr-2 size-4" />
+                      Preview
+                    </Button>
+
+                    {isStaff &&
+                      r.status_laporan === "menunggu_verifikasi" && (
+                        <>
+                          <Button
+                            size="sm"
+                            disabled={processingId === r.id}
+                            onClick={() => handleVerifikasi(r)}
+                          >
+                            <Check className="mr-2 size-4" />
+                            Verifikasi
+                          </Button>
+
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={
-                              processingId ===
-                              r.id
-                            }
+                            disabled={processingId === r.id}
                             onClick={() => {
-                              setKembalikanReport(
-                                r,
-                              );
-
-                              setCatatanRevisi(
-                                "",
-                              );
+                              setRevisiReport(r);
+                              setCatatanRevisi("");
                             }}
                           >
                             <RotateCcw className="mr-2 size-4" />
-                            Kembalikan ke Revisi
+                            Minta Revisi
                           </Button>
-                        )}
+                        </>
+                      )}
 
-                      {isTrainer &&
-                        r.status_laporan ===
-                          "perlu_revisi" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              handleEditLaporan(
-                                r,
-                              )
-                            }
-                          >
-                            <Pencil className="mr-2 size-4" />
-                            Edit & Kirim Ulang
-                          </Button>
-                        )}
+                    {isStaff && r.status_laporan === "terverifikasi" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={processingId === r.id}
+                        onClick={() => {
+                          setKembalikanReport(r);
+                          setCatatanRevisi("");
+                        }}
+                      >
+                        <RotateCcw className="mr-2 size-4" />
+                        Kembalikan ke Revisi
+                      </Button>
+                    )}
 
-                    </div>
-
+                    {isTrainer && r.status_laporan === "perlu_revisi" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEditLaporan(r)}
+                      >
+                        <Pencil className="mr-2 size-4" />
+                        Edit & Kirim Ulang
+                      </Button>
+                    )}
                   </div>
-                ),
-              )}
-
+                </div>
+              ))}
             </div>
           </>
         )}
-
       </Panel>
-
-      {/* PREVIEW */}
 
       {preview && (
         <PreviewLaporan
@@ -2227,12 +1405,9 @@ function LaporanPage() {
           isStaff={isStaff}
           isTrainer={isTrainer}
           processingId={processingId}
-          onClose={() =>
-            setPreview(null)
-          }
-          onVerifikasi={() =>
-            handleVerifikasi(preview)
-          }
+          brandingLogoUrl={brandingLogo}
+          onClose={() => setPreview(null)}
+          onVerifikasi={() => handleVerifikasi(preview)}
           onMintaRevisi={() => {
             setRevisiReport(preview);
             setCatatanRevisi("");
@@ -2241,34 +1416,20 @@ function LaporanPage() {
             setKembalikanReport(preview);
             setCatatanRevisi("");
           }}
-          onEdit={() =>
-            handleEditLaporan(preview)
-          }
+          onEdit={() => handleEditLaporan(preview)}
         />
       )}
 
-      {/* =====================================================
-         MODAL MINTA REVISI
-      ===================================================== */}
-
       {revisiReport && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-
           <div className="w-full max-w-lg rounded-xl bg-background shadow-xl">
-
             <div className="flex items-center justify-between border-b px-5 py-4">
-
               <div>
-                <p className="font-semibold">
-                  Minta Revisi Laporan
-                </p>
-
+                <p className="font-semibold">Minta Revisi Laporan</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Tuliskan bagian yang perlu
-                  diperbaiki oleh trainer.
+                  Tuliskan bagian yang perlu diperbaiki oleh trainer.
                 </p>
               </div>
-
               <Button
                 size="icon"
                 variant="ghost"
@@ -2279,69 +1440,38 @@ function LaporanPage() {
               >
                 <X className="size-4" />
               </Button>
-
             </div>
 
             <div className="space-y-4 p-5">
-
               <div className="rounded-lg bg-muted/40 p-3">
-
-                <p className="text-xs text-muted-foreground">
-                  Trainer
-                </p>
-
+                <p className="text-xs text-muted-foreground">Trainer</p>
                 <p className="font-medium">
-                  {revisiReport.trainers
-                    ?.nama_lengkap ||
-                    "—"}
+                  {revisiReport.trainers?.nama_lengkap || "—"}
                 </p>
-
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Materi
-                </p>
-
-                <p className="font-medium">
-                  {revisiReport.materi ||
-                    "—"}
-                </p>
-
+                <p className="mt-2 text-xs text-muted-foreground">Materi</p>
+                <p className="font-medium">{revisiReport.materi || "—"}</p>
               </div>
 
               <div>
-
-                <p className="mb-1.5 text-sm font-medium">
-                  Catatan Revisi
-                </p>
-
+                <p className="mb-1.5 text-sm font-medium">Catatan Revisi</p>
                 <textarea
                   value={catatanRevisi}
-                  onChange={(e) =>
-                    setCatatanRevisi(
-                      e.target.value,
-                    )
-                  }
+                  onChange={(e) => setCatatanRevisi(e.target.value)}
                   placeholder="Contoh: Mohon perbaiki jumlah peserta hadir dan lengkapi foto dokumentasi."
                   rows={5}
                   className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
                 />
-
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Catatan ini akan tersimpan pada
-                  laporan dan dapat dilihat trainer.
+                  Catatan ini akan tersimpan pada laporan dan dapat dilihat
+                  trainer.
                 </p>
-
               </div>
-
             </div>
 
             <div className="flex justify-end gap-2 border-t bg-muted/20 px-5 py-4">
-
               <Button
                 variant="outline"
-                disabled={
-                  processingId ===
-                  revisiReport.id
-                }
+                disabled={processingId === revisiReport.id}
                 onClick={() => {
                   setRevisiReport(null);
                   setCatatanRevisi("");
@@ -2349,56 +1479,30 @@ function LaporanPage() {
               >
                 Batal
               </Button>
-
               <Button
                 variant="destructive"
-                disabled={
-                  processingId ===
-                    revisiReport.id ||
-                  !catatanRevisi.trim()
-                }
-                onClick={
-                  handleMintaRevisi
-                }
+                disabled={processingId === revisiReport.id || !catatanRevisi.trim()}
+                onClick={handleMintaRevisi}
               >
                 <RotateCcw className="mr-2 size-4" />
-
-                {processingId ===
-                revisiReport.id
-                  ? "Menyimpan..."
-                  : "Kirim Revisi"}
+                {processingId === revisiReport.id ? "Menyimpan..." : "Kirim Revisi"}
               </Button>
-
             </div>
-
           </div>
-
         </div>
       )}
 
-      {/* =====================================================
-         MODAL KEMBALIKAN KE REVISI
-      ===================================================== */}
-
       {kembalikanReport && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-
           <div className="w-full max-w-lg rounded-xl bg-background shadow-xl">
-
             <div className="flex items-center justify-between border-b px-5 py-4">
-
               <div>
-                <p className="font-semibold">
-                  Kembalikan ke Revisi
-                </p>
-
+                <p className="font-semibold">Kembalikan ke Revisi</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Gunakan jika laporan terlanjur
-                  diverifikasi dan ternyata masih
+                  Gunakan jika laporan terlanjur diverifikasi dan ternyata masih
                   perlu diperbaiki.
                 </p>
               </div>
-
               <Button
                 size="icon"
                 variant="ghost"
@@ -2409,84 +1513,47 @@ function LaporanPage() {
               >
                 <X className="size-4" />
               </Button>
-
             </div>
 
             <div className="space-y-4 p-5">
-
               <div className="rounded-lg border border-amber-300/40 bg-amber-50 p-3">
-
-                <p className="text-xs font-semibold text-amber-800">
-                  Perhatian
-                </p>
-
+                <p className="text-xs font-semibold text-amber-800">Perhatian</p>
                 <p className="mt-1 text-xs text-amber-700">
-                  Status laporan akan berubah dari
-                  Terverifikasi menjadi Perlu Revisi.
-                  Trainer dapat melihat catatan ini
-                  dan mengirim ulang laporan.
+                  Status laporan akan berubah dari Terverifikasi menjadi Perlu
+                  Revisi. Trainer dapat melihat catatan ini dan mengirim ulang
+                  laporan.
                 </p>
-
               </div>
 
               <div className="rounded-lg bg-muted/40 p-3">
-
-                <p className="text-xs text-muted-foreground">
-                  Trainer
-                </p>
-
+                <p className="text-xs text-muted-foreground">Trainer</p>
                 <p className="font-medium">
-                  {kembalikanReport.trainers
-                    ?.nama_lengkap ||
-                    "—"}
+                  {kembalikanReport.trainers?.nama_lengkap || "—"}
                 </p>
-
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Materi
-                </p>
-
-                <p className="font-medium">
-                  {kembalikanReport.materi ||
-                    "—"}
-                </p>
-
+                <p className="mt-2 text-xs text-muted-foreground">Materi</p>
+                <p className="font-medium">{kembalikanReport.materi || "—"}</p>
               </div>
 
               <div>
-
-                <p className="mb-1.5 text-sm font-medium">
-                  Catatan Revisi *
-                </p>
-
+                <p className="mb-1.5 text-sm font-medium">Catatan Revisi *</p>
                 <textarea
                   value={catatanRevisi}
-                  onChange={(e) =>
-                    setCatatanRevisi(
-                      e.target.value,
-                    )
-                  }
+                  onChange={(e) => setCatatanRevisi(e.target.value)}
                   placeholder="Contoh: Laporan sudah terverifikasi secara tidak sengaja. Mohon lengkapi dokumentasi dan koreksi jumlah peserta."
                   rows={5}
                   className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
                 />
-
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Catatan wajib diisi dan akan
-                  tersimpan sebagai riwayat verifikasi.
+                  Catatan wajib diisi dan akan tersimpan sebagai riwayat
+                  verifikasi.
                 </p>
-
               </div>
-
             </div>
 
             <div className="flex justify-end gap-2 border-t bg-muted/20 px-5 py-4">
-
               <Button
                 variant="outline"
-                disabled={
-                  processingId ===
-                  kembalikanReport.id
-                }
+                disabled={processingId === kembalikanReport.id}
                 onClick={() => {
                   setKembalikanReport(null);
                   setCatatanRevisi("");
@@ -2494,33 +1561,22 @@ function LaporanPage() {
               >
                 Batal
               </Button>
-
               <Button
                 variant="destructive"
                 disabled={
-                  processingId ===
-                    kembalikanReport.id ||
-                  !catatanRevisi.trim()
+                  processingId === kembalikanReport.id || !catatanRevisi.trim()
                 }
-                onClick={
-                  handleKembalikanKeRevisi
-                }
+                onClick={handleKembalikanKeRevisi}
               >
                 <RotateCcw className="mr-2 size-4" />
-
-                {processingId ===
-                kembalikanReport.id
+                {processingId === kembalikanReport.id
                   ? "Menyimpan..."
                   : "Kembalikan ke Revisi"}
               </Button>
-
             </div>
-
           </div>
-
         </div>
       )}
-
     </AppShell>
   );
 }
@@ -2534,6 +1590,7 @@ function PreviewLaporan({
   isStaff,
   isTrainer,
   processingId,
+  brandingLogoUrl,
   onClose,
   onVerifikasi,
   onMintaRevisi,
@@ -2544,6 +1601,7 @@ function PreviewLaporan({
   isStaff: boolean;
   isTrainer: boolean;
   processingId: string | null;
+  brandingLogoUrl?: string | null;
   onClose: () => void;
   onVerifikasi: () => void;
   onMintaRevisi: () => void;
@@ -2555,437 +1613,234 @@ function PreviewLaporan({
     isLoading,
     isError,
   } = useQuery({
-    queryKey: [
-      "report-photos",
-      report.id,
-    ],
-    queryFn: () =>
-      getReportPhotos(report.id),
+    queryKey: ["report-photos", report.id],
+    queryFn: () => getReportPhotos(report.id),
   });
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4">
-
       <div className="mx-auto my-8 max-w-4xl rounded-xl bg-background shadow-xl">
-
-        {/* HEADER */}
-
         <div className="flex items-center justify-between border-b px-5 py-4">
-
           <div>
-            <p className="text-lg font-semibold">
-              Preview Laporan Harian
-            </p>
-
+            <p className="text-lg font-semibold">Preview Laporan Harian</p>
             <p className="text-xs text-muted-foreground">
-              Download akan menggabungkan seluruh
-              kegiatan trainer pada tanggal yang sama.
+              Download akan menggabungkan seluruh kegiatan trainer pada tanggal
+              yang sama.
             </p>
           </div>
-
-          <Button
-            variant="outline"
-            onClick={onClose}
-          >
+          <Button variant="outline" onClick={onClose}>
             Tutup
           </Button>
-
         </div>
 
         <div className="space-y-5 p-5">
-
-          {/* IDENTITAS */}
-
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-
             <Info
               label="Tanggal Kegiatan"
-              value={formatTanggalPanjang(
-                report.tanggal_kegiatan,
-              )}
+              value={formatTanggalPanjang(report.tanggal_kegiatan)}
             />
-
             <Info
               label="Trainer"
-              value={
-                report.trainers
-                  ?.nama_lengkap ||
-                "—"
-              }
+              value={report.trainers?.nama_lengkap || "—"}
             />
-
             <Info
               label="Nomor ID Trainer"
-              value={
-                report.trainers
-                  ?.nomor_id_trainer ||
-                "—"
-              }
+              value={report.trainers?.nomor_id_trainer || "—"}
             />
-
-            <Info
-              label="Jabatan"
-              value={
-                report.trainers
-                  ?.jabatan ||
-                "—"
-              }
-            />
-
-            <Info
-              label="Departemen"
-              value={
-                report.trainers
-                  ?.departemen ||
-                "—"
-              }
-            />
-
-            <Info
-              label="Status"
-              value={
-                report.status_laporan
-              }
-            />
-
+            <Info label="Jabatan" value={report.trainers?.jabatan || "—"} />
+            <Info label="Departemen" value={report.trainers?.departemen || "—"} />
+            <Info label="Status" value={report.status_laporan} />
           </div>
 
-          {/* KEGIATAN TERPILIH */}
-
           <div className="rounded-xl border p-4">
-
             <p className="text-xs font-medium text-muted-foreground">
               Materi / Kegiatan Terpilih
             </p>
-
             <p className="mt-1 whitespace-pre-wrap text-base font-semibold">
-              {report.materi ||
-                "—"}
+              {report.materi || "—"}
             </p>
-
             <p className="mt-2 text-xs text-muted-foreground">
-              PDF akan memuat seluruh kegiatan
-              pada tanggal{" "}
-              <strong>
-                {formatTanggal(
-                  report.tanggal_kegiatan,
-                )}
-              </strong>
-              .
+              PDF akan memuat seluruh kegiatan pada tanggal{" "}
+              <strong>{formatTanggal(report.tanggal_kegiatan)}</strong>.
             </p>
-
           </div>
-
-          {/* PESERTA */}
 
           <div className="grid gap-3 sm:grid-cols-4">
-
-            <Stat
-              label="Peserta"
-              value={
-                report.jumlah_peserta
-              }
-            />
-
-            <Stat
-              label="Hadir"
-              value={
-                report.jumlah_hadir
-              }
-            />
-
-            <Stat
-              label="Tidak Hadir"
-              value={
-                report.jumlah_tidak_hadir
-              }
-            />
-
-            <Stat
-              label="Tambahan"
-              value={
-                report.jumlah_tambahan
-              }
-            />
-
+            <Stat label="Peserta" value={report.jumlah_peserta} />
+            <Stat label="Hadir" value={report.jumlah_hadir} />
+            <Stat label="Tidak Hadir" value={report.jumlah_tidak_hadir} />
+            <Stat label="Tambahan" value={report.jumlah_tambahan} />
           </div>
 
-          {/* STATUS */}
-
           <div className="rounded-xl border p-4">
-
             <p className="text-xs font-medium text-muted-foreground">
               Status Laporan
             </p>
-
             <div className="mt-2">
-              <StatusPill
-                status={
-                  report.status_laporan
-                }
-              />
+              <StatusPill status={report.status_laporan} />
             </div>
-
             {report.catatan_revisi && (
               <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-
                 <p className="text-xs font-medium text-destructive">
                   Catatan Revisi
                 </p>
-
                 <p className="mt-1 whitespace-pre-wrap text-sm">
                   {report.catatan_revisi}
                 </p>
-
               </div>
             )}
-
           </div>
 
-          {/* FOTO */}
-
           <div className="rounded-xl border border-border/70 p-4">
-
             <div className="mb-4 flex items-center gap-2">
-
               <ImageIcon className="size-5 text-primary" />
-
               <div>
-
-                <p className="font-semibold">
-                  Dokumentasi Foto
-                </p>
-
+                <p className="font-semibold">Dokumentasi Foto</p>
                 <p className="text-xs text-muted-foreground">
-                  Foto tersimpan pada kegiatan
-                  yang sedang dipreview.
+                  Foto tersimpan pada kegiatan yang sedang dipreview.
                 </p>
-
               </div>
-
             </div>
 
             {isLoading ? (
               <div className="rounded-xl border border-dashed p-8 text-center">
-
                 <p className="text-sm text-muted-foreground">
                   Memuat foto dokumentasi…
                 </p>
-
               </div>
             ) : isError ? (
               <div className="rounded-xl border border-dashed border-destructive/40 bg-destructive/5 p-8 text-center">
-
                 <p className="text-sm font-medium text-destructive">
                   Foto tidak dapat dimuat.
                 </p>
-
               </div>
             ) : photos.length === 0 ? (
               <div className="rounded-xl border border-dashed p-8 text-center">
-
                 <ImageIcon className="mx-auto size-8 text-muted-foreground" />
-
                 <p className="mt-2 text-sm font-medium">
                   Belum ada foto dokumentasi.
                 </p>
-
               </div>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
-
-                {photos.map(
-                  (photo, index) => (
-                    <div
-                      key={`${photo.storage_path}-${index}`}
-                      className="overflow-hidden rounded-xl border bg-muted/10"
-                    >
-
-                      <div className="border-b bg-muted/20 px-4 py-2">
-
-                        <p className="text-xs font-medium">
-                          Dokumentasi{" "}
-                          {index + 1}
-                        </p>
-
-                      </div>
-
-                      {photo.url ? (
-                        <div className="flex justify-center bg-background p-3">
-
-                          <img
-                            src={photo.url}
-                            alt={
-                              photo.nama_file ||
-                              `Dokumentasi ${
-                                index + 1
-                              }`
-                            }
-                            className="block h-auto max-h-[400px] w-full object-contain"
-                          />
-
-                        </div>
-                      ) : (
-                        <div className="p-8 text-center">
-
-                          <p className="text-sm text-destructive">
-                            Foto gagal dimuat.
-                          </p>
-
-                        </div>
-                      )}
-
-                      {photo.nama_file && (
-                        <div className="border-t px-4 py-2">
-
-                          <p className="break-all text-xs text-muted-foreground">
-                            {photo.nama_file}
-                          </p>
-
-                        </div>
-                      )}
-
+                {photos.map((photo, index) => (
+                  <div
+                    key={`${photo.storage_path}-${index}`}
+                    className="overflow-hidden rounded-xl border bg-muted/10"
+                  >
+                    <div className="border-b bg-muted/20 px-4 py-2">
+                      <p className="text-xs font-medium">
+                        Dokumentasi {index + 1}
+                      </p>
                     </div>
-                  ),
-                )}
-
+                    {photo.url ? (
+                      <div className="flex justify-center bg-background p-3">
+                        <img
+                          src={photo.url}
+                          alt={photo.nama_file || `Dokumentasi ${index + 1}`}
+                          className="block h-auto max-h-[400px] w-full object-contain"
+                        />
+                      </div>
+                    ) : (
+                      <div className="p-8 text-center">
+                        <p className="text-sm text-destructive">
+                          Foto gagal dimuat.
+                        </p>
+                      </div>
+                    )}
+                    {photo.nama_file && (
+                      <div className="border-t px-4 py-2">
+                        <p className="break-all text-xs text-muted-foreground">
+                          {photo.nama_file}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
-
           </div>
-
         </div>
 
-        {/* FOOTER */}
-
         <div className="flex flex-col gap-2 border-t bg-muted/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-
           <div>
-
-            {isStaff &&
-              report.status_laporan ===
-                "menunggu_verifikasi" && (
-                <p className="text-xs text-muted-foreground">
-                  Pastikan data dan dokumentasi
-                  sudah sesuai sebelum menentukan
-                  hasil verifikasi.
-                </p>
-              )}
-
-            {isStaff &&
-              report.status_laporan ===
-                "terverifikasi" && (
-                <p className="text-xs text-amber-600">
-                  Jika verifikasi dilakukan secara
-                  tidak sengaja, laporan dapat
-                  dikembalikan ke revisi.
-                </p>
-              )}
-
-            {isTrainer &&
-              report.status_laporan ===
-                "perlu_revisi" && (
-                <p className="text-xs text-destructive">
-                  Laporan ini perlu diperbaiki
-                  berdasarkan catatan revisi.
-                </p>
-              )}
-
+            {isStaff && report.status_laporan === "menunggu_verifikasi" && (
+              <p className="text-xs text-muted-foreground">
+                Pastikan data dan dokumentasi sudah sesuai sebelum menentukan
+                hasil verifikasi.
+              </p>
+            )}
+            {isStaff && report.status_laporan === "terverifikasi" && (
+              <p className="text-xs text-amber-600">
+                Jika verifikasi dilakukan secara tidak sengaja, laporan dapat
+                dikembalikan ke revisi.
+              </p>
+            )}
+            {isTrainer && report.status_laporan === "perlu_revisi" && (
+              <p className="text-xs text-destructive">
+                Laporan ini perlu diperbaiki berdasarkan catatan revisi.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row">
-
-            <Button
-              variant="outline"
-              onClick={onClose}
-            >
+            <Button variant="outline" onClick={onClose}>
               Tutup
             </Button>
 
-            {isTrainer &&
-              report.status_laporan ===
-                "perlu_revisi" && (
+            {isTrainer && report.status_laporan === "perlu_revisi" && (
+              <Button variant="outline" onClick={onEdit}>
+                <Pencil className="mr-2 size-4" />
+                Edit & Kirim Ulang
+              </Button>
+            )}
+
+            {isStaff && report.status_laporan === "menunggu_verifikasi" && (
+              <>
                 <Button
                   variant="outline"
-                  onClick={onEdit}
-                >
-                  <Pencil className="mr-2 size-4" />
-                  Edit & Kirim Ulang
-                </Button>
-              )}
-
-            {isStaff &&
-              report.status_laporan ===
-                "menunggu_verifikasi" && (
-                <>
-                  <Button
-                    variant="outline"
-                    disabled={
-                      processingId ===
-                      report.id
-                    }
-                    onClick={
-                      onMintaRevisi
-                    }
-                  >
-                    <RotateCcw className="mr-2 size-4" />
-                    Minta Revisi
-                  </Button>
-
-                  <Button
-                    disabled={
-                      processingId ===
-                      report.id
-                    }
-                    onClick={
-                      onVerifikasi
-                    }
-                  >
-                    <Check className="mr-2 size-4" />
-                    Verifikasi
-                  </Button>
-                </>
-              )}
-
-            {isStaff &&
-              report.status_laporan ===
-                "terverifikasi" && (
-                <Button
-                  variant="outline"
-                  disabled={
-                    processingId ===
-                    report.id
-                  }
-                  onClick={
-                    onKembalikanKeRevisi
-                  }
+                  disabled={processingId === report.id}
+                  onClick={onMintaRevisi}
                 >
                   <RotateCcw className="mr-2 size-4" />
-                  Kembalikan ke Revisi
+                  Minta Revisi
                 </Button>
-              )}
+                <Button
+                  disabled={processingId === report.id}
+                  onClick={onVerifikasi}
+                >
+                  <Check className="mr-2 size-4" />
+                  Verifikasi
+                </Button>
+              </>
+            )}
+
+            {isStaff && report.status_laporan === "terverifikasi" && (
+              <Button
+                variant="outline"
+                disabled={processingId === report.id}
+                onClick={onKembalikanKeRevisi}
+              >
+                <RotateCcw className="mr-2 size-4" />
+                Kembalikan ke Revisi
+              </Button>
+            )}
 
             <Button
-              onClick={() =>
-                downloadLaporan(report)
-              }
+              onClick={() => downloadLaporan(report, brandingLogoUrl)}
             >
               <Download className="mr-2 size-4" />
               Download PDF Harian
             </Button>
-
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 }
 
 /* =========================================================
-   INFO
+   INFO & STAT
 ========================================================= */
 
 function Info({
@@ -2993,56 +1848,29 @@ function Info({
   value,
 }: {
   label: string;
-  value:
-    | string
-    | number
-    | null
-    | undefined;
+  value: string | number | null | undefined;
 }) {
   return (
     <div>
-
-      <p className="text-xs font-medium text-muted-foreground">
-        {label}
-      </p>
-
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="mt-1 whitespace-pre-wrap break-words text-sm font-medium">
-        {value === null ||
-        value === undefined ||
-        value === ""
-          ? "—"
-          : value}
+        {value === null || value === undefined || value === "" ? "—" : value}
       </p>
-
     </div>
   );
 }
-
-/* =========================================================
-   STAT
-========================================================= */
 
 function Stat({
   label,
   value,
 }: {
   label: string;
-  value:
-    | number
-    | null
-    | undefined;
+  value: number | null | undefined;
 }) {
   return (
     <div className="rounded-lg border p-3">
-
-      <p className="text-xs text-muted-foreground">
-        {label}
-      </p>
-
-      <p className="num mt-1 text-lg font-semibold">
-        {value ?? "—"}
-      </p>
-
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="num mt-1 text-lg font-semibold">{value ?? "—"}</p>
     </div>
   );
 }
