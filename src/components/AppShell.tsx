@@ -445,9 +445,9 @@ export function AppShell({
             <DropdownMenu>
               <DropdownMenuTrigger className="flex items-center gap-2 rounded-full py-1 pr-2 pl-1 hover:bg-accent">
                 <TrainerAvatar
-                  nama={nama}
-                  foto={trainer?.foto_url}
-                />
+  nama={nama}
+  foto={trainer?.foto_profil}
+/>
 
                 <span className="hidden max-w-40 truncate text-sm font-medium md:block">
                   {nama}
