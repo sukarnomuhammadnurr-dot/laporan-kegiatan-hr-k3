@@ -159,3 +159,37 @@
   font-family: var(--font-numeric);
   font-variant-numeric: tabular-nums;
 }
+
+/* =========================================================
+   TOMBOL HERO — otomatis putih solid biar kontras dengan background navy
+   ========================================================= */
+.hero-actions button {
+  background-color: #ffffff !important;
+  color: #0a1f44 !important;
+  border-color: transparent !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s ease;
+  font-weight: 600;
+}
+
+.hero-actions button:hover {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+}
+
+.hero-actions button:disabled {
+  background-color: rgba(255, 255, 255, 0.5) !important;
+  color: rgba(10, 31, 68, 0.5) !important;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.hero-actions button svg {
+  color: #0a1f44 !important;
+}
+
+.hero-actions button:disabled svg {
+  color: rgba(10, 31, 68, 0.5) !important;
+}
