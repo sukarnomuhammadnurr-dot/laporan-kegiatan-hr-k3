@@ -933,7 +933,7 @@ function LaporanPage() {
       }),
   });
 
-  const daftarBulan = useMemo(() => listBulan(24), []);
+  const daftarBulan = useMemo(() => listBulan(2026, 2040), []);
 
   async function refreshReports() {
     await queryClient.invalidateQueries({ queryKey: ["reports", "laporan"] });
