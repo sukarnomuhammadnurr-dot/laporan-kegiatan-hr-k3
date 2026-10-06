@@ -230,13 +230,19 @@ function TrainerProfileCard({
       // Upload ke bucket branding, folder trainer/
       const path = await uploadGambar(selectedFile, "trainer");
 
-      // Update DB
-     const { error } = await supabase
+      const { data: updated, error } = await supabase
   .from("trainers")
   .update({ foto_profil: path })
-  .eq("id", trainer.id);
+  .eq("id", trainer.id)
+  .select("id, foto_profil")
+  .single();
 
-      if (error) throw error;
+if (error) throw error;
+if (!updated || !updated.foto_profil) {
+  throw new Error("Update DB gagal — cek RLS policy.");
+}
+
+console.log("[DEBUG] DB updated:", updated);
 
       toast.success("Foto profil berhasil diperbarui.");
       setOpenUpload(false);
