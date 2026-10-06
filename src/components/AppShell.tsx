@@ -457,8 +457,8 @@ export function AppShell({
               </div>
 
               {actions ? (
-                <div className="flex flex-wrap gap-2">{actions}</div>
-              ) : null}
+  <div className="hero-actions flex flex-wrap gap-2">{actions}</div>
+) : null}
             </div>
           </section>
 
