@@ -119,7 +119,6 @@ function NavList({
   const item = (it: NavItem) => {
     const Icon = it.icon;
 
-    // Menu tanpa route → tampil "Segera"
     if (!it.to) {
       return (
         <div
@@ -257,6 +256,7 @@ export function AppShell({
 
   const heroImg = useBrandingUrl(heroKey ?? "ilustrasi_k3");
   const bg = useBrandingUrl("background");
+  const sidebarBg = useBrandingUrl("sidebar_background");
 
   const wajibGanti = !!user?.user_metadata?.["wajib_ganti_password"];
 
@@ -284,10 +284,30 @@ export function AppShell({
         />
       )}
 
-      {/* Sidebar desktop — NAVY GELAP */}
+      {/* Sidebar desktop — NAVY GELAP + OPSIONAL BACKGROUND */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 overflow-hidden bg-[#0a1f44] px-3 py-5 lg:block">
-        {/* Decorative gradient */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0a1f44] via-[#0f2a5c] to-[#0a1f44]" />
+        {/* Base gradient */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0a1f44] via-[#0f2a5c] to-[#050f24]" />
+
+        {/* Background image (kalau ada) */}
+        {sidebarBg && (
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-[55%] bg-cover bg-center"
+            style={{
+              backgroundImage: `url(${sidebarBg})`,
+              maskImage:
+                "linear-gradient(to top, black 0%, black 60%, transparent 100%)",
+              WebkitMaskImage:
+                "linear-gradient(to top, black 0%, black 60%, transparent 100%)",
+              opacity: 0.35,
+            }}
+          />
+        )}
+
+        {/* Overlay biar menu tetap kebaca */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0a1f44]/70 via-transparent to-[#0a1f44]/85" />
+
+        {/* Decorative blur */}
         <div className="pointer-events-none absolute -bottom-32 -left-32 size-64 rounded-full bg-red-900/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-20 -right-20 size-48 rounded-full bg-blue-900/30 blur-3xl" />
 
@@ -316,7 +336,23 @@ export function AppShell({
               >
                 <SheetTitle className="sr-only">Navigasi</SheetTitle>
 
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0a1f44] via-[#0f2a5c] to-[#0a1f44]" />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0a1f44] via-[#0f2a5c] to-[#050f24]" />
+
+                {sidebarBg && (
+                  <div
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-[55%] bg-cover bg-center"
+                    style={{
+                      backgroundImage: `url(${sidebarBg})`,
+                      maskImage:
+                        "linear-gradient(to top, black 0%, black 60%, transparent 100%)",
+                      WebkitMaskImage:
+                        "linear-gradient(to top, black 0%, black 60%, transparent 100%)",
+                      opacity: 0.35,
+                    }}
+                  />
+                )}
+
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0a1f44]/70 via-transparent to-[#0a1f44]/85" />
 
                 <div className="relative">
                   <SidebarInner
@@ -390,7 +426,6 @@ export function AppShell({
         </header>
 
         <main className="mx-auto max-w-[1400px] px-3 py-4 sm:px-6 sm:py-6">
-          {/* Hero */}
           <section className="relative mb-5 overflow-hidden rounded-2xl bg-[#0a1f44] text-white shadow-[var(--shadow-card)]">
             {heroImg && (
               <img
