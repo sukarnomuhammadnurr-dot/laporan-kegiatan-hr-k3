@@ -92,14 +92,15 @@ function labelBulan(yyyymm: string) {
  * Generate list bulan dari tahun-tahun tertentu untuk dropdown.
  * Ambil 24 bulan ke belakang dari sekarang.
  */
-function listBulan(back = 24) {
+function listBulan(
+  startYear = 2026,
+  endYear = 2040,
+) {
   const result: string[] = [];
-  const now = new Date();
-  for (let i = 0; i < back; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    result.push(`${year}-${month}`);
+  for (let y = endYear; y >= startYear; y--) {
+    for (let m = 12; m >= 1; m--) {
+      result.push(`${y}-${String(m).padStart(2, "0")}`);
+    }
   }
   return result;
 }
