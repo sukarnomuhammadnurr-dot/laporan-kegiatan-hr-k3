@@ -56,95 +56,35 @@ type NavItem = {
 };
 
 const NAV_TRAINER: NavItem[] = [
-  {
-    to: "/dashboard",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    to: "/buat-laporan",
-    label: "Buat Laporan",
-    icon: FilePlus2,
-  },
-  {
-    to: "/laporan",
-    label: "Laporan Saya",
-    icon: FileText,
-  },
-  {
-    to: "/monitoring-laporan",
-    label: "Laporan Bulanan",
-    icon: BarChart3,
-  },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/buat-laporan", label: "Buat Laporan", icon: FilePlus2 },
+  { to: "/laporan", label: "Laporan Saya", icon: FileText },
+  { to: "/monitoring-laporan", label: "Laporan Bulanan", icon: BarChart3 },
 ];
 
 const NAV_STAFF: NavItem[] = [
-  {
-    to: "/dashboard",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    to: "/laporan",
-    label: "Semua Laporan",
-    icon: FileText,
-  },
-  {
-    to: "/buat-laporan",
-    label: "Buat Laporan",
-    icon: FilePlus2,
-  },
-  {
-    to: "/monitoring-laporan",
-    label: "Monitoring Laporan",
-    icon: ListChecks,
-  },
-  {
-    label: "Laporan Bulanan & Export",
-    icon: BarChart3,
-  },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/laporan", label: "Semua Laporan", icon: FileText },
+  { to: "/buat-laporan", label: "Buat Laporan", icon: FilePlus2 },
+  { to: "/monitoring-laporan", label: "Monitoring Laporan", icon: ListChecks },
+  { label: "Laporan Bulanan & Export", icon: BarChart3 },
 ];
 
 const NAV_MASTER: NavItem[] = [
-  {
-    to: "/master-trainer",
-    label: "Master Trainer",
-    icon: Users,
-  },
-  {
-    to: "/master-materi",
-    label: "Master Materi",
-    icon: BookOpen,
-  },
-  {
-    to: "/master-jadwal",
-    label: "Master Jadwal",
-    icon: CalendarDays,
-  },
-  {
-    to: "/pesan-whatsapp",
-    label: "Pesan WhatsApp",
-    icon: MessageCircle,
-  },
-  {
-    to: "/pengaturan-sistem",
-    label: "Pengaturan Sistem",
-    icon: Settings,
-  },
+  { to: "/master-trainer", label: "Master Trainer", icon: Users },
+  { to: "/master-materi", label: "Master Materi", icon: BookOpen },
+  { to: "/master-jadwal", label: "Master Jadwal", icon: CalendarDays },
+  { to: "/pesan-whatsapp", label: "Pesan WhatsApp", icon: MessageCircle },
+  { to: "/pengaturan-sistem", label: "Pengaturan Sistem", icon: Settings },
 ];
 
-export function BrandLogo({
-  className,
-}: {
-  className?: string;
-}) {
+export function BrandLogo({ className }: { className?: string }) {
   const logo = useBrandingUrl("logo");
 
   return (
     <div
       className={cn(
-        "num grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground",
-        logo && "bg-card",
+        "num grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-white text-xs font-bold text-[#0a1f44]",
         className,
       )}
     >
@@ -179,32 +119,23 @@ function NavList({
   const item = (it: NavItem) => {
     const Icon = it.icon;
 
-    /*
-     * Menu yang belum punya halaman/route
-     * tetap tampil sebagai "Segera".
-     */
+    // Menu tanpa route → tampil "Segera"
     if (!it.to) {
       return (
         <div
           key={it.label}
-          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-sidebar-foreground/45"
+          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-white/40"
         >
           <Icon className="size-4 shrink-0" />
-
-          <span className="flex-1 truncate">
-            {it.label}
-          </span>
-
-          <span className="rounded-full bg-sidebar-accent px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-sidebar-foreground/60 uppercase">
+          <span className="flex-1 truncate">{it.label}</span>
+          <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-white/60 uppercase">
             Segera
           </span>
         </div>
       );
     }
 
-    const active =
-      pathname === it.to ||
-      pathname.startsWith(it.to + "/");
+    const active = pathname === it.to || pathname.startsWith(it.to + "/");
 
     return (
       <Link
@@ -212,23 +143,20 @@ function NavList({
         to={it.to}
         onClick={onNavigate}
         className={cn(
-          "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors",
+          "flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-all",
           active
-            ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-[var(--shadow-nav)]"
-            : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+            ? "bg-[#b91c1c] text-white shadow-lg shadow-red-900/30"
+            : "text-white/75 hover:bg-white/10 hover:text-white",
         )}
       >
         <Icon className="size-4 shrink-0" />
-
-        <span className="truncate">
-          {it.label}
-        </span>
+        <span className="truncate">{it.label}</span>
       </Link>
     );
   };
 
   const heading = (t: string) => (
-    <p className="px-3 pt-5 pb-1.5 text-[10px] font-semibold tracking-[0.18em] text-sidebar-foreground/45 uppercase">
+    <p className="px-3 pt-5 pb-1.5 text-[10px] font-semibold tracking-[0.18em] text-white/40 uppercase">
       {t}
     </p>
   );
@@ -236,18 +164,14 @@ function NavList({
   return (
     <nav className="space-y-0.5">
       {heading("Menu")}
-
       {main.map(item)}
 
       {isStaff && (
         <>
           {heading("Data & Sistem")}
-
           {(isAdmin
             ? NAV_MASTER
-            : NAV_MASTER.filter(
-                (n) => n.to !== "/pengaturan-sistem",
-              )
+            : NAV_MASTER.filter((n) => n.to !== "/pengaturan-sistem")
           ).map(item)}
         </>
       )}
@@ -262,7 +186,7 @@ function NavList({
 
       <button
         onClick={onLogout}
-        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium text-white/75 transition-all hover:bg-white/10 hover:text-white"
       >
         <LogOut className="size-4" />
         Keluar
@@ -280,16 +204,14 @@ function SidebarInner(props: {
       <Link
         to="/dashboard"
         onClick={props.onNavigate}
-        className="flex items-center gap-3 px-2 pb-2"
+        className="flex items-center gap-3 px-2 pb-4"
       >
         <BrandLogo />
-
         <div className="min-w-0">
-          <p className="text-sm leading-tight font-semibold text-sidebar-foreground">
+          <p className="text-sm leading-tight font-semibold text-white">
             Laporan Kegiatan
           </p>
-
-          <p className="text-sm leading-tight font-semibold text-sidebar-foreground">
+          <p className="text-sm leading-tight font-semibold text-white">
             Trainer K3
           </p>
         </div>
@@ -325,53 +247,30 @@ export function AppShell({
   children: ReactNode;
 }) {
   const { nama, roles, user, trainer } = useCurrentUser();
-
   const navigate = useNavigate();
-
   const queryClient = useQueryClient();
-
   const [open, setOpen] = useState(false);
 
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
   });
 
-  const heroImg = useBrandingUrl(
-    heroKey ?? "ilustrasi_k3",
-  );
-
+  const heroImg = useBrandingUrl(heroKey ?? "ilustrasi_k3");
   const bg = useBrandingUrl("background");
 
-  const wajibGanti =
-    !!user?.user_metadata?.["wajib_ganti_password"];
+  const wajibGanti = !!user?.user_metadata?.["wajib_ganti_password"];
 
   useEffect(() => {
-    if (
-      wajibGanti &&
-      pathname !== "/ubah-password"
-    ) {
-      navigate({
-        to: "/ubah-password",
-        replace: true,
-      });
+    if (wajibGanti && pathname !== "/ubah-password") {
+      navigate({ to: "/ubah-password", replace: true });
     }
-  }, [
-    wajibGanti,
-    pathname,
-    navigate,
-  ]);
+  }, [wajibGanti, pathname, navigate]);
 
   async function keluar() {
     await queryClient.cancelQueries();
-
     queryClient.clear();
-
     await supabase.auth.signOut();
-
-    navigate({
-      to: "/masuk",
-      replace: true,
-    });
+    navigate({ to: "/masuk", replace: true });
   }
 
   const role = roles[0] ?? "";
@@ -381,25 +280,27 @@ export function AppShell({
       {bg && (
         <div
           className="pointer-events-none fixed inset-0 bg-cover bg-center opacity-[0.06]"
-          style={{
-            backgroundImage: `url(${bg})`,
-          }}
+          style={{ backgroundImage: `url(${bg})` }}
         />
       )}
 
-      {/* Sidebar desktop */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 bg-sidebar px-3 py-5 lg:block">
-        <SidebarInner onLogout={keluar} />
+      {/* Sidebar desktop — NAVY GELAP */}
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 overflow-hidden bg-[#0a1f44] px-3 py-5 lg:block">
+        {/* Decorative gradient */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0a1f44] via-[#0f2a5c] to-[#0a1f44]" />
+        <div className="pointer-events-none absolute -bottom-32 -left-32 size-64 rounded-full bg-red-900/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 -right-20 size-48 rounded-full bg-blue-900/30 blur-3xl" />
+
+        <div className="relative">
+          <SidebarInner onLogout={keluar} />
+        </div>
       </aside>
 
       <div className="relative lg:pl-64">
         {/* Header */}
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-border bg-card/95 px-3 backdrop-blur sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <Sheet
-              open={open}
-              onOpenChange={setOpen}
-            >
+            <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
                 <button
                   className="grid size-10 place-items-center rounded-lg text-foreground hover:bg-accent lg:hidden"
@@ -411,16 +312,18 @@ export function AppShell({
 
               <SheetContent
                 side="left"
-                className="w-72 border-none bg-sidebar p-4"
+                className="w-72 overflow-hidden border-none bg-[#0a1f44] p-4"
               >
-                <SheetTitle className="sr-only">
-                  Navigasi
-                </SheetTitle>
+                <SheetTitle className="sr-only">Navigasi</SheetTitle>
 
-                <SidebarInner
-                  onNavigate={() => setOpen(false)}
-                  onLogout={keluar}
-                />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0a1f44] via-[#0f2a5c] to-[#0a1f44]" />
+
+                <div className="relative">
+                  <SidebarInner
+                    onNavigate={() => setOpen(false)}
+                    onLogout={keluar}
+                  />
+                </div>
               </SheetContent>
             </Sheet>
 
@@ -430,7 +333,6 @@ export function AppShell({
               <p className="truncate text-sm font-semibold sm:text-base">
                 Laporan Kegiatan Trainer K3
               </p>
-
               <p className="eyebrow hidden truncate text-[10px] text-muted-foreground sm:block">
                 PT IWIP • Modul Pelatihan Keselamatan
               </p>
@@ -444,10 +346,7 @@ export function AppShell({
 
             <DropdownMenu>
               <DropdownMenuTrigger className="flex items-center gap-2 rounded-full py-1 pr-2 pl-1 hover:bg-accent">
-                <TrainerAvatar
-  nama={nama}
-  foto={trainer?.foto_profil}
-/>
+                <TrainerAvatar nama={nama} foto={trainer?.foto_profil} />
 
                 <span className="hidden max-w-40 truncate text-sm font-medium md:block">
                   {nama}
@@ -456,15 +355,9 @@ export function AppShell({
                 <ChevronDown className="size-4 text-muted-foreground" />
               </DropdownMenuTrigger>
 
-              <DropdownMenuContent
-                align="end"
-                className="w-56"
-              >
+              <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
-                  <p className="truncate">
-                    {nama}
-                  </p>
-
+                  <p className="truncate">{nama}</p>
                   <p className="truncate text-xs font-normal text-muted-foreground">
                     {user?.email}
                   </p>
@@ -473,20 +366,13 @@ export function AppShell({
                 <DropdownMenuSeparator />
 
                 <DropdownMenuItem
-                  onSelect={() =>
-                    navigate({
-                      to: "/ubah-password",
-                    })
-                  }
+                  onSelect={() => navigate({ to: "/ubah-password" })}
                 >
                   <KeyRound className="size-4" />
                   Ubah Password
                 </DropdownMenuItem>
 
-                <DropdownMenuItem
-                  onSelect={keluar}
-                  className="text-destructive"
-                >
+                <DropdownMenuItem onSelect={keluar} className="text-destructive">
                   <LogOut className="size-4" />
                   Keluar
                 </DropdownMenuItem>
@@ -505,7 +391,7 @@ export function AppShell({
 
         <main className="mx-auto max-w-[1400px] px-3 py-4 sm:px-6 sm:py-6">
           {/* Hero */}
-          <section className="relative mb-5 overflow-hidden rounded-2xl bg-sidebar text-sidebar-foreground shadow-[var(--shadow-card)]">
+          <section className="relative mb-5 overflow-hidden rounded-2xl bg-[#0a1f44] text-white shadow-[var(--shadow-card)]">
             {heroImg && (
               <img
                 src={heroImg}
@@ -514,12 +400,12 @@ export function AppShell({
               />
             )}
 
-            <div className="absolute inset-0 bg-[image:var(--gradient-hero)]" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#0a1f44] via-[#0a1f44]/85 to-transparent" />
 
             <div className="relative flex flex-wrap items-end justify-between gap-4 px-5 py-7 sm:px-8 sm:py-10">
               <div className="max-w-2xl">
                 {eyebrow && (
-                  <p className="text-[11px] font-semibold tracking-[0.2em] text-sidebar-primary-foreground/80 uppercase">
+                  <p className="text-[11px] font-semibold tracking-[0.2em] text-white/80 uppercase">
                     {eyebrow}
                   </p>
                 )}
@@ -529,16 +415,14 @@ export function AppShell({
                 </h1>
 
                 {description && (
-                  <p className="mt-2 text-sm text-sidebar-foreground/80 sm:text-base">
+                  <p className="mt-2 text-sm text-white/80 sm:text-base">
                     {description}
                   </p>
                 )}
               </div>
 
               {actions ? (
-                <div className="flex flex-wrap gap-2">
-                  {actions}
-                </div>
+                <div className="flex flex-wrap gap-2">{actions}</div>
               ) : null}
             </div>
           </section>
