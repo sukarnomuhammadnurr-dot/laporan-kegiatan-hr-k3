@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
@@ -50,6 +50,59 @@ type ReportPhoto = {
   nama_file: string | null;
   url?: string | null;
 };
+
+/**
+ * Bulan sekarang dalam format YYYY-MM.
+ */
+function bulanIni() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+/**
+ * Konversi YYYY-MM → tanggal awal bulan (YYYY-MM-01).
+ */
+function awalBulan(yyyymm: string) {
+  return `${yyyymm}-01`;
+}
+
+/**
+ * Konversi YYYY-MM → tanggal akhir bulan (YYYY-MM-DD, hari terakhir).
+ */
+function akhirBulan(yyyymm: string) {
+  const [y, m] = yyyymm.split("-").map(Number);
+  const last = new Date(y!, m!, 0).getDate();
+  return `${yyyymm}-${String(last).padStart(2, "0")}`;
+}
+
+/**
+ * Nama bulan dari YYYY-MM untuk label.
+ */
+function labelBulan(yyyymm: string) {
+  const [y, m] = yyyymm.split("-").map(Number);
+  return new Date(y!, (m ?? 1) - 1, 1).toLocaleDateString("id-ID", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+/**
+ * Generate list bulan dari tahun-tahun tertentu untuk dropdown.
+ * Ambil 24 bulan ke belakang dari sekarang.
+ */
+function listBulan(back = 24) {
+  const result: string[] = [];
+  const now = new Date();
+  for (let i = 0; i < back; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    result.push(`${year}-${month}`);
+  }
+  return result;
+}
 
 function formatTanggal(tanggal: string | null | undefined) {
   if (!tanggal) return "—";
@@ -332,8 +385,6 @@ async function downloadLaporan(
     const dailyPhotos = await getDailyReportPhotos(dailyReports);
     const totalKegiatan = dailyReports.length;
 
-    // ============ FIX: HADIR & PESERTA (ambil 1 nilai, bukan sum) ============
-    // Karena di-rowspan, kita cuma ambil nilai dari laporan pertama
     const nilaiHadirPertama = Number(dailyReports[0]?.jumlah_hadir || 0);
     const nilaiPesertaPertama = Number(dailyReports[0]?.jumlah_peserta || 0);
 
@@ -366,10 +417,6 @@ async function downloadLaporan(
     const nomorDokumen = buatNomorDokumen(report, dailyReports);
     const rowSpanHadir = dailyReports.length;
 
-    /* =====================================================
-       FOTO — BESAR, PENUH KOLOM
-    ===================================================== */
-
     const kegiatanRows = dailyPhotos
       .map(({ report: item, photos }, index) => {
         const fotoHtml =
@@ -385,7 +432,6 @@ async function downloadLaporan(
                 )
                 .join("")}</div>`;
 
-        // Rowspan: hanya baris pertama tampil jumlah
         const isFirstRow = index === 0;
         const hadirCell = isFirstRow
           ? `<td class="center participant-cell" rowspan="${rowSpanHadir}">
@@ -427,7 +473,6 @@ async function downloadLaporan(
       })
       .join("");
 
-    // Logo IWIP
     const logoHtml = brandingLogoUrl
       ? `<img src="${brandingLogoUrl}" class="iwip-logo" alt="IWIP" />`
       : `<div class="iwip-mark">IWIP</div>`;
@@ -449,7 +494,6 @@ async function downloadLaporan(
           }
           .page { width: 100%; }
 
-          /* HEADER */
           .company-header {
             display: flex;
             align-items: center;
@@ -495,7 +539,6 @@ async function downloadLaporan(
           }
           .title-line { height: 3px; background: #173f70; width: 100%; }
 
-          /* IDENTITAS */
           .identity {
             display: grid;
             grid-template-columns: 1.25fr 1.05fr 1fr 1fr 1.1fr 0.9fr;
@@ -530,7 +573,6 @@ async function downloadLaporan(
             color: #168044;
           }
 
-          /* TABLE */
           .activity-wrapper { margin-top: 10px; }
           table { width: 100%; border-collapse: collapse; table-layout: fixed; }
           th {
@@ -560,7 +602,6 @@ async function downloadLaporan(
           .small-info { margin-top: 2px; font-size: 6.5px; color: #64748b; }
           .participant-cell strong { font-size: 11px; }
 
-          /* FOTO — BESAR */
           .photo-cell {
             width: 30%;
             padding: 5px;
@@ -580,7 +621,6 @@ async function downloadLaporan(
             background: #f1f5f9;
             display: block;
           }
-          /* Foto tunggal — full width & lebih tinggi */
           .photo-strip .activity-photo:only-child {
             grid-column: span 2;
             height: 140px;
@@ -592,7 +632,6 @@ async function downloadLaporan(
             padding: 20px 2px;
           }
 
-          /* SUMMARY */
           .bottom-grid {
             display: grid;
             grid-template-columns: 1.2fr 1.8fr;
@@ -621,7 +660,6 @@ async function downloadLaporan(
           .notes-title { font-size: 8px; font-weight: 800; margin-bottom: 4px; }
           .notes-text { color: #475569; font-size: 7px; line-height: 1.4; }
 
-          /* FOOTER */
           .footer {
             display: flex;
             justify-content: space-between;
@@ -832,6 +870,8 @@ function LaporanPage() {
   const { isStaff, isTrainer, trainer, user, loading } = useCurrentUser();
   const queryClient = useQueryClient();
 
+  // === FILTER STATE ===
+  const [bulan, setBulan] = useState<string>(bulanIni());
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
   const [trainerFilter, setTrainerFilter] = useState("semua");
@@ -855,6 +895,12 @@ function LaporanPage() {
     queryFn: fetchTrainers,
   });
 
+  // === HITUNG DARI/SAMPAI YANG EFEKTIF ===
+  // Kalau user isi `dari` atau `sampai` manual → pakai itu.
+  // Kalau enggak → pakai range bulan yang dipilih.
+  const dariEfektif = dari || awalBulan(bulan);
+  const sampaiEfektif = sampai || akhirBulan(bulan);
+
   const {
     data: reports = [],
     isLoading,
@@ -864,8 +910,8 @@ function LaporanPage() {
       "reports",
       "laporan",
       trainer?.id,
-      dari,
-      sampai,
+      dariEfektif,
+      sampaiEfektif,
       trainerFilter,
       status,
       cari,
@@ -879,12 +925,14 @@ function LaporanPage() {
             : trainerFilter !== "semua"
               ? trainerFilter
               : null,
-        dari: dari || null,
-        sampai: sampai || null,
+        dari: dariEfektif,
+        sampai: sampaiEfektif,
         status: status !== "semua" ? status : null,
         cari: cari.trim() ? cari.trim() : null,
       }),
   });
+
+  const daftarBulan = useMemo(() => listBulan(24), []);
 
   async function refreshReports() {
     await queryClient.invalidateQueries({ queryKey: ["reports", "laporan"] });
@@ -986,6 +1034,23 @@ function LaporanPage() {
     }
   }
 
+  function resetFilter() {
+    setBulan(bulanIni());
+    setDari("");
+    setSampai("");
+    setTrainerFilter("semua");
+    setStatus("semua");
+    setCari("");
+  }
+
+  const hasFilter =
+    dari ||
+    sampai ||
+    trainerFilter !== "semua" ||
+    status !== "semua" ||
+    cari ||
+    bulan !== bulanIni();
+
   if (!loading && !isStaff && !isTrainer) {
     return (
       <AppShell title="Laporan">
@@ -1010,7 +1075,27 @@ function LaporanPage() {
       </p>
 
       <Panel className="mb-4">
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
+          {/* FILTER BULAN */}
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+              Bulan
+            </p>
+            <Select value={bulan} onValueChange={setBulan}>
+              <SelectTrigger>
+                <SelectValue placeholder="Pilih bulan" />
+              </SelectTrigger>
+              <SelectContent>
+                {daftarBulan.map((b) => (
+                  <SelectItem key={b} value={b}>
+                    {labelBulan(b)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* FILTER DARI */}
           <div>
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Dari tanggal
@@ -1019,9 +1104,11 @@ function LaporanPage() {
               type="date"
               value={dari}
               onChange={(e) => setDari(e.target.value)}
+              placeholder={awalBulan(bulan)}
             />
           </div>
 
+          {/* FILTER SAMPAI */}
           <div>
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Sampai tanggal
@@ -1030,6 +1117,7 @@ function LaporanPage() {
               type="date"
               value={sampai}
               onChange={(e) => setSampai(e.target.value)}
+              placeholder={akhirBulan(bulan)}
             />
           </div>
 
@@ -1088,6 +1176,16 @@ function LaporanPage() {
             />
           </div>
         </div>
+
+        {/* Info periode aktif */}
+        <p className="mt-3 text-xs text-muted-foreground">
+          Menampilkan periode:{" "}
+          <strong>{formatTanggal(dariEfektif)}</strong> s/d{" "}
+          <strong>{formatTanggal(sampaiEfektif)}</strong>
+          {!dari && !sampai ? (
+            <span> (bulan {labelBulan(bulan)})</span>
+          ) : null}
+        </p>
       </Panel>
 
       <Panel className="p-0 sm:p-0">
@@ -1099,22 +1197,8 @@ function LaporanPage() {
             </p>
           </div>
 
-          {(dari ||
-            sampai ||
-            trainerFilter !== "semua" ||
-            status !== "semua" ||
-            cari) && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setDari("");
-                setSampai("");
-                setTrainerFilter("semua");
-                setStatus("semua");
-                setCari("");
-              }}
-            >
+          {hasFilter && (
+            <Button size="sm" variant="outline" onClick={resetFilter}>
               Reset Filter
             </Button>
           )}
@@ -1130,7 +1214,7 @@ function LaporanPage() {
           <div className="p-8 text-center">
             <p className="font-medium">Belum ada laporan</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Tidak ada laporan yang sesuai dengan filter.
+              Tidak ada laporan pada periode {labelBulan(bulan)}.
             </p>
           </div>
         ) : (
