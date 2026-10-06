@@ -93,24 +93,33 @@ function Dashboard() {
 
       {/* 5 KARTU STATISTIK */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <StatTile
-          label="Laporan Hari Ini"
-          value={jumlahHariIni}
-          hint={formatTanggalPendek(hariIni)}
-        />
-        <StatTile label="Laporan Bulan Ini" value={jumlahBulanIni} />
-        <StatTile
-          label="Terverifikasi"
-          value={terverifikasiBulanIni}
-          tone="verified"
-        />
-        <StatTile
-          label="Menunggu Verifikasi"
-          value={menungguVerifikasi}
-          tone="review"
-        />
-        <StatTile label="Perlu Revisi" value={perluRevisi} tone="revision" />
-      </div>
+  <StatTile
+    label="Laporan Hari Ini"
+    value={jumlahHariIni}
+    hint={formatTanggalPendek(hariIni)}
+    tone="default"
+  />
+  <StatTile
+    label="Laporan Bulan Ini"
+    value={jumlahBulanIni}
+    tone="purple"
+  />
+  <StatTile
+    label="Terverifikasi"
+    value={terverifikasiBulanIni}
+    tone="verified"
+  />
+  <StatTile
+    label="Menunggu Verifikasi"
+    value={menungguVerifikasi}
+    tone="review"
+  />
+  <StatTile
+    label="Perlu Revisi"
+    value={perluRevisi}
+    tone="revision"
+  />
+</div>
 
       {/* TABEL LAPORAN TERBARU */}
       <Panel className="mt-4">
