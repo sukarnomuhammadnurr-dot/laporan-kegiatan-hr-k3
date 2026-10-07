@@ -60,7 +60,7 @@ const NAV_TRAINER: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/buat-laporan", label: "Buat Laporan", icon: FilePlus2 },
   { to: "/laporan", label: "Laporan Saya", icon: FileText },
-  { to: "/monitoring-laporan", label: "Laporan Bulanan", icon: BarChart3 },
+  { to: "/laporan-bulanan", label: "Laporan Bulanan", icon: BarChart3 },
 ];
 
 const NAV_STAFF: NavItem[] = [
