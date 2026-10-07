@@ -44,6 +44,7 @@ type NavItem = {
     | "/dashboard"
     | "/buat-laporan"
     | "/laporan"
+    | "/laporan-bulanan"    // ← TAMBAH
     | "/monitoring-laporan"
     | "/master-trainer"
     | "/master-materi"
