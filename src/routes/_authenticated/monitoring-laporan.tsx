@@ -76,6 +76,45 @@ type FilterStatus =
   | "terverifikasi"
   | "perlu_revisi";
 
+/* =========================================================
+   HELPER: BULAN
+========================================================= */
+
+function bulanIni() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+}
+
+function awalBulan(yyyymm: string) {
+  return `${yyyymm}-01`;
+}
+
+function akhirBulan(yyyymm: string) {
+  const [y, m] = yyyymm.split("-").map(Number);
+  const last = new Date(y!, m!, 0).getDate();
+  return `${yyyymm}-${String(last).padStart(2, "0")}`;
+}
+
+function labelBulan(yyyymm: string) {
+  const [y, m] = yyyymm.split("-").map(Number);
+  return new Date(y!, (m ?? 1) - 1, 1).toLocaleDateString("id-ID", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function listBulan(startYear = 2026, endYear = 2040) {
+  const result: string[] = [];
+  for (let y = endYear; y >= startYear; y--) {
+    for (let m = 12; m >= 1; m--) {
+      result.push(`${y}-${String(m).padStart(2, "0")}`);
+    }
+  }
+  return result;
+}
+
 function formatTanggal(value: string | null | undefined) {
   if (!value) return "—";
   return new Date(`${value}T00:00:00`).toLocaleDateString("id-ID", {
@@ -449,6 +488,8 @@ function MonitoringLaporanPage() {
   const { isStaff, isTrainer, trainer, loading, user } = useCurrentUser();
   const qc = useQueryClient();
 
+  // === FILTER STATE ===
+  const [bulan, setBulan] = useState<string>(bulanIni());
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
   const [trainerFilter, setTrainerFilter] = useState("semua");
@@ -478,6 +519,10 @@ function MonitoringLaporanPage() {
     queryFn: fetchTrainers,
   });
 
+  // === HITUNG RANGE EFEKTIF ===
+  const dariEfektif = dari || awalBulan(bulan);
+  const sampaiEfektif = sampai || akhirBulan(bulan);
+
   const {
     data: reports = [],
     isLoading,
@@ -487,8 +532,8 @@ function MonitoringLaporanPage() {
       "reports",
       "monitoring-laporan",
       trainer?.id,
-      dari,
-      sampai,
+      dariEfektif,
+      sampaiEfektif,
       trainerFilter,
       status,
       jenisKegiatan,
@@ -503,12 +548,14 @@ function MonitoringLaporanPage() {
             : trainerFilter !== "semua"
               ? trainerFilter
               : null,
-        dari: dari || null,
-        sampai: sampai || null,
+        dari: dariEfektif,
+        sampai: sampaiEfektif,
         status: status !== "semua" ? status : null,
         cari: cari.trim() || null,
       }),
   });
+
+  const daftarBulan = useMemo(() => listBulan(2026, 2040), []);
 
   const jenisOptions = useMemo(() => {
     const values = new Set<string>();
@@ -564,6 +611,7 @@ function MonitoringLaporanPage() {
   }, [filteredReports]);
 
   const resetFilter = () => {
+    setBulan(bulanIni());
     setDari("");
     setSampai("");
     setTrainerFilter("semua");
@@ -578,7 +626,8 @@ function MonitoringLaporanPage() {
     trainerFilter !== "semua" ||
     status !== "semua" ||
     jenisKegiatan !== "semua" ||
-    cari;
+    cari ||
+    bulan !== bulanIni();
 
   // ---------- Aksi verifikasi ----------
   const verifikasiMutation = useMutation({
@@ -685,23 +734,12 @@ function MonitoringLaporanPage() {
       return null;
     }
 
-    // Tentukan bulan
-    const now = new Date();
-    let bulan = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    // Tentukan bulan PDF — pakai bulan yang aktif di filter
+    // Kalau user override dari/sampai, tetap pakai bulan state
+    const bulanFinal = bulan;
 
-    if (dari && /^\d{4}-\d{2}/.test(dari)) {
-      bulan = dari.slice(0, 7);
-    } else {
-      const firstWithDate = filteredReports.find(
-        (r) => r.tanggal_kegiatan && r.tanggal_kegiatan.length >= 7,
-      );
-      if (firstWithDate?.tanggal_kegiatan) {
-        bulan = firstWithDate.tanggal_kegiatan.slice(0, 7);
-      }
-    }
-
-    let laporanPeriode = filteredReports
-      .filter((r) => r.tanggal_kegiatan?.startsWith(bulan))
+    const laporanPeriode = filteredReports
+      .filter((r) => r.tanggal_kegiatan?.startsWith(bulanFinal))
       .sort((a, b) => {
         const tA = a.tanggal_kegiatan || "";
         const tB = b.tanggal_kegiatan || "";
@@ -712,11 +750,8 @@ function MonitoringLaporanPage() {
       });
 
     if (laporanPeriode.length === 0) {
-      laporanPeriode = [...filteredReports].sort((a, b) => {
-        const tA = a.tanggal_kegiatan || "";
-        const tB = b.tanggal_kegiatan || "";
-        return tA.localeCompare(tB);
-      });
+      toast.error(`Tidak ada laporan pada periode ${labelBulan(bulanFinal)}.`);
+      return null;
     }
 
     // Fetch foto
@@ -732,7 +767,6 @@ function MonitoringLaporanPage() {
       laporanPeriode.map(async (r) => {
         const fotos = (photosMap.get(r.id) ?? []).filter((p) => p.url);
         const dataUrls: string[] = [];
-        // MAX 5 FOTO per kegiatan
         for (const foto of fotos.slice(0, 5)) {
           if (!foto.url) continue;
           const dataUrl = await urlToDataUrlWithTimeout(foto.url);
@@ -748,9 +782,9 @@ function MonitoringLaporanPage() {
       logoDataUrl = await urlToDataUrlWithTimeout(brandingLogo);
     }
 
-    const bulanLabel = namaBulan(bulan);
+    const bulanLabel = namaBulan(bulanFinal);
 
-    // ========== GROUP BY TRAINER_ID ==========
+    // Group by trainer
     const byTrainer = new Map<string, ReportWithTrainer[]>();
     for (const r of laporanPeriode) {
       const key = r.trainer_id || "tanpa-trainer";
@@ -759,7 +793,6 @@ function MonitoringLaporanPage() {
       byTrainer.set(key, cur);
     }
 
-    // Urutkan trainer berdasarkan nama
     const trainerSections = [...byTrainer.entries()].sort(([, a], [, b]) => {
       const nA = a[0]?.trainers?.nama_lengkap || "";
       const nB = b[0]?.trainers?.nama_lengkap || "";
@@ -768,10 +801,8 @@ function MonitoringLaporanPage() {
 
     const totalTrainer = trainerSections.length;
 
-    // ========== RENDER SECTION PER TRAINER ==========
     const sections = trainerSections
       .map(([trainerId, list], trainerIdx) => {
-        // Info trainer (dari record pertama)
         const firstReport = list[0];
         const trainerInfo = {
           nama: firstReport?.trainers?.nama_lengkap || "—",
@@ -780,7 +811,6 @@ function MonitoringLaporanPage() {
           departemen: DEPARTEMEN_LABEL,
         };
 
-        // Group by tanggal (untuk rowspan)
         const byTanggal = new Map<string, ReportWithTrainer[]>();
         for (const r of list) {
           const key = r.tanggal_kegiatan || "tanpa-tanggal";
@@ -792,7 +822,6 @@ function MonitoringLaporanPage() {
           a.localeCompare(b),
         );
 
-        // Bangun row tabel
         let noUrut = 1;
         const tbodyHtml = tanggalList
           .map(([tanggal, tglList]) => {
@@ -803,35 +832,35 @@ function MonitoringLaporanPage() {
                 const isFirstRow = idx === 0;
                 const currentNo = noUrut++;
 
-                // Cek apakah cuti/izin/sakit (ada tanggal_selesai)
-const tglSelesai = (item as any).tanggal_selesai as string | null | undefined;
-const isRange = Boolean(tglSelesai && tglSelesai !== item.tanggal_kegiatan);
+                const tglSelesai = (item as any).tanggal_selesai as
+                  | string
+                  | null
+                  | undefined;
+                const isRange = Boolean(
+                  tglSelesai && tglSelesai !== item.tanggal_kegiatan,
+                );
 
-// DEBUG — hapus setelah masalah selesai
-console.log("[PDF DEBUG]", {
-  id: item.id,
-  materi: item.materi,
-  tanggal_kegiatan: item.tanggal_kegiatan,
-  tanggal_selesai: tglSelesai,
-  isRange,
-  raw_item: item,
-});
+                let durasiHari = 0;
+                if (isRange && item.tanggal_kegiatan && tglSelesai) {
+                  const s = new Date(
+                    `${item.tanggal_kegiatan}T00:00:00`,
+                  ).getTime();
+                  const e = new Date(`${tglSelesai}T00:00:00`).getTime();
+                  durasiHari =
+                    Math.floor((e - s) / (1000 * 60 * 60 * 24)) + 1;
+                }
 
-// Hitung durasi hari
-let durasiHari = 0;
-if (isRange && item.tanggal_kegiatan && tglSelesai) {
-  const s = new Date(`${item.tanggal_kegiatan}T00:00:00`).getTime();
-  const e = new Date(`${tglSelesai}T00:00:00`).getTime();
-  durasiHari = Math.floor((e - s) / (1000 * 60 * 60 * 24)) + 1;
-}
+                const tanggalText = isRange
+                  ? `${formatTanggal(
+                      item.tanggal_kegiatan,
+                    )} - ${formatTanggal(
+                      tglSelesai!,
+                    )}<br><span class="durasi-hari">(${durasiHari} hari)</span>`
+                  : formatTanggal(item.tanggal_kegiatan);
 
-const tanggalText = isRange
-  ? `${formatTanggal(item.tanggal_kegiatan)} - ${formatTanggal(tglSelesai!)}<br><span class="durasi-hari">(${durasiHari} hari)</span>`
-  : formatTanggal(item.tanggal_kegiatan);
-
-const tanggalCell = isFirstRow
-  ? `<td class="col-tanggal" rowspan="${rowSpan}">${tanggalText}</td>`
-  : "";
+                const tanggalCell = isFirstRow
+                  ? `<td class="col-tanggal" rowspan="${rowSpan}">${tanggalText}</td>`
+                  : "";
 
                 const materiText = [
                   escapeHtml(item.materi || "—"),
@@ -847,7 +876,6 @@ const tanggalCell = isFirstRow
                     : "",
                 ].join("");
 
-                // FOTO GRID — MAX 5, layout 2x3
                 const fotoHtml =
                   fotos.length === 0
                     ? `<div class="no-photo">Tidak ada foto</div>`
@@ -871,10 +899,14 @@ const tanggalCell = isFirstRow
                     <td class="col-lokasi">${escapeHtml(
                       item.lokasi || "-",
                     )}</td>
-                    ${idx === 0
-  ? `<td class="col-hadir" rowspan="${rowSpan}">${item.jumlah_hadir ?? 0}</td>`
-  : ""}
-                   <td class="col-pj">Muhammad Halid (Superintendent)</td>
+                    ${
+                      idx === 0
+                        ? `<td class="col-hadir" rowspan="${rowSpan}">${
+                            item.jumlah_hadir ?? 0
+                          }</td>`
+                        : ""
+                    }
+                    <td class="col-pj">Muhammad Halid (Superintendent)</td>
                     <td class="col-foto">${fotoHtml}</td>
                   </tr>
                 `;
@@ -883,18 +915,17 @@ const tanggalCell = isFirstRow
           })
           .join("");
 
-        // Hitung per tanggal (ambil 1 nilai per tanggal, bukan sum semua baris)
-const tanggalUnik = new Map<string, number>();
-for (const r of list) {
-  const tgl = r.tanggal_kegiatan || "tanpa-tanggal";
-  if (!tanggalUnik.has(tgl)) {
-    tanggalUnik.set(tgl, Number(r.jumlah_hadir || 0));
-  }
-}
-const totalHadirTrainer = [...tanggalUnik.values()].reduce(
-  (s, v) => s + v,
-  0,
-);
+        const tanggalUnik = new Map<string, number>();
+        for (const r of list) {
+          const tgl = r.tanggal_kegiatan || "tanpa-tanggal";
+          if (!tanggalUnik.has(tgl)) {
+            tanggalUnik.set(tgl, Number(r.jumlah_hadir || 0));
+          }
+        }
+        const totalHadirTrainer = [...tanggalUnik.values()].reduce(
+          (s, v) => s + v,
+          0,
+        );
 
         const isFirst = trainerIdx === 0;
 
@@ -904,7 +935,6 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
 
         return `
           <section class="page ${isFirst ? "" : "page-break"}">
-            <!-- HEADER -->
             <div class="header">
               <div class="brand">
                 ${logoHtml}
@@ -920,7 +950,6 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
             </div>
             <div class="divider"></div>
 
-            <!-- KARTU IDENTITAS TRAINER -->
             <div class="trainer-card">
               <div class="trainer-cell">
                 <div class="trainer-label">NAMA TRAINER</div>
@@ -942,7 +971,6 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
               </div>
             </div>
 
-            <!-- TABEL KEGIATAN -->
             <table>
               <colgroup>
                 <col style="width:4%">
@@ -973,13 +1001,11 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
               </tbody>
             </table>
 
-            <!-- SUMMARY PER TRAINER -->
             <div class="summary">
               Total kegiatan: ${list.length} &nbsp;•&nbsp; 
               Total peserta hadir: ${totalHadirTrainer.toLocaleString("id-ID")} orang
             </div>
 
-            <!-- FOOTER -->
             <div class="footer">
               <span>Trainer ${trainerIdx + 1} dari ${totalTrainer} &nbsp;|&nbsp; Periode: <strong>${escapeHtml(
                 bulanLabel,
@@ -997,7 +1023,6 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
       })
       .join("");
 
-    // HTML lengkap
     const html = `
 <!DOCTYPE html>
 <html lang="id">
@@ -1012,22 +1037,9 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
       background: #fff;
       font-size: 9px;
     }
-
-    .page {
-      padding: 12mm 8mm;
-      min-height: 100vh;
-    }
-    .page-break {
-      page-break-before: always;
-    }
-
-    /* ============ HEADER ============ */
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 20px;
-    }
+    .page { padding: 12mm 8mm; min-height: 100vh; }
+    .page-break { page-break-before: always; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
     .brand { display: flex; align-items: center; gap: 10px; }
     .logo { width: 56px; height: 46px; object-fit: contain; }
     .logo-fallback {
@@ -1047,13 +1059,9 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
     .header-right .val {
       font-size: 11px; font-weight: 700; color: #124a82; margin-top: 4px;
     }
-
-    /* ============ DIVIDER ============ */
     .divider {
       height: 3px; background: #0b5aa5; margin: 8px 0 12px; border-radius: 2px;
     }
-
-    /* ============ KARTU TRAINER ============ */
     .trainer-card {
       display: grid;
       grid-template-columns: 1.3fr 1fr 1fr 1fr;
@@ -1075,8 +1083,6 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
     .trainer-value {
       font-size: 11px; font-weight: 900; color: #124a82; line-height: 1.2;
     }
-
-    /* ============ TABEL ============ */
     table {
       width: 100%; border-collapse: collapse; table-layout: fixed;
       margin-bottom: 8px;
@@ -1093,19 +1099,18 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
       vertical-align: middle; overflow-wrap: anywhere;
       word-break: break-word;
     }
-
     .col-no { text-align: center; font-weight: 800; }
     .col-tanggal {
-  text-align: center; font-weight: 700;
-  vertical-align: middle; background: #f8fbff;
-}
-.col-tanggal .durasi-hari {
-  display: block;
-  margin-top: 3px;
-  font-size: 7px;
-  font-weight: 600;
-  color: #64748b;
-}
+      text-align: center; font-weight: 700;
+      vertical-align: middle; background: #f8fbff;
+    }
+    .col-tanggal .durasi-hari {
+      display: block;
+      margin-top: 3px;
+      font-size: 7px;
+      font-weight: 600;
+      color: #64748b;
+    }
     .col-jam { text-align: center; white-space: nowrap; }
     .col-materi { font-size: 8.5px; }
     .col-kelas { text-align: center; }
@@ -1113,15 +1118,12 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
     .col-hadir { text-align: center; font-weight: 800; font-size: 10px; }
     .col-pj { text-align: center; font-size: 7.5px; }
     .col-foto { text-align: center; padding: 4px; }
-
     .materi-jenis {
       font-size: 7px; color: #63809a; margin-top: 3px; font-style: italic;
     }
     .materi-desc {
       font-size: 7px; color: #4a5f75; margin-top: 3px; font-style: italic;
     }
-
-    /* ============ FOTO GRID — MAX 5, GEDE ============ */
     .photo-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -1137,7 +1139,6 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
       background: #eef6fc;
       display: block;
     }
-    /* Foto ke-5 (index 4) tampil lebih besar full width */
     .photo-grid .photo:only-child,
     .photo-grid .photo:nth-child(5):last-child {
       grid-column: span 2;
@@ -1146,8 +1147,6 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
     .no-photo {
       padding: 20px 4px; color: #8ba0b3; font-size: 8px;
     }
-
-    /* ============ SUMMARY ============ */
     .summary {
       background: #f0f7ff;
       border: 1.5px solid #b8d9f7;
@@ -1158,8 +1157,6 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
       font-weight: 700;
       margin-top: 6px;
     }
-
-    /* ============ FOOTER ============ */
     .footer {
       margin-top: 10px;
       padding-top: 6px;
@@ -1170,12 +1167,7 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
       color: #6b8297;
     }
     .footer strong { color: #124a82; }
-
-    /* ============ PRINT ============ */
-    @page {
-      size: A4 landscape;
-      margin: 8mm;
-    }
+    @page { size: A4 landscape; margin: 8mm; }
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .page { padding: 0; min-height: auto; }
@@ -1193,11 +1185,10 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
 
     return {
       html,
-      fileName: `Laporan-Bulanan-K3-${bulan}`,
+      fileName: `Laporan-Bulanan-K3-${bulanFinal}`,
     };
   }
 
-  // Preview PDF (HTML)
   async function previewPDF() {
     setPdfBuilding(true);
     try {
@@ -1215,7 +1206,6 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
     }
   }
 
-  // Download PDF via print dialog
   function confirmDownload() {
     if (!pdfHtml) return;
 
@@ -1334,13 +1324,31 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
           ) : null}
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-7">
+          {/* BULAN */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">Bulan</p>
+            <Select value={bulan} onValueChange={setBulan}>
+              <SelectTrigger>
+                <SelectValue placeholder="Pilih bulan" />
+              </SelectTrigger>
+              <SelectContent>
+                {daftarBulan.map((b) => (
+                  <SelectItem key={b} value={b}>
+                    {labelBulan(b)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">
               Dari tanggal
             </p>
             <Input type="date" value={dari} onChange={(e) => setDari(e.target.value)} />
           </div>
+
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">
               Sampai tanggal
@@ -1439,6 +1447,16 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
             </div>
           </div>
         </div>
+
+        {/* Info periode aktif */}
+        <p className="mt-3 text-xs text-muted-foreground">
+          Menampilkan periode:{" "}
+          <strong>{formatTanggal(dariEfektif)}</strong> s/d{" "}
+          <strong>{formatTanggal(sampaiEfektif)}</strong>
+          {!dari && !sampai ? (
+            <span> (bulan {labelBulan(bulan)})</span>
+          ) : null}
+        </p>
       </Panel>
 
       {/* STATISTICS */}
@@ -1499,13 +1517,7 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
               <p className="text-xs text-muted-foreground">
                 Periode Monitoring
               </p>
-              <p className="text-sm font-semibold">
-                {dari || sampai
-                  ? `${dari ? formatTanggal(dari) : "Awal"} – ${
-                      sampai ? formatTanggal(sampai) : "Sekarang"
-                    }`
-                  : "Semua periode"}
-              </p>
+              <p className="text-sm font-semibold">{labelBulan(bulan)}</p>
             </div>
           </div>
         </Panel>
@@ -1594,7 +1606,7 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
             <p className="font-semibold">Daftar Laporan</p>
             <p className="text-xs text-muted-foreground">
               {filteredReports.length.toLocaleString("id-ID")} laporan ditemukan
-              sesuai filter.
+              · periode {labelBulan(bulan)}
             </p>
           </div>
           <Button
@@ -1630,7 +1642,7 @@ const totalHadirTrainer = [...tanggalUnik.values()].reduce(
             </div>
             <p className="mt-4 font-semibold">Belum ada laporan</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Tidak ada laporan yang sesuai dengan filter saat ini.
+              Tidak ada laporan pada periode {labelBulan(bulan)}.
             </p>
             {hasFilter ? (
               <Button
