@@ -15,7 +15,7 @@ import {
   RefreshCcw,
   RotateCcw,
   Search,
-  Trash2,          // ← TAMBAH
+  Trash2,
   Users,
   X,
   XCircle,
@@ -78,15 +78,11 @@ type FilterStatus =
   | "terverifikasi"
   | "perlu_revisi";
 
-/* =========================================================
-   HELPER: BULAN
-========================================================= */
+/* ============ HELPER BULAN ============ */
 
 function bulanIni() {
   const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function awalBulan(yyyymm: string) {
@@ -490,7 +486,6 @@ function MonitoringLaporanPage() {
   const { isStaff, isTrainer, trainer, loading, user } = useCurrentUser();
   const qc = useQueryClient();
 
-  // === FILTER STATE ===
   const [bulan, setBulan] = useState<string>(bulanIni());
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
@@ -512,8 +507,11 @@ function MonitoringLaporanPage() {
     action: "verifikasi" | "revisi" | "batalkan";
   } | null>(null);
   const [catatanInput, setCatatanInput] = useState("");
-const [hapusAction, setHapusAction] = useState<ReportWithTrainer | null>(null);
-const [hapusConfirmText, setHapusConfirmText] = useState("");
+
+  // HAPUS STATE
+  const [hapusAction, setHapusAction] = useState<ReportWithTrainer | null>(null);
+  const [hapusConfirmText, setHapusConfirmText] = useState("");
+
   const brandingLogo = useBrandingUrl("logo");
 
   const { data: trainers = [] } = useQuery({
@@ -522,7 +520,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
     queryFn: fetchTrainers,
   });
 
-  // === HITUNG RANGE EFEKTIF ===
   const dariEfektif = dari || awalBulan(bulan);
   const sampaiEfektif = sampai || akhirBulan(bulan);
 
@@ -579,7 +576,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
 
   const stats = useMemo(() => {
     const total = filteredReports.length;
-
     const terverifikasi = filteredReports.filter(
       (r) => r.status_laporan === "terverifikasi",
     ).length;
@@ -592,7 +588,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
     const terkirim = filteredReports.filter(
       (r) => r.status_laporan === "terkirim",
     ).length;
-
     const totalHadir = filteredReports.reduce(
       (sum, report) => sum + (report.jumlah_hadir ?? 0),
       0,
@@ -633,21 +628,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
     bulan !== bulanIni();
 
   // ---------- Aksi verifikasi ----------
-  const hapusMutation = useMutation({
-  mutationFn: async (report: ReportWithTrainer) => {
-    await hapusLaporanPermanent(report.id);
-  },
-  onSuccess: () => {
-    toast.success("Laporan berhasil dihapus permanent.");
-    qc.invalidateQueries({ queryKey: ["reports"] });
-    setHapusAction(null);
-    setHapusConfirmText("");
-    setPreview(null);
-  },
-  onError: (e: Error) => {
-    toast.error(e.message || "Gagal menghapus laporan.");
-  },
-});
   const verifikasiMutation = useMutation({
     mutationFn: async ({
       report,
@@ -659,7 +639,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
       catatan: string;
     }) => {
       if (!user?.id) throw new Error("User tidak terdeteksi.");
-
       const now = new Date().toISOString();
 
       if (action === "verifikasi") {
@@ -713,6 +692,23 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // ---------- Aksi HAPUS PERMANENT ----------
+  const hapusMutation = useMutation({
+    mutationFn: async (report: ReportWithTrainer) => {
+      await hapusLaporanPermanent(report.id);
+    },
+    onSuccess: () => {
+      toast.success("Laporan berhasil dihapus permanent.");
+      qc.invalidateQueries({ queryKey: ["reports"] });
+      setHapusAction(null);
+      setHapusConfirmText("");
+      setPreview(null);
+    },
+    onError: (e: Error) => {
+      toast.error(e.message || "Gagal menghapus laporan.");
+    },
+  });
+
   function bukaVerifAction(
     report: ReportWithTrainer,
     action: "verifikasi" | "revisi" | "batalkan",
@@ -743,17 +739,14 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
   }
 
   // =============================================================
-  // BUILD HTML PDF — Group per Trainer ID
+  // BUILD HTML PDF
   // =============================================================
-
   async function buildHTML(): Promise<{ html: string; fileName: string } | null> {
     if (filteredReports.length === 0) {
       toast.error("Tidak ada laporan untuk diunduh.");
       return null;
     }
 
-    // Tentukan bulan PDF — pakai bulan yang aktif di filter
-    // Kalau user override dari/sampai, tetap pakai bulan state
     const bulanFinal = bulan;
 
     const laporanPeriode = filteredReports
@@ -772,7 +765,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
       return null;
     }
 
-    // Fetch foto
     let photosMap = new Map<string, ReportPhoto[]>();
     try {
       photosMap = await getReportPhotosBatch(laporanPeriode.map((r) => r.id));
@@ -794,7 +786,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
       }),
     );
 
-    // Logo
     let logoDataUrl: string | null = null;
     if (brandingLogo) {
       logoDataUrl = await urlToDataUrlWithTimeout(brandingLogo);
@@ -802,7 +793,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
 
     const bulanLabel = namaBulan(bulanFinal);
 
-    // Group by trainer
     const byTrainer = new Map<string, ReportWithTrainer[]>();
     for (const r of laporanPeriode) {
       const key = r.trainer_id || "tanpa-trainer";
@@ -1069,17 +1059,11 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
       font-size: 19px; font-weight: 900; color: #124a82;
       line-height: 1.1; letter-spacing: 0.2px;
     }
-    .brand-sub {
-      font-size: 12px; font-weight: 800; color: #124a82; margin-top: 3px;
-    }
+    .brand-sub { font-size: 12px; font-weight: 800; color: #124a82; margin-top: 3px; }
     .header-right { text-align: right; }
     .header-right .lbl { font-size: 15px; font-weight: 900; color: #124a82; }
-    .header-right .val {
-      font-size: 11px; font-weight: 700; color: #124a82; margin-top: 4px;
-    }
-    .divider {
-      height: 3px; background: #0b5aa5; margin: 8px 0 12px; border-radius: 2px;
-    }
+    .header-right .val { font-size: 11px; font-weight: 700; color: #124a82; margin-top: 4px; }
+    .divider { height: 3px; background: #0b5aa5; margin: 8px 0 12px; border-radius: 2px; }
     .trainer-card {
       display: grid;
       grid-template-columns: 1.3fr 1fr 1fr 1fr;
@@ -1089,22 +1073,14 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
       margin-bottom: 10px;
       overflow: hidden;
     }
-    .trainer-cell {
-      padding: 8px 10px;
-      border-right: 1.5px solid #d4e4f2;
-    }
+    .trainer-cell { padding: 8px 10px; border-right: 1.5px solid #d4e4f2; }
     .trainer-cell:last-child { border-right: none; }
     .trainer-label {
       font-size: 7px; font-weight: 700; color: #3978ab;
       text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;
     }
-    .trainer-value {
-      font-size: 11px; font-weight: 900; color: #124a82; line-height: 1.2;
-    }
-    table {
-      width: 100%; border-collapse: collapse; table-layout: fixed;
-      margin-bottom: 8px;
-    }
+    .trainer-value { font-size: 11px; font-weight: 900; color: #124a82; line-height: 1.2; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 8px; }
     thead { background: #0b5aa5; }
     th {
       color: #fff; font-size: 8.5px; font-weight: 800;
@@ -1123,11 +1099,8 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
       vertical-align: middle; background: #f8fbff;
     }
     .col-tanggal .durasi-hari {
-      display: block;
-      margin-top: 3px;
-      font-size: 7px;
-      font-weight: 600;
-      color: #64748b;
+      display: block; margin-top: 3px; font-size: 7px;
+      font-weight: 600; color: #64748b;
     }
     .col-jam { text-align: center; white-space: nowrap; }
     .col-materi { font-size: 8.5px; }
@@ -1136,53 +1109,33 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
     .col-hadir { text-align: center; font-weight: 800; font-size: 10px; }
     .col-pj { text-align: center; font-size: 7.5px; }
     .col-foto { text-align: center; padding: 4px; }
-    .materi-jenis {
-      font-size: 7px; color: #63809a; margin-top: 3px; font-style: italic;
-    }
-    .materi-desc {
-      font-size: 7px; color: #4a5f75; margin-top: 3px; font-style: italic;
-    }
+    .materi-jenis { font-size: 7px; color: #63809a; margin-top: 3px; font-style: italic; }
+    .materi-desc { font-size: 7px; color: #4a5f75; margin-top: 3px; font-style: italic; }
     .photo-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 4px;
-      width: 100%;
+      display: grid; grid-template-columns: repeat(2, 1fr);
+      gap: 4px; width: 100%;
     }
     .photo {
-      width: 100%;
-      height: 95px;
-      object-fit: cover;
-      border-radius: 3px;
-      border: 1px solid #b9d8f2;
-      background: #eef6fc;
-      display: block;
+      width: 100%; height: 95px; object-fit: cover;
+      border-radius: 3px; border: 1px solid #b9d8f2;
+      background: #eef6fc; display: block;
     }
     .photo-grid .photo:only-child,
     .photo-grid .photo:nth-child(5):last-child {
-      grid-column: span 2;
-      height: 130px;
+      grid-column: span 2; height: 130px;
     }
-    .no-photo {
-      padding: 20px 4px; color: #8ba0b3; font-size: 8px;
-    }
+    .no-photo { padding: 20px 4px; color: #8ba0b3; font-size: 8px; }
     .summary {
-      background: #f0f7ff;
-      border: 1.5px solid #b8d9f7;
-      border-radius: 6px;
-      padding: 8px 12px;
-      font-size: 9px;
-      color: #124a82;
-      font-weight: 700;
+      background: #f0f7ff; border: 1.5px solid #b8d9f7;
+      border-radius: 6px; padding: 8px 12px;
+      font-size: 9px; color: #124a82; font-weight: 700;
       margin-top: 6px;
     }
     .footer {
-      margin-top: 10px;
-      padding-top: 6px;
+      margin-top: 10px; padding-top: 6px;
       border-top: 1px solid #d4e4f2;
-      display: flex;
-      justify-content: space-between;
-      font-size: 7px;
-      color: #6b8297;
+      display: flex; justify-content: space-between;
+      font-size: 7px; color: #6b8297;
     }
     .footer strong { color: #124a82; }
     @page { size: A4 landscape; margin: 8mm; }
@@ -1302,7 +1255,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
         </Button>
       }
     >
-      {/* HERO */}
       <div className="mb-5 overflow-hidden rounded-2xl border border-primary/10 bg-gradient-to-r from-primary/10 via-background to-primary/5 p-5 sm:p-6">
         <div className="flex flex-col justify-between gap-5 md:flex-row md:items-center">
           <div className="flex items-start gap-4">
@@ -1325,7 +1277,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
         </div>
       </div>
 
-      {/* FILTER */}
       <Panel className="mb-5">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -1343,7 +1294,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
         </div>
 
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-7">
-          {/* BULAN */}
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">Bulan</p>
             <Select value={bulan} onValueChange={setBulan}>
@@ -1466,7 +1416,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
           </div>
         </div>
 
-        {/* Info periode aktif */}
         <p className="mt-3 text-xs text-muted-foreground">
           Menampilkan periode:{" "}
           <strong>{formatTanggal(dariEfektif)}</strong> s/d{" "}
@@ -1477,7 +1426,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
         </p>
       </Panel>
 
-      {/* STATISTICS */}
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           title="Total Laporan"
@@ -1509,7 +1457,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
         />
       </div>
 
-      {/* QUICK SUMMARY */}
       <div className="mb-5 grid gap-4 sm:grid-cols-2">
         <Panel>
           <div className="flex items-center gap-3">
@@ -1541,7 +1488,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
         </Panel>
       </div>
 
-      {/* CHARTS */}
       <div className="mb-5 grid gap-5 xl:grid-cols-[1.5fr_1fr]">
         <Panel>
           <div className="mb-5">
@@ -1617,7 +1563,6 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
         </Panel>
       </div>
 
-      {/* REPORT TABLE */}
       <Panel className="overflow-hidden p-0">
         <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -1757,33 +1702,33 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
                       <td className="px-4 py-3">
                         <StatusPill status={report.status_laporan} />
                       </td>
-                     <td className="px-4 py-3">
-  <div className="flex items-center gap-1.5">
-    <Button
-      size="icon"
-      variant="outline"
-      title="Preview laporan"
-      onClick={() => bukaPreview(report)}
-    >
-      <Eye className="size-4" />
-    </Button>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            title="Preview laporan"
+                            onClick={() => bukaPreview(report)}
+                          >
+                            <Eye className="size-4" />
+                          </Button>
 
-    {isStaff ? (
-      <Button
-        size="icon"
-        variant="outline"
-        title="Hapus laporan"
-        onClick={() => {
-          setHapusAction(report);
-          setHapusConfirmText("");
-        }}
-        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-      >
-        <Trash2 className="size-4" />
-      </Button>
-    ) : null}
-  </div>
-</td>
+                          {isStaff ? (
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              title="Hapus laporan permanent"
+                              onClick={() => {
+                                setHapusAction(report);
+                                setHapusConfirmText("");
+                              }}
+                              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1829,15 +1774,32 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
                     </div>
                   </div>
 
-                  <Button
-                    className="w-full"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => bukaPreview(report)}
-                  >
-                    <Eye className="mr-2 size-4" />
-                    Lihat Detail
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      className="flex-1"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => bukaPreview(report)}
+                    >
+                      <Eye className="mr-2 size-4" />
+                      Lihat Detail
+                    </Button>
+
+                    {isStaff ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-destructive/30 text-destructive hover:bg-destructive/10"
+                        onClick={() => {
+                          setHapusAction(report);
+                          setHapusConfirmText("");
+                        }}
+                      >
+                        <Trash2 className="mr-2 size-4" />
+                        Hapus
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1845,7 +1807,7 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
         )}
       </Panel>
 
-      {/* PDF PREVIEW MODAL (HTML) */}
+      {/* PDF PREVIEW MODAL */}
       {pdfHtml ? (
         <div className="fixed inset-0 z-50 flex flex-col bg-black/70 backdrop-blur-sm">
           <div className="flex items-center justify-between border-b border-white/10 bg-background/95 px-5 py-3">
@@ -2203,6 +2165,82 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
                     : verifAction.action === "revisi"
                       ? "Kirim ke Revisi"
                       : "Kembalikan ke Revisi"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
+      {/* MODAL KONFIRMASI HAPUS PERMANENT */}
+      {hapusAction ? (
+        <Dialog
+          open
+          onOpenChange={(o) => {
+            if (!o) {
+              setHapusAction(null);
+              setHapusConfirmText("");
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-destructive">
+                ⚠️ Hapus Laporan Permanent?
+              </DialogTitle>
+              <DialogDescription>
+                Laporan ini akan <strong>dihapus selamanya</strong> dari
+                database, termasuk foto dokumentasi. Tindakan ini{" "}
+                <strong>tidak bisa dibatalkan</strong>.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                <p className="font-medium">
+                  {hapusAction.trainers?.nama_lengkap || "Trainer"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {hapusAction.materi || "Tanpa materi"} ·{" "}
+                  {formatTanggal(hapusAction.tanggal_kegiatan)}
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  Ketik{" "}
+                  <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-bold">
+                    HAPUS
+                  </code>{" "}
+                  untuk konfirmasi:
+                </label>
+                <Input
+                  value={hapusConfirmText}
+                  onChange={(e) => setHapusConfirmText(e.target.value)}
+                  placeholder="Ketik: HAPUS"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setHapusAction(null);
+                  setHapusConfirmText("");
+                }}
+              >
+                Batal
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={
+                  hapusConfirmText !== "HAPUS" || hapusMutation.isPending
+                }
+                onClick={() => hapusMutation.mutate(hapusAction)}
+              >
+                <Trash2 className="mr-2 size-4" />
+                {hapusMutation.isPending ? "Menghapus..." : "Hapus Permanent"}
               </Button>
             </DialogFooter>
           </DialogContent>
