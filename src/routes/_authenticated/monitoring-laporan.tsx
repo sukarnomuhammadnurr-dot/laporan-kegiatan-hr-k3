@@ -15,6 +15,7 @@ import {
   RefreshCcw,
   RotateCcw,
   Search,
+  Trash2,          // ← TAMBAH
   Users,
   X,
   XCircle,
