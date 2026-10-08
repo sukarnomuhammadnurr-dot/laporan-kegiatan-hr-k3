@@ -633,6 +633,21 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
     bulan !== bulanIni();
 
   // ---------- Aksi verifikasi ----------
+  const hapusMutation = useMutation({
+  mutationFn: async (report: ReportWithTrainer) => {
+    await hapusLaporanPermanent(report.id);
+  },
+  onSuccess: () => {
+    toast.success("Laporan berhasil dihapus permanent.");
+    qc.invalidateQueries({ queryKey: ["reports"] });
+    setHapusAction(null);
+    setHapusConfirmText("");
+    setPreview(null);
+  },
+  onError: (e: Error) => {
+    toast.error(e.message || "Gagal menghapus laporan.");
+  },
+});
   const verifikasiMutation = useMutation({
     mutationFn: async ({
       report,
