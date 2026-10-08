@@ -1757,16 +1757,33 @@ const [hapusConfirmText, setHapusConfirmText] = useState("");
                       <td className="px-4 py-3">
                         <StatusPill status={report.status_laporan} />
                       </td>
-                      <td className="px-4 py-3">
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          title="Preview laporan"
-                          onClick={() => bukaPreview(report)}
-                        >
-                          <Eye className="size-4" />
-                        </Button>
-                      </td>
+                     <td className="px-4 py-3">
+  <div className="flex items-center gap-1.5">
+    <Button
+      size="icon"
+      variant="outline"
+      title="Preview laporan"
+      onClick={() => bukaPreview(report)}
+    >
+      <Eye className="size-4" />
+    </Button>
+
+    {isStaff ? (
+      <Button
+        size="icon"
+        variant="outline"
+        title="Hapus laporan"
+        onClick={() => {
+          setHapusAction(report);
+          setHapusConfirmText("");
+        }}
+        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+      >
+        <Trash2 className="size-4" />
+      </Button>
+    ) : null}
+  </div>
+</td>
                     </tr>
                   ))}
                 </tbody>
