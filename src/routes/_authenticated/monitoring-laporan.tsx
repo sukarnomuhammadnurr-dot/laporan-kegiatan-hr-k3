@@ -512,7 +512,8 @@ function MonitoringLaporanPage() {
     action: "verifikasi" | "revisi" | "batalkan";
   } | null>(null);
   const [catatanInput, setCatatanInput] = useState("");
-
+const [hapusAction, setHapusAction] = useState<ReportWithTrainer | null>(null);
+const [hapusConfirmText, setHapusConfirmText] = useState("");
   const brandingLogo = useBrandingUrl("logo");
 
   const { data: trainers = [] } = useQuery({
