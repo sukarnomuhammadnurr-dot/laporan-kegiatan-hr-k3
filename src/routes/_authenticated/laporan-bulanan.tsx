@@ -39,7 +39,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useCurrentUser } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
 import {
   fetchReports,
   hapusLaporanPermanent,
@@ -103,6 +102,14 @@ function labelBulan(yyyymm: string) {
   });
 }
 
+function labelBulanPendek(yyyymm: string) {
+  const [y, m] = yyyymm.split("-").map(Number);
+  return new Date(y!, (m ?? 1) - 1, 1).toLocaleDateString("id-ID", {
+    month: "short",
+    year: "numeric",
+  });
+}
+
 function listBulan(startYear = 2026, endYear = 2040) {
   const result: string[] = [];
   for (let y = endYear; y >= startYear; y--) {
@@ -148,11 +155,6 @@ function escapeHtml(value: string | number | null | undefined) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
-}
-
-function persen(value: number, total: number) {
-  if (!total) return 0;
-  return Math.round((value / total) * 100);
 }
 
 /* =========================================================
@@ -207,7 +209,7 @@ function StatusPill({ status }: { status: string | null | undefined }) {
 }
 
 /* =========================================================
-   STAT CARD — kartu pastel dengan chevron arrow (sesuai referensi)
+   STAT CARD — kartu pastel dengan chevron arrow
 ========================================================= */
 
 type StatTone = "blue" | "yellow" | "green" | "red" | "violet";
@@ -266,7 +268,7 @@ function StatCard({
   return (
     <div
       className={cn(
-        "group relative flex items-start justify-between gap-3 overflow-hidden rounded-2xl border p-4 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:shadow-lg sm:p-5",
+        "group relative flex min-h-[104px] items-start justify-between gap-3 overflow-hidden rounded-2xl border p-4 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:shadow-lg",
         t.cardBg,
         t.cardBorder,
       )}
@@ -305,7 +307,7 @@ function StatCard({
 }
 
 /* =========================================================
-   BAR CHART — SVG custom, angka di atas bar
+   BAR CHART — SVG custom (fix bar width + label pendek)
 ========================================================= */
 
 function BarChart({ reports }: { reports: ReportWithTrainer[] }) {
@@ -334,18 +336,22 @@ function BarChart({ reports }: { reports: ReportWithTrainer[] }) {
 
   const W = 100;
   const H = 100;
-  const padX = 6;
-  const padTop = 12;
+  const padX = 8;
+  const padTop = 14;
   const padBottom = 8;
   const chartH = H - padTop - padBottom;
-  const barW = (W - padX * 2) / data.length / 1.8;
+
+  // Kalau cuma 1-2 bulan, pake slot min 4 biar bar gak kegedean
+  const totalSlots = Math.max(data.length, 4);
+  const slotW = (W - padX * 2) / totalSlots;
+  const barW = Math.min(slotW * 0.55, 10);
 
   return (
     <div className="w-full">
       <svg
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
-        className="h-[230px] w-full"
+        className="h-[240px] w-full"
       >
         {/* Grid dashed */}
         {[0, 1, 2, 3, 4].map((i) => {
@@ -358,8 +364,8 @@ function BarChart({ reports }: { reports: ReportWithTrainer[] }) {
               y1={y}
               y2={y}
               stroke="currentColor"
-              strokeWidth="0.2"
-              strokeDasharray="1 1"
+              strokeWidth="0.15"
+              strokeDasharray="0.8 1.2"
               className="text-border"
             />
           );
@@ -367,7 +373,6 @@ function BarChart({ reports }: { reports: ReportWithTrainer[] }) {
 
         {/* Bars */}
         {data.map(([key, value], i) => {
-          const slotW = (W - padX * 2) / data.length;
           const x = padX + slotW * i + (slotW - barW) / 2;
           const barH = (value / max) * chartH;
           const y = padTop + chartH - barH;
@@ -379,15 +384,15 @@ function BarChart({ reports }: { reports: ReportWithTrainer[] }) {
                 y={y}
                 width={barW}
                 height={barH}
-                rx="1.2"
+                rx="0.8"
                 fill="url(#barGrad)"
               />
               {/* Angka di atas bar */}
               <text
                 x={x + barW / 2}
-                y={y - 1.5}
+                y={y - 1.8}
                 textAnchor="middle"
-                fontSize="3.5"
+                fontSize="3"
                 fontWeight="700"
                 fill="currentColor"
                 className="text-foreground"
@@ -400,8 +405,8 @@ function BarChart({ reports }: { reports: ReportWithTrainer[] }) {
 
         <defs>
           <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" />
-            <stop offset="100%" stopColor="#1d4ed8" />
+            <stop offset="0%" stopColor="#60a5fa" />
+            <stop offset="100%" stopColor="#2563eb" />
           </linearGradient>
         </defs>
       </svg>
@@ -412,7 +417,7 @@ function BarChart({ reports }: { reports: ReportWithTrainer[] }) {
             key={key}
             className="min-w-0 flex-1 text-center text-[11px] text-muted-foreground"
           >
-            {labelBulan(key)}
+            {labelBulanPendek(key)}
           </div>
         ))}
       </div>
@@ -421,7 +426,7 @@ function BarChart({ reports }: { reports: ReportWithTrainer[] }) {
 }
 
 /* =========================================================
-   DONUT CHART — SVG, gap antar segmen
+   DONUT CHART — SVG hex color (fix stuck 0%)
 ========================================================= */
 
 function DonutChart({
@@ -441,31 +446,22 @@ function DonutChart({
     {
       label: "Terverifikasi",
       value: terverifikasi,
-      color: "var(--status-verified)",
+      color: "#10b981",
     },
     {
       label: "Menunggu Verifikasi",
       value: menunggu,
-      color: "var(--status-warning)",
+      color: "#f59e0b",
     },
-    {
-      label: "Perlu Revisi",
-      value: revisi,
-      color: "var(--destructive)",
-    },
-    {
-      label: "Terkirim",
-      value: terkirim,
-      color: "var(--primary)",
-    },
+    { label: "Perlu Revisi", value: revisi, color: "#ef4444" },
+    { label: "Terkirim", value: terkirim, color: "#3b82f6" },
   ];
 
   const R = 42;
-  const stroke = 12;
+  const stroke = 16;
   const C = 2 * Math.PI * R;
-  const gap = 2.5; // jarak antar segmen (px di SVG)
+  const gap = 3;
 
-  // Build segments
   let offset = 0;
   const segments = items
     .filter((it) => it.value > 0)
@@ -481,17 +477,15 @@ function DonutChart({
     <div className="flex flex-col items-center gap-4">
       <div className="relative">
         <svg viewBox="0 0 100 100" className="size-44 -rotate-90">
-          {/* Track */}
           <circle
             cx="50"
             cy="50"
             r={R}
             fill="none"
-            stroke="var(--muted)"
+            stroke="#e5e7eb"
             strokeWidth={stroke}
           />
 
-          {/* Segmen */}
           {segments.map((s) => (
             <circle
               key={s.label}
@@ -501,14 +495,13 @@ function DonutChart({
               fill="none"
               stroke={s.color}
               strokeWidth={stroke}
-              strokeLinecap="round"
+              strokeLinecap="butt"
               strokeDasharray={`${s.len} ${C - s.len}`}
               strokeDashoffset={-s.offset}
             />
           ))}
         </svg>
 
-        {/* Angka di tengah */}
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           <p className="num text-3xl font-bold text-foreground">
             {total.toLocaleString("id-ID")}
@@ -517,7 +510,6 @@ function DonutChart({
         </div>
       </div>
 
-      {/* Legend + persentase */}
       <div className="w-full space-y-2.5">
         {items.map((it) => (
           <div
@@ -538,7 +530,7 @@ function DonutChart({
                 {it.value.toLocaleString("id-ID")}
               </span>
               <span className="num w-10 text-right text-xs text-muted-foreground">
-                {persen(it.value, total)}%
+                {total ? Math.round((it.value / total) * 100) : 0}%
               </span>
             </div>
           </div>
@@ -549,7 +541,7 @@ function DonutChart({
 }
 
 /* =========================================================
-   HORIZONTAL BAR — jenis kegiatan
+   HORIZONTAL BAR — jenis kegiatan (gradient biru)
 ========================================================= */
 
 function HorizontalBarChart({ reports }: { reports: ReportWithTrainer[] }) {
@@ -586,8 +578,11 @@ function HorizontalBarChart({ reports }: { reports: ReportWithTrainer[] }) {
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] transition-all"
-              style={{ width: `${Math.max(6, (value / max) * 100)}%` }}
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${Math.max(6, (value / max) * 100)}%`,
+                background: "linear-gradient(90deg, #60a5fa 0%, #2563eb 100%)",
+              }}
             />
           </div>
         </div>
@@ -689,7 +684,7 @@ async function urlToDataUrlWithTimeout(
 ========================================================= */
 
 function LaporanBulananPage() {
-  const { isStaff, isTrainer, trainer, loading, user } = useCurrentUser();
+  const { isStaff, isTrainer, trainer, loading } = useCurrentUser();
   const qc = useQueryClient();
 
   const [bulan, setBulan] = useState<string>(bulanIni());
@@ -703,7 +698,7 @@ function LaporanBulananPage() {
   const [pdfFileName, setPdfFileName] = useState("");
   const [pdfBuilding, setPdfBuilding] = useState(false);
 
-  // Preview state (adopsi monitoring)
+  // Preview state
   const [preview, setPreview] = useState<ReportWithTrainer | null>(null);
   const [previewPhotos, setPreviewPhotos] = useState<ReportPhoto[]>([]);
   const [previewLoadingPhotos, setPreviewLoadingPhotos] = useState(false);
@@ -813,7 +808,7 @@ function LaporanBulananPage() {
     bulan !== bulanIni();
 
   /* =========================================================
-     HAPUS MUTATION (khusus staff)
+     HAPUS MUTATION
   ========================================================= */
   const hapusMutation = useMutation({
     mutationFn: async (report: ReportWithTrainer) => {
@@ -933,7 +928,7 @@ function LaporanBulananPage() {
 
     let noUrut = 1;
     const tbodyHtml = tanggalList
-      .map(([tanggal, tglList]) => {
+      .map(([, tglList]) => {
         return tglList
           .map((item, idx) => {
             const fotos = photoDataMap.get(item.id) ?? [];
@@ -1319,7 +1314,10 @@ function LaporanBulananPage() {
       description="Laporan ini menunjukkan kinerja pelatihan Anda."
       heroVariant="soft"
       actions={
-        <Button onClick={previewPDF} disabled={filteredReports.length === 0 || pdfBuilding}>
+        <Button
+          onClick={previewPDF}
+          disabled={filteredReports.length === 0 || pdfBuilding}
+        >
           <Download className="mr-2 size-4" />
           {pdfBuilding ? "Menyiapkan…" : "Download Laporan"}
         </Button>
@@ -1424,7 +1422,7 @@ function LaporanBulananPage() {
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="pl-9"
-                placeholder="Masuki, kegiatan, kelas..."
+                placeholder="Materi, kegiatan, kelas…"
                 value={cari}
                 onChange={(e) => setCari(e.target.value)}
               />
