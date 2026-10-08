@@ -115,3 +115,54 @@ export function jadwalOverlap(rows: ScheduleRow[]) {
   }
   return konflik;
 }
+/**
+ * Hapus laporan permanent (reports + report_photos + storage + verifications).
+ */
+export async function hapusLaporanPermanent(reportId: string) {
+  // 1. Ambil list foto untuk dihapus di storage
+  const { data: photos, error: photoError } = await supabase
+    .from("report_photos")
+    .select("storage_path")
+    .eq("report_id", reportId);
+
+  if (photoError) throw photoError;
+
+  // 2. Hapus file di storage
+  if (photos && photos.length > 0) {
+    const paths = photos.map((p) => p.storage_path);
+    const { error: storageError } = await supabase.storage
+      .from("report-photos")
+      .remove(paths);
+
+    if (storageError) {
+      console.warn("Sebagian foto gagal dihapus:", storageError);
+      // lanjut aja, jangan block
+    }
+  }
+
+  // 3. Hapus row di report_photos
+  const { error: deletePhotosError } = await supabase
+    .from("report_photos")
+    .delete()
+    .eq("report_id", reportId);
+
+  if (deletePhotosError) throw deletePhotosError;
+
+  // 4. Hapus row di report_verifications
+  const { error: deleteVerifError } = await supabase
+    .from("report_verifications")
+    .delete()
+    .eq("report_id", reportId);
+
+  if (deleteVerifError) {
+    console.warn("Gagal hapus verifikasi:", deleteVerifError);
+  }
+
+  // 5. Hapus row utama di reports
+  const { error: deleteReportError } = await supabase
+    .from("reports")
+    .delete()
+    .eq("id", reportId);
+
+  if (deleteReportError) throw deleteReportError;
+}
