@@ -44,7 +44,7 @@ type NavItem = {
     | "/dashboard"
     | "/buat-laporan"
     | "/laporan"
-    | "/laporan-bulanan"    // ← TAMBAH
+    | "/laporan-bulanan"
     | "/monitoring-laporan"
     | "/master-trainer"
     | "/master-materi"
@@ -236,6 +236,7 @@ export function AppShell({
   eyebrow,
   description,
   heroKey,
+  heroVariant = "navy",
   actions,
   children,
 }: {
@@ -243,6 +244,11 @@ export function AppShell({
   eyebrow?: string;
   description?: string;
   heroKey?: BrandingKey;
+  /**
+   * "navy" = hero navy gelap (default, dipakai halaman lain)
+   * "soft" = hero soft blue terang (dipakai halaman Laporan Bulanan & Monitoring)
+   */
+  heroVariant?: "navy" | "soft";
   actions?: ReactNode;
   children: ReactNode;
 }) {
@@ -275,6 +281,7 @@ export function AppShell({
   }
 
   const role = roles[0] ?? "";
+  const isSoft = heroVariant === "soft";
 
   return (
     <div className="relative min-h-screen bg-background text-foreground">
@@ -287,10 +294,8 @@ export function AppShell({
 
       {/* Sidebar desktop — NAVY GELAP + OPSIONAL BACKGROUND */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 overflow-hidden bg-[#0a1f44] px-3 py-5 lg:block">
-        {/* Base gradient */}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0a1f44] via-[#0f2a5c] to-[#050f24]" />
 
-        {/* Background image (kalau ada) */}
         {sidebarBg && (
           <div
             className="pointer-events-none absolute inset-x-0 bottom-0 h-[55%] bg-cover bg-center"
@@ -305,10 +310,8 @@ export function AppShell({
           />
         )}
 
-        {/* Overlay biar menu tetap kebaca */}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0a1f44]/70 via-transparent to-[#0a1f44]/85" />
 
-        {/* Decorative blur */}
         <div className="pointer-events-none absolute -bottom-32 -left-32 size-64 rounded-full bg-red-900/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-20 -right-20 size-48 rounded-full bg-blue-900/30 blur-3xl" />
 
@@ -427,41 +430,86 @@ export function AppShell({
         </header>
 
         <main className="mx-auto max-w-[1400px] px-3 py-4 sm:px-6 sm:py-6">
-          <section className="relative mb-5 overflow-hidden rounded-2xl bg-[#0a1f44] text-white shadow-[var(--shadow-card)]">
-            {heroImg && (
-              <img
-                src={heroImg}
-                alt=""
-                className="absolute inset-0 size-full object-cover opacity-45"
-              />
-            )}
+          {/* HERO — navy (default) atau soft blue */}
+          {isSoft ? (
+            <section className="relative mb-5 overflow-hidden rounded-2xl border border-primary/15 bg-[#e8f1fb] text-foreground shadow-[var(--shadow-card)]">
+              {/* Dekorasi lembut */}
+              <div className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-primary/10 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-24 -left-16 size-64 rounded-full bg-primary/5 blur-3xl" />
+              {heroImg && (
+                <img
+                  src={heroImg}
+                  alt=""
+                  className="pointer-events-none absolute inset-0 size-full object-cover opacity-[0.08]"
+                />
+              )}
 
-            <div className="absolute inset-0 bg-gradient-to-r from-[#0a1f44] via-[#0a1f44]/85 to-transparent" />
+              <div className="relative flex flex-wrap items-center justify-between gap-4 px-5 py-6 sm:px-7 sm:py-7">
+                <div className="flex min-w-0 items-start gap-4">
+                  <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
+                    <BarChart3 className="size-6" />
+                  </div>
+                  <div className="min-w-0">
+                    {eyebrow && (
+                      <p className="text-[11px] font-semibold tracking-[0.18em] text-primary/70 uppercase">
+                        {eyebrow}
+                      </p>
+                    )}
+                    <h1 className="mt-0.5 truncate text-xl font-bold text-foreground sm:text-2xl">
+                      {title}
+                    </h1>
+                    {description && (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {description}
+                      </p>
+                    )}
+                  </div>
+                </div>
 
-            <div className="relative flex flex-wrap items-end justify-between gap-4 px-5 py-7 sm:px-8 sm:py-10">
-              <div className="max-w-2xl">
-                {eyebrow && (
-                  <p className="text-[11px] font-semibold tracking-[0.2em] text-white/80 uppercase">
-                    {eyebrow}
-                  </p>
-                )}
-
-                <h1 className="mt-1.5 text-2xl font-bold sm:text-3xl">
-                  {title}
-                </h1>
-
-                {description && (
-                  <p className="mt-2 text-sm text-white/80 sm:text-base">
-                    {description}
-                  </p>
-                )}
+                {actions ? (
+                  <div className="flex flex-wrap gap-2">{actions}</div>
+                ) : null}
               </div>
+            </section>
+          ) : (
+            <section className="relative mb-5 overflow-hidden rounded-2xl bg-[#0a1f44] text-white shadow-[var(--shadow-card)]">
+              {heroImg && (
+                <img
+                  src={heroImg}
+                  alt=""
+                  className="absolute inset-0 size-full object-cover opacity-45"
+                />
+              )}
 
-              {actions ? (
-  <div className="hero-actions flex flex-wrap gap-2">{actions}</div>
-) : null}
-            </div>
-          </section>
+              <div className="absolute inset-0 bg-gradient-to-r from-[#0a1f44] via-[#0a1f44]/85 to-transparent" />
+
+              <div className="relative flex flex-wrap items-end justify-between gap-4 px-5 py-7 sm:px-8 sm:py-10">
+                <div className="max-w-2xl">
+                  {eyebrow && (
+                    <p className="text-[11px] font-semibold tracking-[0.2em] text-white/80 uppercase">
+                      {eyebrow}
+                    </p>
+                  )}
+
+                  <h1 className="mt-1.5 text-2xl font-bold sm:text-3xl">
+                    {title}
+                  </h1>
+
+                  {description && (
+                    <p className="mt-2 text-sm text-white/80 sm:text-base">
+                      {description}
+                    </p>
+                  )}
+                </div>
+
+                {actions ? (
+                  <div className="hero-actions flex flex-wrap gap-2">
+                    {actions}
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          )}
 
           {children}
         </main>
