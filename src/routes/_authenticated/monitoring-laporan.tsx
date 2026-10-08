@@ -43,6 +43,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   fetchReports,
   fetchTrainers,
+  hapusLaporanPermanent,
   type ReportWithTrainer,
 } from "@/lib/queries";
 import {
