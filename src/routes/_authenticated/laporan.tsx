@@ -8,12 +8,21 @@ import {
   Image as ImageIcon,
   Pencil,
   RotateCcw,
+  Trash2,
   X,
 } from "lucide-react";
 
 import { AppShell, Panel } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -26,6 +35,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   fetchReports,
   fetchTrainers,
+  hapusLaporanPermanent,
   type ReportWithTrainer,
 } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -51,9 +61,6 @@ type ReportPhoto = {
   url?: string | null;
 };
 
-/**
- * Bulan sekarang dalam format YYYY-MM.
- */
 function bulanIni() {
   const now = new Date();
   const year = now.getFullYear();
@@ -61,25 +68,16 @@ function bulanIni() {
   return `${year}-${month}`;
 }
 
-/**
- * Konversi YYYY-MM → tanggal awal bulan (YYYY-MM-01).
- */
 function awalBulan(yyyymm: string) {
   return `${yyyymm}-01`;
 }
 
-/**
- * Konversi YYYY-MM → tanggal akhir bulan (YYYY-MM-DD, hari terakhir).
- */
 function akhirBulan(yyyymm: string) {
   const [y, m] = yyyymm.split("-").map(Number);
   const last = new Date(y!, m!, 0).getDate();
   return `${yyyymm}-${String(last).padStart(2, "0")}`;
 }
 
-/**
- * Nama bulan dari YYYY-MM untuk label.
- */
 function labelBulan(yyyymm: string) {
   const [y, m] = yyyymm.split("-").map(Number);
   return new Date(y!, (m ?? 1) - 1, 1).toLocaleDateString("id-ID", {
@@ -88,14 +86,7 @@ function labelBulan(yyyymm: string) {
   });
 }
 
-/**
- * Generate list bulan dari tahun-tahun tertentu untuk dropdown.
- * Ambil 24 bulan ke belakang dari sekarang.
- */
-function listBulan(
-  startYear = 2026,
-  endYear = 2040,
-) {
+function listBulan(startYear = 2026, endYear = 2040) {
   const result: string[] = [];
   for (let y = endYear; y >= startYear; y--) {
     for (let m = 12; m >= 1; m--) {
@@ -871,7 +862,6 @@ function LaporanPage() {
   const { isStaff, isTrainer, trainer, user, loading } = useCurrentUser();
   const queryClient = useQueryClient();
 
-  // === FILTER STATE ===
   const [bulan, setBulan] = useState<string>(bulanIni());
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
@@ -888,6 +878,10 @@ function LaporanPage() {
   const [catatanRevisi, setCatatanRevisi] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
 
+  // HAPUS STATE
+  const [hapusAction, setHapusAction] = useState<ReportWithTrainer | null>(null);
+  const [hapusConfirmText, setHapusConfirmText] = useState("");
+
   const brandingLogo = useBrandingUrl("logo");
 
   const { data: trainers = [] } = useQuery({
@@ -896,9 +890,6 @@ function LaporanPage() {
     queryFn: fetchTrainers,
   });
 
-  // === HITUNG DARI/SAMPAI YANG EFEKTIF ===
-  // Kalau user isi `dari` atau `sampai` manual → pakai itu.
-  // Kalau enggak → pakai range bulan yang dipilih.
   const dariEfektif = dari || awalBulan(bulan);
   const sampaiEfektif = sampai || akhirBulan(bulan);
 
@@ -1035,6 +1026,23 @@ function LaporanPage() {
     }
   }
 
+  async function handleHapus() {
+    if (!hapusAction) return;
+    try {
+      await hapusLaporanPermanent(hapusAction.id);
+      alert("Laporan berhasil dihapus permanent.");
+      setHapusAction(null);
+      setHapusConfirmText("");
+      setPreview(null);
+      await refreshReports();
+    } catch (error) {
+      console.error("Gagal hapus:", error);
+      alert(
+        error instanceof Error ? error.message : "Gagal menghapus laporan.",
+      );
+    }
+  }
+
   function resetFilter() {
     setBulan(bulanIni());
     setDari("");
@@ -1077,7 +1085,6 @@ function LaporanPage() {
 
       <Panel className="mb-4">
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
-          {/* FILTER BULAN */}
           <div>
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Bulan
@@ -1096,7 +1103,6 @@ function LaporanPage() {
             </Select>
           </div>
 
-          {/* FILTER DARI */}
           <div>
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Dari tanggal
@@ -1109,7 +1115,6 @@ function LaporanPage() {
             />
           </div>
 
-          {/* FILTER SAMPAI */}
           <div>
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Sampai tanggal
@@ -1178,7 +1183,6 @@ function LaporanPage() {
           </div>
         </div>
 
-        {/* Info periode aktif */}
         <p className="mt-3 text-xs text-muted-foreground">
           Menampilkan periode:{" "}
           <strong>{formatTanggal(dariEfektif)}</strong> s/d{" "}
@@ -1355,6 +1359,23 @@ function LaporanPage() {
                                 <Pencil className="size-4" />
                               </Button>
                             )}
+
+                          {(isStaff ||
+                            (isTrainer &&
+                              r.status_laporan !== "terverifikasi")) && (
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              title="Hapus laporan permanent"
+                              onClick={() => {
+                                setHapusAction(r);
+                                setHapusConfirmText("");
+                              }}
+                              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1474,6 +1495,22 @@ function LaporanPage() {
                       >
                         <Pencil className="mr-2 size-4" />
                         Edit & Kirim Ulang
+                      </Button>
+                    )}
+
+                    {(isStaff ||
+                      (isTrainer && r.status_laporan !== "terverifikasi")) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-destructive/30 text-destructive hover:bg-destructive/10"
+                        onClick={() => {
+                          setHapusAction(r);
+                          setHapusConfirmText("");
+                        }}
+                      >
+                        <Trash2 className="mr-2 size-4" />
+                        Hapus
                       </Button>
                     )}
                   </div>
@@ -1661,6 +1698,80 @@ function LaporanPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL HAPUS PERMANENT */}
+      {hapusAction && (
+        <Dialog
+          open
+          onOpenChange={(o) => {
+            if (!o) {
+              setHapusAction(null);
+              setHapusConfirmText("");
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-destructive">
+                ⚠️ Hapus Laporan Permanent?
+              </DialogTitle>
+              <DialogDescription>
+                Laporan ini akan <strong>dihapus selamanya</strong> dari
+                database, termasuk foto dokumentasi. Tindakan ini{" "}
+                <strong>tidak bisa dibatalkan</strong>.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                <p className="font-medium">
+                  {hapusAction.trainers?.nama_lengkap || "Trainer"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {hapusAction.materi || "Tanpa materi"} ·{" "}
+                  {formatTanggal(hapusAction.tanggal_kegiatan)}
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  Ketik{" "}
+                  <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-bold">
+                    HAPUS
+                  </code>{" "}
+                  untuk konfirmasi:
+                </label>
+                <Input
+                  value={hapusConfirmText}
+                  onChange={(e) => setHapusConfirmText(e.target.value)}
+                  placeholder="Ketik: HAPUS"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setHapusAction(null);
+                  setHapusConfirmText("");
+                }}
+              >
+                Batal
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={hapusConfirmText !== "HAPUS"}
+                onClick={handleHapus}
+              >
+                <Trash2 className="mr-2 size-4" />
+                Hapus Permanent
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </AppShell>
   );
