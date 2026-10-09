@@ -601,6 +601,7 @@ export type Database = {
         Row: {
           caption: string | null
           created_at: string
+          error_reason: string | null
           id: string
           media_storage_path: string | null
           media_url: string | null
@@ -609,6 +610,7 @@ export type Database = {
           nomor_pengirim: string
           pesan: string | null
           raw_payload: Json | null
+          report_id: string | null
           status: string
           timestamp_pesan: string | null
           trainer_id: string | null
@@ -616,6 +618,7 @@ export type Database = {
         Insert: {
           caption?: string | null
           created_at?: string
+          error_reason?: string | null
           id?: string
           media_storage_path?: string | null
           media_url?: string | null
@@ -624,6 +627,7 @@ export type Database = {
           nomor_pengirim: string
           pesan?: string | null
           raw_payload?: Json | null
+          report_id?: string | null
           status?: string
           timestamp_pesan?: string | null
           trainer_id?: string | null
@@ -631,6 +635,7 @@ export type Database = {
         Update: {
           caption?: string | null
           created_at?: string
+          error_reason?: string | null
           id?: string
           media_storage_path?: string | null
           media_url?: string | null
@@ -639,11 +644,19 @@ export type Database = {
           nomor_pengirim?: string
           pesan?: string | null
           raw_payload?: Json | null
+          report_id?: string | null
           status?: string
           timestamp_pesan?: string | null
           trainer_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "reports"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "whatsapp_messages_trainer_id_fkey"
             columns: ["trainer_id"]
