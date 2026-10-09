@@ -10,13 +10,13 @@ import {
   FileCheck2,
   ImageIcon,
   Info,
-  Link2,
   MessageCircle,
   RefreshCcw,
   Search,
   Send,
   Settings2,
   Sparkles,
+  Trash2,
   Wifi,
   WifiOff,
 } from "lucide-react";
@@ -41,10 +41,7 @@ import {
 } from "@/components/ui/select";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  fetchMaterials,
-  fetchTrainers,
-} from "@/lib/queries";
+import { fetchMaterials, fetchTrainers } from "@/lib/queries";
 import {
   matchWhatsAppMaterials,
   matchWhatsAppTrainer,
@@ -67,6 +64,11 @@ export const Route = createFileRoute("/_authenticated/pesan-whatsapp")({
   component: PesanWhatsAppPage,
 });
 
+/* =========================================================
+   NOMOR WA RESMI (dari Meta Cloud API)
+========================================================= */
+const NOMOR_WA_RESMI = "+62 819-3614-0126";
+
 type WhatsAppMessage = {
   id: string;
   message_id: string | null;
@@ -78,8 +80,11 @@ type WhatsAppMessage = {
   media_storage_path: string | null;
   timestamp_pesan: string | null;
   trainer_id: string | null;
+  report_id: string | null;
   status: string | null;
+  error_reason: string | null;
   raw_payload: unknown;
+  created_at: string | null;
 };
 
 function formatTanggalWaktu(value: string | null | undefined) {
@@ -98,13 +103,13 @@ function formatTanggalWaktu(value: string | null | undefined) {
 function StatusPill({ status }: { status: string | null }) {
   const s = status ?? "baru";
   const config =
-    s === "berhasil" || s === "diproses"
+    s === "berhasil"
       ? {
-          label: s === "berhasil" ? "Berhasil" : "Diproses",
+          label: "Berhasil",
           className: "bg-status-verified/15 text-status-verified",
           dot: "bg-status-verified",
         }
-      : s === "perlu_review" || s === "perlu_konfirmasi"
+      : s === "perlu_review"
         ? {
             label: "Perlu Review",
             className: "bg-status-warning/15 text-status-warning",
@@ -116,11 +121,17 @@ function StatusPill({ status }: { status: string | null }) {
               className: "bg-destructive/10 text-destructive",
               dot: "bg-destructive",
             }
-          : {
-              label: s,
-              className: "bg-muted text-muted-foreground",
-              dot: "bg-muted-foreground",
-            };
+          : s === "diproses"
+            ? {
+                label: "Diproses",
+                className: "bg-primary/10 text-primary",
+                dot: "bg-primary",
+              }
+            : {
+                label: "Baru",
+                className: "bg-muted text-muted-foreground",
+                dot: "bg-muted-foreground",
+              };
 
   return (
     <span
@@ -179,12 +190,13 @@ function StatCard({
 }
 
 function PesanWhatsAppPage() {
-  const { isStaff, isAdmin, loading } = useCurrentUser();
+  const { isStaff, loading } = useCurrentUser();
   const qc = useQueryClient();
 
   const [cari, setCari] = useState("");
   const [filterStatus, setFilterStatus] = useState("semua");
   const [detail, setDetail] = useState<WhatsAppMessage | null>(null);
+  const [hapusTarget, setHapusTarget] = useState<WhatsAppMessage | null>(null);
   const [webhookCopied, setWebhookCopied] = useState(false);
 
   const { data: trainers = [] } = useQuery({
@@ -215,7 +227,6 @@ function PesanWhatsAppPage() {
         .limit(200);
 
       if (error) throw error;
-
       return (data ?? []) as WhatsAppMessage[];
     },
   });
@@ -239,17 +250,15 @@ function PesanWhatsAppPage() {
 
   const stats = useMemo(() => {
     const total = messages.length;
-    const diproses = messages.filter(
-      (m) => m.status === "diproses" || m.status === "berhasil",
-    ).length;
+    const berhasil = messages.filter((m) => m.status === "berhasil").length;
     const perluReview = messages.filter(
-      (m) => m.status === "perlu_review" || m.status === "perlu_konfirmasi",
+      (m) => m.status === "perlu_review",
     ).length;
     const gagal = messages.filter(
       (m) => m.status === "gagal" || m.status === "error",
     ).length;
 
-    return { total, diproses, perluReview, gagal };
+    return { total, berhasil, perluReview, gagal };
   }, [messages]);
 
   const statusOptions = useMemo(() => {
@@ -270,6 +279,31 @@ function PesanWhatsAppPage() {
     });
   }
 
+  /* =========================================================
+     HAPUS PESAN
+  ========================================================= */
+  const hapusMutation = useMutation({
+    mutationFn: async (msg: WhatsAppMessage) => {
+      const { error } = await supabase
+        .from("whatsapp_messages")
+        .delete()
+        .eq("id", msg.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Pesan berhasil dihapus.");
+      qc.invalidateQueries({ queryKey: ["whatsapp_messages"] });
+      setHapusTarget(null);
+      setDetail(null);
+    },
+    onError: (e: Error) => {
+      toast.error(e.message || "Gagal menghapus pesan.");
+    },
+  });
+
+  /* =========================================================
+     PROSES MANUAL (fallback kalau auto-parse gagal)
+  ========================================================= */
   const prosesJadiLaporan = useMutation({
     mutationFn: async (msg: WhatsAppMessage) => {
       if (!msg.pesan) throw new Error("Pesan kosong, tidak bisa diproses.");
@@ -305,9 +339,7 @@ function PesanWhatsAppPage() {
       }
 
       if (!valid.valid) {
-        throw new Error(
-          `Data belum lengkap: ${valid.errors.join("; ")}`,
-        );
+        throw new Error(`Data belum lengkap: ${valid.errors.join("; ")}`);
       }
 
       const tanggal = msg.timestamp_pesan
@@ -338,6 +370,7 @@ function PesanWhatsAppPage() {
           sumber_laporan: "whatsapp",
           status_laporan: "menunggu_verifikasi",
           waktu_laporan_dikirim: msg.timestamp_pesan,
+          created_by: trainerMatch.trainer!.id,
         })
         .select("id")
         .single();
@@ -346,7 +379,12 @@ function PesanWhatsAppPage() {
 
       await supabase
         .from("whatsapp_messages")
-        .update({ status: "berhasil", trainer_id: trainerMatch.trainer!.id })
+        .update({
+          status: "berhasil",
+          trainer_id: trainerMatch.trainer!.id,
+          report_id: inserted?.id,
+          error_reason: null,
+        })
         .eq("id", msg.id);
 
       return inserted?.id;
@@ -406,7 +444,7 @@ function PesanWhatsAppPage() {
                 </span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Nomor: +62 812 3456 7890
+                Nomor: {NOMOR_WA_RESMI}
               </p>
               <Button
                 size="sm"
@@ -429,9 +467,9 @@ function PesanWhatsAppPage() {
           tone="blue"
         />
         <StatCard
-          title="Laporan Diproses"
-          value={stats.diproses}
-          description="Berhasil diproses"
+          title="Laporan Berhasil"
+          value={stats.berhasil}
+          description="Otomatis jadi laporan"
           icon={FileCheck2}
           tone="green"
         />
@@ -441,7 +479,7 @@ function PesanWhatsAppPage() {
         <StatCard
           title="Perlu Review"
           value={stats.perluReview}
-          description="Menunggu konfirmasi"
+          description="Parser gagal — perbaiki manual"
           icon={AlertTriangle}
           tone="orange"
         />
@@ -467,7 +505,7 @@ function PesanWhatsAppPage() {
               </p>
               <div className="mt-1 flex items-center gap-2">
                 <code className="flex-1 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
-                  +62 812 3456 7890
+                  {NOMOR_WA_RESMI}
                 </code>
                 <span className="inline-flex items-center gap-1 rounded-full bg-status-verified/15 px-2 py-0.5 text-[11px] font-semibold text-status-verified">
                   Aktif
@@ -510,42 +548,6 @@ function PesanWhatsAppPage() {
         </Panel>
       </div>
 
-      {/* 4 KARTU AKSI */}
-      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <ActionCard
-          icon={Send}
-          title="Test Pesan"
-          description="Kirim pesan tes untuk memastikan koneksi berfungsi dengan baik."
-          buttonLabel="Kirim Test"
-          tone="blue"
-          onClick={() => toast.info("Fitur test pesan belum aktif.")}
-        />
-        <ActionCard
-          icon={Settings2}
-          title="Pengaturan Parser"
-          description="Atur format dan pola pesan yang akan diparse dari WhatsApp."
-          buttonLabel="Kelola Parser"
-          tone="green"
-          onClick={() => toast.info("Pengaturan parser belum tersedia.")}
-        />
-        <ActionCard
-          icon={ImageIcon}
-          title="Dokumentasi Foto"
-          description="Konfigurasi penerimaan foto dokumentasi dari WhatsApp."
-          buttonLabel="Kelola Foto"
-          tone="purple"
-          onClick={() => toast.info("Pengaturan foto belum tersedia.")}
-        />
-        <ActionCard
-          icon={Info}
-          title="Panduan Penggunaan"
-          description="Lihat panduan lengkap cara penggunaan fitur WhatsApp."
-          buttonLabel="Lihat Panduan"
-          tone="teal"
-          onClick={() => setDetail(null)}
-        />
-      </div>
-
       {/* CARA KERJA + TIPS */}
       <div className="mb-5 grid gap-5 xl:grid-cols-[1.4fr_1fr]">
         <Panel>
@@ -560,16 +562,16 @@ function PesanWhatsAppPage() {
                 d: "Melalui WhatsApp dengan format yang sudah ditentukan.",
               },
               {
-                t: "Sistem memproses pesan",
-                d: "Parser membaca dan mengekstrak data dari pesan WhatsApp.",
+                t: "Sistem auto-parse",
+                d: "Parser otomatis baca pesan, cocokin trainer & materi.",
               },
               {
-                t: "Cocokkan dengan Master Data",
-                d: "Nomor WA → Master Trainer. Nama Materi → Master Materi.",
+                t: "Auto jadi laporan",
+                d: "Kalau match → langsung jadi laporan status 'Menunggu Verifikasi'.",
               },
               {
-                t: "Data tersimpan",
-                d: "Laporan otomatis tersimpan ke sistem dengan status berhasil / perlu review.",
+                t: "Verifikasi di halaman Laporan",
+                d: "Staff/supervisor verifikasi di halaman Laporan. Kalau salah → perbaiki manual.",
               },
             ].map((s, i) => (
               <li key={i} className="flex gap-3">
@@ -698,19 +700,35 @@ Tambahan: -`}
                       <p className="line-clamp-2 text-sm">
                         {m.pesan || m.caption || "—"}
                       </p>
+                      {m.error_reason ? (
+                        <p className="mt-1 text-[11px] text-status-warning">
+                          ⚠️ {m.error_reason}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3">
                       <StatusPill status={m.status} />
                     </td>
                     <td className="px-4 py-3">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setDetail(m)}
-                      >
-                        <Eye className="mr-1.5 size-3.5" />
-                        Lihat
-                      </Button>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          title="Lihat detail"
+                          onClick={() => setDetail(m)}
+                        >
+                          <Eye className="size-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          title="Hapus pesan"
+                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => setHapusTarget(m)}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -739,57 +757,59 @@ Tambahan: -`}
           processing={prosesJadiLaporan.isPending}
         />
       ) : null}
+
+      {/* MODAL KONFIRMASI HAPUS */}
+      {hapusTarget ? (
+        <Dialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setHapusTarget(null);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-destructive">
+                Hapus Pesan Ini?
+              </DialogTitle>
+              <DialogDescription>
+                Pesan WhatsApp ini akan dihapus dari daftar. Laporan yang
+                sudah ter-generate (kalau ada) tidak akan terhapus.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+              <p className="num text-xs text-muted-foreground">
+                {formatTanggalWaktu(hapusTarget.timestamp_pesan)} ·{" "}
+                {hapusTarget.nomor_pengirim || "—"}
+              </p>
+              <p className="mt-1 line-clamp-3">
+                {hapusTarget.pesan || hapusTarget.caption || "—"}
+              </p>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setHapusTarget(null)}>
+                Batal
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={hapusMutation.isPending}
+                onClick={() => hapusMutation.mutate(hapusTarget)}
+              >
+                <Trash2 className="mr-2 size-4" />
+                {hapusMutation.isPending ? "Menghapus…" : "Ya, Hapus"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </AppShell>
   );
 }
 
-function ActionCard({
-  icon: Icon,
-  title,
-  description,
-  buttonLabel,
-  tone,
-  onClick,
-}: {
-  icon: typeof Send;
-  title: string;
-  description: string;
-  buttonLabel: string;
-  tone: "blue" | "green" | "purple" | "teal";
-  onClick: () => void;
-}) {
-  const toneClass = {
-    blue: "bg-primary/10 text-primary",
-    green: "bg-status-verified/15 text-status-verified",
-    purple: "bg-purple-500/10 text-purple-600",
-    teal: "bg-teal-500/10 text-teal-600",
-  }[tone];
-
-  const btnClass = {
-    blue: "bg-primary text-primary-foreground hover:opacity-90",
-    green: "bg-status-verified text-white hover:opacity-90",
-    purple: "bg-purple-600 text-white hover:opacity-90",
-    teal: "bg-teal-600 text-white hover:opacity-90",
-  }[tone];
-
-  return (
-    <Panel>
-      <div
-        className={cn(
-          "mb-3 flex size-10 items-center justify-center rounded-xl",
-          toneClass,
-        )}
-      >
-        <Icon className="size-5" />
-      </div>
-      <p className="font-semibold">{title}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-      <Button size="sm" className={cn("mt-4 w-full", btnClass)} onClick={onClick}>
-        {buttonLabel}
-      </Button>
-    </Panel>
-  );
-}
+/* =========================================================
+   MODAL DETAIL PESAN
+========================================================= */
 
 function DetailPesanModal({
   message,
@@ -829,6 +849,13 @@ function DetailPesanModal({
     if (!parsed) return [];
     return matchWhatsAppMaterials(parsed.materi, materials);
   }, [parsed, materials]);
+
+  const bisaProses = Boolean(
+    parsed &&
+      valid?.valid &&
+      trainerMatch?.status === "matched" &&
+      message.status !== "berhasil",
+  );
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -872,6 +899,15 @@ function DetailPesanModal({
             </div>
           ) : null}
 
+          {message.error_reason ? (
+            <div className="rounded-xl border border-status-warning/30 bg-status-warning/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-status-warning">
+                Alasan Perlu Review
+              </p>
+              <p className="mt-2 text-sm">{message.error_reason}</p>
+            </div>
+          ) : null}
+
           {parsed ? (
             <>
               <div className="rounded-xl border border-border p-4">
@@ -881,10 +917,22 @@ function DetailPesanModal({
                 <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                   <Row label="Trainer" value={parsed.trainerNama || "—"} />
                   <Row label="Materi" value={parsed.materi.join(", ") || "—"} />
-                  <Row label="Jumlah Peserta" value={String(parsed.jumlahPeserta ?? "—")} />
-                  <Row label="Hadir" value={String(parsed.jumlahHadir ?? "—")} />
-                  <Row label="Tidak Hadir" value={String(parsed.jumlahTidakHadir ?? "—")} />
-                  <Row label="Tambahan" value={String(parsed.jumlahTambahan)} />
+                  <Row
+                    label="Jumlah Peserta"
+                    value={String(parsed.jumlahPeserta ?? "—")}
+                  />
+                  <Row
+                    label="Hadir"
+                    value={String(parsed.jumlahHadir ?? "—")}
+                  />
+                  <Row
+                    label="Tidak Hadir"
+                    value={String(parsed.jumlahTidakHadir ?? "—")}
+                  />
+                  <Row
+                    label="Tambahan"
+                    value={String(parsed.jumlahTambahan)}
+                  />
                 </dl>
               </div>
 
@@ -904,7 +952,10 @@ function DetailPesanModal({
                 ) : trainerMatch?.status === "ambiguous" ? (
                   <p className="mt-2 inline-flex items-center gap-2 text-sm text-status-warning">
                     <AlertTriangle className="size-4" />
-                    Ambigu: {trainerMatch.candidates.map((c) => c.nama_lengkap).join(", ")}
+                    Ambigu:{" "}
+                    {trainerMatch.candidates
+                      .map((c) => c.nama_lengkap)
+                      .join(", ")}
                   </p>
                 ) : (
                   <p className="mt-2 inline-flex items-center gap-2 text-sm text-destructive">
@@ -920,7 +971,10 @@ function DetailPesanModal({
                 </p>
                 <ul className="mt-3 space-y-2 text-sm">
                   {materialMatches.map((m, i) => (
-                    <li key={i} className="flex items-center justify-between gap-3">
+                    <li
+                      key={i}
+                      className="flex items-center justify-between gap-3"
+                    >
                       <span className="truncate">{m.input}</span>
                       {m.status === "matched" ? (
                         <span className="inline-flex items-center gap-1 text-status-verified">
@@ -962,17 +1016,24 @@ function DetailPesanModal({
           <Button variant="outline" onClick={onClose}>
             Tutup
           </Button>
-          <Button
-            onClick={onProses}
-            disabled={
-              processing ||
-              !parsed ||
-              !valid?.valid ||
-              trainerMatch?.status !== "matched"
-            }
-          >
-            {processing ? "Memproses…" : "Proses jadi Laporan"}
-          </Button>
+          {message.status !== "berhasil" ? (
+            <Button
+              onClick={onProses}
+              disabled={processing || !bisaProses}
+              title={
+                !bisaProses
+                  ? "Data belum lengkap atau trainer tidak match"
+                  : "Proses manual jadi laporan"
+              }
+            >
+              {processing ? "Memproses…" : "Proses jadi Laporan"}
+            </Button>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-status-verified/15 px-3 py-2 text-xs font-medium text-status-verified">
+              <CheckCircle2 className="size-3.5" />
+              Laporan sudah dibuat
+            </span>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
