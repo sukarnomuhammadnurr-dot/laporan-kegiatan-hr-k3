@@ -17,6 +17,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedBuatLaporanRouteImport } from './routes/_authenticated/buat-laporan'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedLaporanRouteImport } from './routes/_authenticated/laporan'
+import { Route as AuthenticatedLaporanBulananRouteImport } from './routes/_authenticated/laporan-bulanan'
 import { Route as AuthenticatedMasterJadwalRouteImport } from './routes/_authenticated/master-jadwal'
 import { Route as AuthenticatedMasterMateriRouteImport } from './routes/_authenticated/master-materi'
 import { Route as AuthenticatedMasterTrainerRouteImport } from './routes/_authenticated/master-trainer'
@@ -65,6 +66,12 @@ const AuthenticatedLaporanRoute = AuthenticatedLaporanRouteImport.update({
   path: '/laporan',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedLaporanBulananRoute =
+  AuthenticatedLaporanBulananRouteImport.update({
+    id: '/laporan-bulanan',
+    path: '/laporan-bulanan',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedMasterJadwalRoute =
   AuthenticatedMasterJadwalRouteImport.update({
     id: '/master-jadwal',
@@ -116,6 +123,7 @@ export interface FileRoutesByFullPath {
   '/buat-laporan': typeof AuthenticatedBuatLaporanRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/laporan': typeof AuthenticatedLaporanRoute
+  '/laporan-bulanan': typeof AuthenticatedLaporanBulananRoute
   '/master-jadwal': typeof AuthenticatedMasterJadwalRoute
   '/master-materi': typeof AuthenticatedMasterMateriRoute
   '/master-trainer': typeof AuthenticatedMasterTrainerRoute
@@ -132,6 +140,7 @@ export interface FileRoutesByTo {
   '/buat-laporan': typeof AuthenticatedBuatLaporanRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/laporan': typeof AuthenticatedLaporanRoute
+  '/laporan-bulanan': typeof AuthenticatedLaporanBulananRoute
   '/master-jadwal': typeof AuthenticatedMasterJadwalRoute
   '/master-materi': typeof AuthenticatedMasterMateriRoute
   '/master-trainer': typeof AuthenticatedMasterTrainerRoute
@@ -150,6 +159,7 @@ export interface FileRoutesById {
   '/_authenticated/buat-laporan': typeof AuthenticatedBuatLaporanRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/laporan': typeof AuthenticatedLaporanRoute
+  '/_authenticated/laporan-bulanan': typeof AuthenticatedLaporanBulananRoute
   '/_authenticated/master-jadwal': typeof AuthenticatedMasterJadwalRoute
   '/_authenticated/master-materi': typeof AuthenticatedMasterMateriRoute
   '/_authenticated/master-trainer': typeof AuthenticatedMasterTrainerRoute
@@ -168,6 +178,7 @@ export interface FileRouteTypes {
     | '/buat-laporan'
     | '/dashboard'
     | '/laporan'
+    | '/laporan-bulanan'
     | '/master-jadwal'
     | '/master-materi'
     | '/master-trainer'
@@ -184,6 +195,7 @@ export interface FileRouteTypes {
     | '/buat-laporan'
     | '/dashboard'
     | '/laporan'
+    | '/laporan-bulanan'
     | '/master-jadwal'
     | '/master-materi'
     | '/master-trainer'
@@ -201,6 +213,7 @@ export interface FileRouteTypes {
     | '/_authenticated/buat-laporan'
     | '/_authenticated/dashboard'
     | '/_authenticated/laporan'
+    | '/_authenticated/laporan-bulanan'
     | '/_authenticated/master-jadwal'
     | '/_authenticated/master-materi'
     | '/_authenticated/master-trainer'
@@ -276,6 +289,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLaporanRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/laporan-bulanan': {
+      id: '/_authenticated/laporan-bulanan'
+      path: '/laporan-bulanan'
+      fullPath: '/laporan-bulanan'
+      preLoaderRoute: typeof AuthenticatedLaporanBulananRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/master-jadwal': {
       id: '/_authenticated/master-jadwal'
       path: '/master-jadwal'
@@ -332,6 +352,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedBuatLaporanRoute: typeof AuthenticatedBuatLaporanRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedLaporanRoute: typeof AuthenticatedLaporanRoute
+  AuthenticatedLaporanBulananRoute: typeof AuthenticatedLaporanBulananRoute
   AuthenticatedMasterJadwalRoute: typeof AuthenticatedMasterJadwalRoute
   AuthenticatedMasterMateriRoute: typeof AuthenticatedMasterMateriRoute
   AuthenticatedMasterTrainerRoute: typeof AuthenticatedMasterTrainerRoute
@@ -345,6 +366,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBuatLaporanRoute: AuthenticatedBuatLaporanRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedLaporanRoute: AuthenticatedLaporanRoute,
+  AuthenticatedLaporanBulananRoute: AuthenticatedLaporanBulananRoute,
   AuthenticatedMasterJadwalRoute: AuthenticatedMasterJadwalRoute,
   AuthenticatedMasterMateriRoute: AuthenticatedMasterMateriRoute,
   AuthenticatedMasterTrainerRoute: AuthenticatedMasterTrainerRoute,
