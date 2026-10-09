@@ -317,6 +317,7 @@ export type Database = {
           status_laporan: Database["public"]["Enums"]["report_status"]
           sumber_laporan: Database["public"]["Enums"]["report_source"]
           tanggal_kegiatan: string
+          tanggal_selesai: string | null
           trainer_id: string
           updated_at: string
           verified_at: string | null
@@ -346,6 +347,7 @@ export type Database = {
           status_laporan?: Database["public"]["Enums"]["report_status"]
           sumber_laporan?: Database["public"]["Enums"]["report_source"]
           tanggal_kegiatan: string
+          tanggal_selesai?: string | null
           trainer_id: string
           updated_at?: string
           verified_at?: string | null
@@ -375,6 +377,7 @@ export type Database = {
           status_laporan?: Database["public"]["Enums"]["report_status"]
           sumber_laporan?: Database["public"]["Enums"]["report_source"]
           tanggal_kegiatan?: string
+          tanggal_selesai?: string | null
           trainer_id?: string
           updated_at?: string
           verified_at?: string | null
