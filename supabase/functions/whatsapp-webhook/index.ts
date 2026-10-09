@@ -277,7 +277,7 @@ async function prosesPesanJadiLaporan(opts: {
         sumber_laporan: "whatsapp",
         status_laporan: "menunggu_verifikasi",
         waktu_laporan_dikirim: timestampPesan,
-        created_by: trainerMatch.trainer!.id,
+        created_by: null,
       })
       .select("id")
       .single();
