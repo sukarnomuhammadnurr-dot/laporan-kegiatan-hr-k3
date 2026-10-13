@@ -1,13 +1,17 @@
 /**
- * WhatsApp Report Parser (Deno version)
- * ======================================
- * Copy dari src/lib/whatsapp-report-parser.ts
- * Dipakai di Edge Function whatsapp-webhook.
+ * WhatsApp Report Parser (v3 — support KELAS + flexible)
+ * ======================================================
+ * Support:
+ * - Multi-baris / 1 baris / dipisah koma
+ * - Format: Materi, Trainer, Kelas, Jumlah peserta, Hadir, Tidak Hadir, Tambahan
+ * - Case-insensitive
+ * - "Total peserta" DAN "Jumlah peserta"
  */
 
 export type ParsedWhatsAppReport = {
   trainerNama: string | null;
   materi: string[];
+  kelas: string | null;           // ← BARU
   jumlahPeserta: number | null;
   jumlahHadir: number | null;
   jumlahTidakHadir: number | null;
@@ -36,13 +40,10 @@ function normalizeForMatch(value: string) {
 
 export function normalizeWhatsAppNumber(value: string | null | undefined) {
   if (!value) return "";
-
   let phone = value.replace(/\D/g, "");
-
   if (phone.startsWith("0")) {
     phone = `62${phone.slice(1)}`;
   }
-
   return phone;
 }
 
@@ -83,6 +84,7 @@ export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
 
   let trainerNama: string | null = null;
   let materi: string[] = [];
+  let kelas: string | null = null;            // ← BARU
   let jumlahPeserta: number | null = null;
   let jumlahHadir: number | null = null;
   let jumlahTidakHadir: number | null = null;
@@ -90,18 +92,24 @@ export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
 
   // TRAINER
   const trainerMatch = source.match(
-    /\btrainer\s*:?\s*(.+?)(?=\s*(?:jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan)\s*:?\s*|$)/i,
+    /\btrainer\s*:?\s*(.+?)(?=\s*(?:kelas|jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan)\s*:?\s*|$)/i,
   );
-
   if (trainerMatch?.[1]) {
     trainerNama = removeTrailingPunctuation(normalizeText(trainerMatch[1]));
   }
 
-  // MATERI
-  const materiMatch = source.match(
-    /\bmateri\s*:?\s*(.+?)(?=\s*(?:trainer|jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan)\s*:?\s*|$)/i,
+  // KELAS — support "Kelas : 2A" / "Kelas: 2A" / "Kelas 2A"
+  const kelasMatch = source.match(
+    /\bkelas\s*:?\s*([A-Za-z0-9][A-Za-z0-9\s\-]*?)(?=\s*(?:jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan|materi|trainer)\s*:?\s*|$)/i,
   );
+  if (kelasMatch?.[1]) {
+    kelas = removeTrailingPunctuation(normalizeText(kelasMatch[1]));
+  }
 
+  // MATERI — stop di trainer/kelas/jumlah peserta/hadir/tidak hadir/tambahan
+  const materiMatch = source.match(
+    /\bmateri\s*:?\s*(.+?)(?=\s*(?:trainer|kelas|jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan)\s*:?\s*|$)/i,
+  );
   if (materiMatch?.[1]) {
     materi = parseMaterials(materiMatch[1]);
   }
@@ -123,22 +131,20 @@ export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
   jumlahTidakHadir = parseNumber(tidakHadirMatch?.[1]);
 
   // TAMBAHAN
-  const tambahanMatch = source.match(
-    /\btambahan\s*:?\s*([0-9.,-]+|-)/i,
-  );
-
+  const tambahanMatch = source.match(/\btambahan\s*:?\s*([0-9.,-]+|-)/i);
   if (tambahanMatch?.[1]) {
-    const rawTambahan = tambahanMatch[1].trim();
-    if (rawTambahan === "-" || rawTambahan === "–" || rawTambahan === "—") {
+    const raw = tambahanMatch[1].trim();
+    if (raw === "-" || raw === "–" || raw === "—") {
       jumlahTambahan = 0;
     } else {
-      jumlahTambahan = parseNumber(rawTambahan) ?? 0;
+      jumlahTambahan = parseNumber(raw) ?? 0;
     }
   }
 
   return {
     trainerNama,
     materi,
+    kelas,
     jumlahPeserta,
     jumlahHadir,
     jumlahTidakHadir,
@@ -170,12 +176,10 @@ export function matchWhatsAppTrainer(
 ): TrainerMatchResult {
   // Prioritas 1: nomor WA
   const targetPhone = normalizeWhatsAppNumber(nomorWhatsapp);
-
   if (targetPhone) {
     const phoneMatches = trainers.filter(
       (t) => normalizeWhatsAppNumber(t.nomor_whatsapp) === targetPhone,
     );
-
     if (phoneMatches.length === 1) {
       return {
         status: "matched",
@@ -184,7 +188,6 @@ export function matchWhatsAppTrainer(
         matchedBy: "nomor_whatsapp",
       };
     }
-
     if (phoneMatches.length > 1) {
       return {
         status: "ambiguous",
@@ -198,11 +201,9 @@ export function matchWhatsAppTrainer(
   // Prioritas 2: nama
   if (trainerNama) {
     const target = normalizeForMatch(trainerNama);
-
     const exactMatches = trainers.filter(
       (t) => normalizeForMatch(t.nama_lengkap) === target,
     );
-
     if (exactMatches.length === 1) {
       return {
         status: "matched",
@@ -211,7 +212,6 @@ export function matchWhatsAppTrainer(
         matchedBy: "nama",
       };
     }
-
     if (exactMatches.length > 1) {
       return {
         status: "ambiguous",
@@ -225,7 +225,6 @@ export function matchWhatsAppTrainer(
       const name = normalizeForMatch(t.nama_lengkap);
       return name.includes(target) || target.includes(name);
     });
-
     if (containsMatches.length === 1) {
       return {
         status: "matched",
@@ -234,7 +233,6 @@ export function matchWhatsAppTrainer(
         matchedBy: "nama",
       };
     }
-
     if (containsMatches.length > 1) {
       return {
         status: "ambiguous",
@@ -276,11 +274,9 @@ export function matchWhatsAppMaterials(
 ): MaterialMatch[] {
   return materiInput.map((input) => {
     const target = normalizeForMatch(input);
-
     const exactMatches = materials.filter(
       (m) => normalizeForMatch(m.nama) === target,
     );
-
     if (exactMatches.length === 1) {
       return {
         input,
@@ -289,7 +285,6 @@ export function matchWhatsAppMaterials(
         candidates: exactMatches,
       };
     }
-
     if (exactMatches.length > 1) {
       return {
         input,
@@ -303,7 +298,6 @@ export function matchWhatsAppMaterials(
       const name = normalizeForMatch(m.nama);
       return name.includes(target) || target.includes(name);
     });
-
     if (containsMatches.length === 1) {
       return {
         input,
@@ -312,7 +306,6 @@ export function matchWhatsAppMaterials(
         candidates: containsMatches,
       };
     }
-
     if (containsMatches.length > 1) {
       return {
         input,
@@ -329,6 +322,73 @@ export function matchWhatsAppMaterials(
       candidates: [],
     };
   });
+}
+
+/* =========================
+   SCHEDULE MATCHING (BARU)
+========================= */
+
+export type WhatsAppScheduleCandidate = {
+  id: string;
+  nama_kegiatan: string;
+  jam_mulai: string | null;
+  jam_selesai: string | null;
+  kelas: string | null;
+  kategori: string | null;
+  material_id: string | null;
+  training_day_id: string | null;
+  aktif: boolean;
+};
+
+export type ScheduleMatch = {
+  schedule: WhatsAppScheduleCandidate | null;
+  matchedBy: "materi" | null;
+};
+
+/**
+ * Cari jadwal dari Master Jadwal berdasarkan materi WA.
+ * Case-insensitive, fuzzy match (substring 2 arah).
+ */
+export function matchWhatsAppSchedule(
+  materiInput: string[],
+  schedules: WhatsAppScheduleCandidate[],
+): ScheduleMatch {
+  if (materiInput.length === 0) {
+    return { schedule: null, matchedBy: null };
+  }
+
+  const aktifSchedules = schedules.filter((s) => s.aktif);
+  if (aktifSchedules.length === 0) {
+    return { schedule: null, matchedBy: null };
+  }
+
+  // Loop tiap materi dari WA, coba match
+  for (const materi of materiInput) {
+    const target = normalizeForMatch(materi);
+    if (!target) continue;
+
+    // 1. Exact match dulu
+    const exact = aktifSchedules.filter(
+      (s) => normalizeForMatch(s.nama_kegiatan) === target,
+    );
+    if (exact.length >= 1) {
+      // Kalau ada duplikat, prioritas "K3 UMUM" → Hari 2
+      // (tapi di sini kita udah filter by training_day_id nanti di index.ts)
+      return { schedule: exact[0]!, matchedBy: "materi" };
+    }
+
+    // 2. Fuzzy match (substring 2 arah)
+    const fuzzy = aktifSchedules.filter((s) => {
+      const sName = normalizeForMatch(s.nama_kegiatan);
+      return sName.includes(target) || target.includes(sName);
+    });
+
+    if (fuzzy.length >= 1) {
+      return { schedule: fuzzy[0]!, matchedBy: "materi" };
+    }
+  }
+
+  return { schedule: null, matchedBy: null };
 }
 
 /* =========================
