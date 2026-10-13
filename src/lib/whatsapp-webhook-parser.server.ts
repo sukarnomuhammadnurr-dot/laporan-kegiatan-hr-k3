@@ -1,341 +1,389 @@
-import { createFileRoute } from "@tanstack/react-router";
-import {
-  matchWhatsAppMaterials,
-  matchWhatsAppSchedule,
-  matchWhatsAppTrainer,
-  parseWhatsAppReport,
-  validateParsedWhatsAppReport,
-} from "@/lib/whatsapp-webhook-parser.server";
+/**
+ * WhatsApp Report Parser (v3 — support KELAS + schedule matching)
+ * ===============================================================
+ * Dipakai di route: src/routes/api/public/whatsapp/webhook.ts
+ */
 
-const GRAPH = "https://graph.facebook.com/v21.0";
+export type ParsedWhatsAppReport = {
+  trainerNama: string | null;
+  materi: string[];
+  kelas: string | null;           // ← BARU
+  jumlahPeserta: number | null;
+  jumlahHadir: number | null;
+  jumlahTidakHadir: number | null;
+  jumlahTambahan: number;
+};
 
-function tentukanLokasi(namaKegiatan: string): string {
-  const LUAR_RUANGAN = ["APEL", "APD"];
-  const upper = namaKegiatan.toUpperCase();
-  return LUAR_RUANGAN.some((k) => upper.includes(k))
-    ? "Luar Ruangan"
-    : "Dalam Ruangan";
+function normalizeText(value: string) {
+  return value
+    .normalize("NFKC")
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-async function verifySignature(raw: string, header: string | null, secret: string) {
-  if (!header || !header.startsWith("sha256=")) return false;
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
+function normalizeForMatch(value: string) {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/[.,;:()[\]{}"'`]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function normalizeWhatsAppNumber(value: string | null | undefined) {
+  if (!value) return "";
+  let phone = value.replace(/\D/g, "");
+  if (phone.startsWith("0")) {
+    phone = `62${phone.slice(1)}`;
+  }
+  return phone;
+}
+
+function parseNumber(value: string | undefined): number | null {
+  if (!value) return null;
+  const cleaned = value.replace(/[^\d-]/g, "").trim();
+  if (!cleaned) return null;
+  const number = Number(cleaned);
+  return Number.isFinite(number) ? number : null;
+}
+
+function removeTrailingPunctuation(value: string) {
+  return value.replace(/[,\s;:]+$/g, "").trim();
+}
+
+function parseMaterials(value: string) {
+  return value
+    .split(/[,;\n]+/)
+    .map((item) => removeTrailingPunctuation(normalizeText(item)))
+    .filter(Boolean);
+}
+
+export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
+  const source = text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  let trainerNama: string | null = null;
+  let materi: string[] = [];
+  let kelas: string | null = null;            // ← BARU
+  let jumlahPeserta: number | null = null;
+  let jumlahHadir: number | null = null;
+  let jumlahTidakHadir: number | null = null;
+  let jumlahTambahan = 0;
+
+  // TRAINER
+  const trainerMatch = source.match(
+    /\btrainer\s*:?\s*(.+?)(?=\s*(?:kelas|jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan)\s*:?\s*|$)/i,
   );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(raw));
-  const expected = Array.from(new Uint8Array(sig))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  const given = header.slice(7).toLowerCase();
-  if (given.length !== expected.length) return false;
-  let diff = 0;
-  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ given.charCodeAt(i);
-  return diff === 0;
+  if (trainerMatch?.[1]) {
+    trainerNama = removeTrailingPunctuation(normalizeText(trainerMatch[1]));
+  }
+
+  // KELAS — support "Kelas : 2A" / "Kelas: 2A" / "Kelas 2A"
+  const kelasMatch = source.match(
+    /\bkelas\s*:?\s*([A-Za-z0-9][A-Za-z0-9\s\-]*?)(?=\s*(?:jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan|materi|trainer)\s*:?\s*|$)/i,
+  );
+  if (kelasMatch?.[1]) {
+    kelas = removeTrailingPunctuation(normalizeText(kelasMatch[1]));
+  }
+
+  // MATERI
+  const materiMatch = source.match(
+    /\bmateri\s*:?\s*(.+?)(?=\s*(?:trainer|kelas|jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan)\s*:?\s*|$)/i,
+  );
+  if (materiMatch?.[1]) {
+    materi = parseMaterials(materiMatch[1]);
+  }
+
+  // JUMLAH PESERTA
+  const jumlahPesertaMatch = source.match(
+    /\b(?:jumlah|total)\s+peserta\s*:?\s*([0-9.,]+)/i,
+  );
+  jumlahPeserta = parseNumber(jumlahPesertaMatch?.[1]);
+
+  // HADIR
+  const hadirMatch = source.match(/(?:^|\s)hadir\s*:?\s*([0-9.,]+)/i);
+  jumlahHadir = parseNumber(hadirMatch?.[1]);
+
+  // TIDAK HADIR
+  const tidakHadirMatch = source.match(
+    /\btidak\s+hadir\s*:?\s*([0-9.,]+)/i,
+  );
+  jumlahTidakHadir = parseNumber(tidakHadirMatch?.[1]);
+
+  // TAMBAHAN
+  const tambahanMatch = source.match(/\btambahan\s*:?\s*([0-9.,-]+|-)/i);
+  if (tambahanMatch?.[1]) {
+    const raw = tambahanMatch[1].trim();
+    if (raw === "-" || raw === "–" || raw === "—") {
+      jumlahTambahan = 0;
+    } else {
+      jumlahTambahan = parseNumber(raw) ?? 0;
+    }
+  }
+
+  return {
+    trainerNama,
+    materi,
+    kelas,
+    jumlahPeserta,
+    jumlahHadir,
+    jumlahTidakHadir,
+    jumlahTambahan,
+  };
 }
 
-export const Route = createFileRoute("/api/public/whatsapp/webhook")({
-  server: {
-    handlers: {
-      GET: async ({ request }) => {
-        const url = new URL(request.url);
-        const verifyToken = process.env["WHATSAPP_VERIFY_TOKEN"] || "iwip-k3-verify";
-        if (
-          url.searchParams.get("hub.mode") === "subscribe" &&
-          url.searchParams.get("hub.verify_token") === verifyToken
-        ) {
-          return new Response(url.searchParams.get("hub.challenge") ?? "", { status: 200 });
-        }
-        return new Response("Forbidden", { status: 403 });
-      },
+/* =========================
+   TRAINER MATCHING
+========================= */
 
-      POST: async ({ request }) => {
-        const appSecret = process.env["WHATSAPP_APP_SECRET"];
-        if (!appSecret) {
-          console.error("WHATSAPP_APP_SECRET belum dipasang — pesan ditolak.");
-          return new Response("Server not configured", { status: 503 });
-        }
-        const raw = await request.text();
-        const ok = await verifySignature(raw, request.headers.get("x-hub-signature-256"), appSecret);
-        if (!ok) return new Response("Invalid signature", { status: 401 });
+export type WhatsAppTrainerCandidate = {
+  id: string;
+  nama_lengkap: string;
+  nomor_whatsapp?: string | null;
+};
 
-        let body: any;
-        try {
-          body = JSON.parse(raw);
-        } catch {
-          return new Response("Bad request", { status: 400 });
-        }
+export type TrainerMatchResult = {
+  status: "matched" | "ambiguous" | "not_found";
+  trainer: WhatsAppTrainerCandidate | null;
+  candidates: WhatsAppTrainerCandidate[];
+  matchedBy: "nomor_whatsapp" | "nama" | null;
+};
 
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const accessToken = process.env["WHATSAPP_ACCESS_TOKEN"] ?? "";
+export function matchWhatsAppTrainer(
+  trainerNama: string | null,
+  nomorWhatsapp: string | null,
+  trainers: WhatsAppTrainerCandidate[],
+): TrainerMatchResult {
+  const targetPhone = normalizeWhatsAppNumber(nomorWhatsapp);
 
-        try {
-          for (const entry of body?.entry ?? []) {
-            for (const change of entry?.changes ?? []) {
-              const value = change?.value;
-              if (!value) continue;
-              const contacts = value.contacts ?? [];
-              for (const msg of value.messages ?? []) {
-                await handleMessage(supabaseAdmin, msg, contacts, accessToken);
-              }
-            }
-          }
-        } catch (e) {
-          console.error("Webhook error:", e);
-        }
-        return new Response("ok", { status: 200 });
-      },
-    },
-  },
-});
-
-async function handleMessage(supabase: any, msg: any, contacts: any[], accessToken: string) {
-  const from: string = msg.from;
-  const tsIso = msg.timestamp
-    ? new Date(Number(msg.timestamp) * 1000).toISOString()
-    : new Date().toISOString();
-  const namaPengirim = contacts.find((c: any) => c.wa_id === from)?.profile?.name ?? null;
-
-  // Cegah duplikat
-  if (msg.id) {
-    const { data: existing } = await supabase
-      .from("whatsapp_messages")
-      .select("id")
-      .eq("message_id", msg.id)
-      .maybeSingle();
-    if (existing) return;
+  if (targetPhone) {
+    const phoneMatches = trainers.filter(
+      (t) => normalizeWhatsAppNumber(t.nomor_whatsapp) === targetPhone,
+    );
+    if (phoneMatches.length === 1) {
+      return {
+        status: "matched",
+        trainer: phoneMatches[0]!,
+        candidates: phoneMatches,
+        matchedBy: "nomor_whatsapp",
+      };
+    }
+    if (phoneMatches.length > 1) {
+      return {
+        status: "ambiguous",
+        trainer: null,
+        candidates: phoneMatches,
+        matchedBy: null,
+      };
+    }
   }
 
-  let pesan: string | null = null;
-  let caption: string | null = null;
-  let mediaUrl: string | null = null;
-  let mediaId: string | null = null;
-  let mimeType: string | null = null;
-  let fileName: string | null = null;
-
-  if (msg.type === "text") pesan = msg.text?.body ?? null;
-  else if (msg.type === "image" || msg.type === "document") {
-    const media = msg.image ?? msg.document;
-    caption = media?.caption ?? null;
-    mediaId = media?.id ?? null;
-    mimeType = media?.mime_type ?? null;
-    fileName = media?.filename ?? null;
-    if (mediaId && accessToken) {
-      try {
-        const r = await fetch(`${GRAPH}/${mediaId}`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        const d: any = await r.json();
-        mediaUrl = d?.url ?? null;
-        mimeType = d?.mime_type ?? mimeType;
-      } catch (e) {
-        console.error("Gagal ambil media URL:", e);
-      }
+  if (trainerNama) {
+    const target = normalizeForMatch(trainerNama);
+    const exactMatches = trainers.filter(
+      (t) => normalizeForMatch(t.nama_lengkap) === target,
+    );
+    if (exactMatches.length === 1) {
+      return {
+        status: "matched",
+        trainer: exactMatches[0]!,
+        candidates: exactMatches,
+        matchedBy: "nama",
+      };
     }
-  } else if (msg.type === "button") pesan = msg.button?.text ?? null;
-  else if (msg.type === "interactive")
-    pesan = msg.interactive?.button_reply?.title ?? msg.interactive?.list_reply?.title ?? null;
-
-  const pesanLengkap = [pesan, caption].filter(Boolean).join("\n") || null;
-
-  const { data: inserted, error } = await supabase
-    .from("whatsapp_messages")
-    .insert({
-      message_id: msg.id ?? null,
-      nomor_pengirim: from,
-      nama_pengirim: namaPengirim,
-      pesan: pesanLengkap,
-      caption,
-      media_url: mediaUrl,
-      timestamp_pesan: tsIso,
-      status: "baru",
-      raw_payload: msg,
-    })
-    .select("id")
-    .single();
-  if (error) {
-    console.error("Insert whatsapp_messages gagal:", error);
-    return;
-  }
-  const messageId: string = inserted.id;
-
-  const setStatus = (patch: Record<string, unknown>) =>
-    supabase.from("whatsapp_messages").update(patch).eq("id", messageId);
-
-  if (!pesanLengkap) {
-    await setStatus({ status: "perlu_review", error_reason: "Pesan tanpa teks/keterangan." });
-    return;
-  }
-
-  try {
-    const [tr, mr, sr] = await Promise.all([
-      supabase.from("trainers").select("id, nama_lengkap, nomor_whatsapp, aktif"),
-      supabase.from("materials").select("id, nama, aktif"),
-      supabase
-        .from("schedules")
-        .select("id, nama_kegiatan, jam_mulai, jam_selesai, kelas, kategori, material_id, training_day_id, aktif"),
-    ]);
-    if (tr.error) throw tr.error;
-    if (mr.error) throw mr.error;
-    if (sr.error) throw sr.error;
-
-    const parsed = parseWhatsAppReport(pesanLengkap);
-    const valid = validateParsedWhatsAppReport(parsed);
-    const trainerMatch = matchWhatsAppTrainer(parsed.trainerNama, from, tr.data ?? []);
-    const materialMatches = matchWhatsAppMaterials(parsed.materi, mr.data ?? []);
-
-    if (trainerMatch.status !== "matched" || !trainerMatch.trainer) {
-      await setStatus({
-        status: "perlu_review",
-        trainer_id: null,
-        error_reason:
-          trainerMatch.status === "ambiguous"
-            ? "Trainer ambigu — perlu konfirmasi manual."
-            : "Pengirim Tidak Dikenal — trainer tidak ditemukan di Master Trainer.",
-      });
-      return;
+    if (exactMatches.length > 1) {
+      return {
+        status: "ambiguous",
+        trainer: null,
+        candidates: exactMatches,
+        matchedBy: null,
+      };
     }
-    const trainerId = trainerMatch.trainer.id;
-    const trainerRow = (tr.data ?? []).find((t: any) => t.id === trainerId);
-    if (trainerRow && trainerRow.aktif === false) {
-      await setStatus({
-        status: "perlu_review",
-        trainer_id: trainerId,
-        error_reason: "Trainer berstatus nonaktif.",
-      });
-      return;
-    }
-    if (!valid.valid) {
-      await setStatus({
-        status: "perlu_review",
-        trainer_id: trainerId,
-        error_reason: `Data belum lengkap: ${valid.errors.join("; ")}`,
-      });
-      return;
-    }
-
-    // Match jadwal dari Master Jadwal
-    const scheduleMatch = matchWhatsAppSchedule(parsed.materi, sr.data ?? []);
-    const jadwal = scheduleMatch.schedule;
-
-    if (!jadwal) {
-      await setStatus({
-        status: "perlu_review",
-        trainer_id: trainerId,
-        error_reason: `Materi tidak cocok dengan Master Jadwal: "${parsed.materi.join(", ")}"`,
-      });
-      return;
-    }
-
-    if (!jadwal.jam_mulai || !jadwal.jam_selesai) {
-      await setStatus({
-        status: "perlu_review",
-        trainer_id: trainerId,
-        error_reason: `Jam kegiatan "${jadwal.nama_kegiatan}" belum ditentukan di Master Jadwal.`,
-      });
-      return;
-    }
-
-    const materialId =
-      jadwal.material_id ??
-      (materialMatches.length === 1 &&
-      materialMatches[0]?.status === "matched" &&
-      materialMatches[0]?.material
-        ? materialMatches[0].material.id
-        : null);
-
-    // Kelas: prioritas dari WA, fallback ke jadwal
-    const kelasFinal = parsed.kelas || jadwal.kelas || null;
-
-    // Lokasi: auto dari nama kegiatan
-    const lokasiFinal = tentukanLokasi(jadwal.nama_kegiatan);
-
-    // Tanggal kegiatan — pakai WIT (UTC+9)
-    const tanggal = new Date(new Date(tsIso).getTime() + 9 * 3600 * 1000)
-      .toISOString()
-      .slice(0, 10);
-
-    const { data: report, error: rErr } = await supabase
-      .from("reports")
-      .insert({
-        trainer_id: trainerId,
-        tanggal_kegiatan: tanggal,
-        materi: jadwal.nama_kegiatan,
-        material_id: materialId,
-        schedule_id: jadwal.id,
-        jam_mulai: jadwal.jam_mulai,
-        jam_selesai: jadwal.jam_selesai,
-        jam_perlu_konfirmasi: false,
-        jenis_kegiatan: jadwal.kategori || null,
-        kelas: kelasFinal,
-        lokasi: lokasiFinal,
-        penanggung_jawab: "Muhammad Halid (Superintendent)",
-        jumlah_peserta: parsed.jumlahPeserta ?? 0,
-        jumlah_hadir: parsed.jumlahHadir ?? 0,
-        jumlah_tidak_hadir: parsed.jumlahTidakHadir ?? 0,
-        jumlah_tambahan: parsed.jumlahTambahan ?? 0,
-        keterangan: caption || null,
-        sumber_laporan: "whatsapp",
-        status_laporan: "menunggu_verifikasi",
-        waktu_laporan_dikirim: tsIso,
-        created_by: null,
-      })
-      .select("id")
-      .single();
-
-    if (rErr) {
-      await setStatus({
-        status: "perlu_review",
-        trainer_id: trainerId,
-        error_reason: `Gagal membuat laporan: ${rErr.message}`,
-      });
-      return;
-    }
-
-    // Simpan foto
-    let storagePath: string | null = null;
-    if (mediaUrl && accessToken) {
-      try {
-        const f = await fetch(mediaUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
-        if (f.ok) {
-          const ct = f.headers.get("content-type") || mimeType || "image/jpeg";
-          const ext = (ct.split("/")[1] || "jpeg").split(";")[0];
-          storagePath = `${report.id}/${String(msg.id ?? Date.now()).replace(/[^a-zA-Z0-9]/g, "_").slice(-40)}.${ext}`;
-          const { error: upErr } = await supabase.storage
-            .from("report-photos")
-            .upload(storagePath, await f.arrayBuffer(), { contentType: ct, upsert: false });
-          if (upErr) {
-            console.error("Upload foto gagal:", upErr);
-            storagePath = null;
-          } else {
-            await supabase.from("report_photos").insert({
-              report_id: report.id,
-              storage_path: storagePath,
-              nama_file: fileName ?? `WhatsApp-${Date.now()}.${ext}`,
-              uploaded_by: null,
-            });
-          }
-        }
-      } catch (e) {
-        console.error("Simpan foto gagal:", e);
-      }
-    }
-
-    await setStatus({
-      status: "berhasil",
-      trainer_id: trainerId,
-      report_id: report.id,
-      media_storage_path: storagePath,
-      error_reason: null,
+    const containsMatches = trainers.filter((t) => {
+      const name = normalizeForMatch(t.nama_lengkap);
+      return name.includes(target) || target.includes(name);
     });
-  } catch (err) {
-    console.error("Proses pesan gagal:", err);
-    await setStatus({
-      status: "perlu_review",
-      error_reason: err instanceof Error ? err.message : "Kesalahan tidak dikenal saat memproses.",
-    });
+    if (containsMatches.length === 1) {
+      return {
+        status: "matched",
+        trainer: containsMatches[0]!,
+        candidates: containsMatches,
+        matchedBy: "nama",
+      };
+    }
+    if (containsMatches.length > 1) {
+      return {
+        status: "ambiguous",
+        trainer: null,
+        candidates: containsMatches,
+        matchedBy: null,
+      };
+    }
   }
+
+  return {
+    status: "not_found",
+    trainer: null,
+    candidates: [],
+    matchedBy: null,
+  };
+}
+
+/* =========================
+   MATERIAL MATCHING
+========================= */
+
+export type WhatsAppMaterialCandidate = {
+  id: string;
+  nama: string;
+  aktif?: boolean;
+};
+
+export type MaterialMatch = {
+  input: string;
+  status: "matched" | "ambiguous" | "not_found";
+  material: WhatsAppMaterialCandidate | null;
+  candidates: WhatsAppMaterialCandidate[];
+};
+
+export function matchWhatsAppMaterials(
+  materiInput: string[],
+  materials: WhatsAppMaterialCandidate[],
+): MaterialMatch[] {
+  return materiInput.map((input) => {
+    const target = normalizeForMatch(input);
+    const exactMatches = materials.filter(
+      (m) => normalizeForMatch(m.nama) === target,
+    );
+    if (exactMatches.length === 1) {
+      return {
+        input,
+        status: "matched",
+        material: exactMatches[0]!,
+        candidates: exactMatches,
+      };
+    }
+    if (exactMatches.length > 1) {
+      return {
+        input,
+        status: "ambiguous",
+        material: null,
+        candidates: exactMatches,
+      };
+    }
+    const containsMatches = materials.filter((m) => {
+      const name = normalizeForMatch(m.nama);
+      return name.includes(target) || target.includes(name);
+    });
+    if (containsMatches.length === 1) {
+      return {
+        input,
+        status: "matched",
+        material: containsMatches[0]!,
+        candidates: containsMatches,
+      };
+    }
+    if (containsMatches.length > 1) {
+      return {
+        input,
+        status: "ambiguous",
+        material: null,
+        candidates: containsMatches,
+      };
+    }
+    return {
+      input,
+      status: "not_found",
+      material: null,
+      candidates: [],
+    };
+  });
+}
+
+/* =========================
+   SCHEDULE MATCHING (BARU)
+========================= */
+
+export type WhatsAppScheduleCandidate = {
+  id: string;
+  nama_kegiatan: string;
+  jam_mulai: string | null;
+  jam_selesai: string | null;
+  kelas: string | null;
+  kategori: string | null;
+  material_id: string | null;
+  training_day_id: string | null;
+  aktif: boolean;
+};
+
+export type ScheduleMatch = {
+  schedule: WhatsAppScheduleCandidate | null;
+  matchedBy: "materi" | null;
+};
+
+/**
+ * Cari jadwal dari Master Jadwal berdasarkan materi WA.
+ * Case-insensitive, fuzzy match (substring 2 arah).
+ */
+export function matchWhatsAppSchedule(
+  materiInput: string[],
+  schedules: WhatsAppScheduleCandidate[],
+): ScheduleMatch {
+  if (materiInput.length === 0) {
+    return { schedule: null, matchedBy: null };
+  }
+
+  const aktifSchedules = schedules.filter((s) => s.aktif);
+  if (aktifSchedules.length === 0) {
+    return { schedule: null, matchedBy: null };
+  }
+
+  for (const materi of materiInput) {
+    const target = normalizeForMatch(materi);
+    if (!target) continue;
+
+    // 1. Exact match
+    const exact = aktifSchedules.filter(
+      (s) => normalizeForMatch(s.nama_kegiatan) === target,
+    );
+    if (exact.length >= 1) {
+      return { schedule: exact[0]!, matchedBy: "materi" };
+    }
+
+    // 2. Fuzzy match (substring 2 arah)
+    const fuzzy = aktifSchedules.filter((s) => {
+      const sName = normalizeForMatch(s.nama_kegiatan);
+      return sName.includes(target) || target.includes(sName);
+    });
+    if (fuzzy.length >= 1) {
+      return { schedule: fuzzy[0]!, matchedBy: "materi" };
+    }
+  }
+
+  return { schedule: null, matchedBy: null };
+}
+
+/* =========================
+   VALIDASI
+========================= */
+
+export function validateParsedWhatsAppReport(report: ParsedWhatsAppReport) {
+  const errors: string[] = [];
+
+  if (!report.trainerNama) errors.push("Nama trainer tidak ditemukan.");
+  if (report.materi.length === 0) errors.push("Materi tidak ditemukan.");
+  if (report.jumlahPeserta === null)
+    errors.push("Jumlah peserta tidak ditemukan.");
+  if (report.jumlahHadir === null) errors.push("Jumlah hadir tidak ditemukan.");
+  if (report.jumlahTidakHadir === null)
+    errors.push("Jumlah tidak hadir tidak ditemukan.");
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
 }
