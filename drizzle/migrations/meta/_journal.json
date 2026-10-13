@@ -50,6 +50,13 @@
       "when": 1790818270229,
       "tag": "0006_tighten_notifications_settings_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791865697659,
+      "tag": "0007_drop_loose_storage_policies",
+      "breakpoints": true
     }
   ]
 }
