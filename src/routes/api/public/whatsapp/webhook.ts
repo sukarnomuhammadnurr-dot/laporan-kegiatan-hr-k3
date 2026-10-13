@@ -1,13 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
   matchWhatsAppMaterials,
-  matchWhatsAppSchedule,        ← HARUS ADA
+  matchWhatsAppSchedule,
   matchWhatsAppTrainer,
   parseWhatsAppReport,
   validateParsedWhatsAppReport,
 } from "@/lib/whatsapp-webhook-parser.server";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
+
+function tentukanLokasi(namaKegiatan: string): string {
+  const LUAR_RUANGAN = ["APEL", "APD"];
+  const upper = namaKegiatan.toUpperCase();
+  return LUAR_RUANGAN.some((k) => upper.includes(k))
+    ? "Luar Ruangan"
+    : "Dalam Ruangan";
+}
 
 async function verifySignature(raw: string, header: string | null, secret: string) {
   if (!header || !header.startsWith("sha256=")) return false;
@@ -91,7 +99,7 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
     : new Date().toISOString();
   const namaPengirim = contacts.find((c: any) => c.wa_id === from)?.profile?.name ?? null;
 
-  // Cegah duplikat (Meta bisa mengirim ulang)
+  // Cegah duplikat
   if (msg.id) {
     const { data: existing } = await supabase
       .from("whatsapp_messages")
@@ -106,6 +114,7 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
   let mediaUrl: string | null = null;
   let mediaId: string | null = null;
   let mimeType: string | null = null;
+  let fileName: string | null = null;
 
   if (msg.type === "text") pesan = msg.text?.body ?? null;
   else if (msg.type === "image" || msg.type === "document") {
@@ -113,6 +122,7 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
     caption = media?.caption ?? null;
     mediaId = media?.id ?? null;
     mimeType = media?.mime_type ?? null;
+    fileName = media?.filename ?? null;
     if (mediaId && accessToken) {
       try {
         const r = await fetch(`${GRAPH}/${mediaId}`, {
@@ -161,12 +171,16 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
   }
 
   try {
-    const [tr, mr] = await Promise.all([
+    const [tr, mr, sr] = await Promise.all([
       supabase.from("trainers").select("id, nama_lengkap, nomor_whatsapp, aktif"),
       supabase.from("materials").select("id, nama, aktif"),
+      supabase
+        .from("schedules")
+        .select("id, nama_kegiatan, jam_mulai, jam_selesai, kelas, kategori, material_id, training_day_id, aktif"),
     ]);
     if (tr.error) throw tr.error;
     if (mr.error) throw mr.error;
+    if (sr.error) throw sr.error;
 
     const parsed = parseWhatsAppReport(pesanLengkap);
     const valid = validateParsedWhatsAppReport(parsed);
@@ -203,14 +217,43 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
       return;
     }
 
+    // Match jadwal dari Master Jadwal
+    const scheduleMatch = matchWhatsAppSchedule(parsed.materi, sr.data ?? []);
+    const jadwal = scheduleMatch.schedule;
+
+    if (!jadwal) {
+      await setStatus({
+        status: "perlu_review",
+        trainer_id: trainerId,
+        error_reason: `Materi tidak cocok dengan Master Jadwal: "${parsed.materi.join(", ")}"`,
+      });
+      return;
+    }
+
+    if (!jadwal.jam_mulai || !jadwal.jam_selesai) {
+      await setStatus({
+        status: "perlu_review",
+        trainer_id: trainerId,
+        error_reason: `Jam kegiatan "${jadwal.nama_kegiatan}" belum ditentukan di Master Jadwal.`,
+      });
+      return;
+    }
+
     const materialId =
-      materialMatches.length === 1 &&
+      jadwal.material_id ??
+      (materialMatches.length === 1 &&
       materialMatches[0]?.status === "matched" &&
       materialMatches[0]?.material
         ? materialMatches[0].material.id
-        : null;
+        : null);
 
-    // Tanggal kegiatan = tanggal pesan dalam zona WIT/WITA? Pakai Asia/Jayapura (Halmahera, UTC+9)
+    // Kelas: prioritas dari WA, fallback ke jadwal
+    const kelasFinal = parsed.kelas || jadwal.kelas || null;
+
+    // Lokasi: auto dari nama kegiatan
+    const lokasiFinal = tentukanLokasi(jadwal.nama_kegiatan);
+
+    // Tanggal kegiatan — pakai WIT (UTC+9)
     const tanggal = new Date(new Date(tsIso).getTime() + 9 * 3600 * 1000)
       .toISOString()
       .slice(0, 10);
@@ -220,8 +263,16 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
       .insert({
         trainer_id: trainerId,
         tanggal_kegiatan: tanggal,
-        materi: parsed.materi.join(", "),
+        materi: jadwal.nama_kegiatan,
         material_id: materialId,
+        schedule_id: jadwal.id,
+        jam_mulai: jadwal.jam_mulai,
+        jam_selesai: jadwal.jam_selesai,
+        jam_perlu_konfirmasi: false,
+        jenis_kegiatan: jadwal.kategori || null,
+        kelas: kelasFinal,
+        lokasi: lokasiFinal,
+        penanggung_jawab: "Muhammad Halid (Superintendent)",
         jumlah_peserta: parsed.jumlahPeserta ?? 0,
         jumlah_hadir: parsed.jumlahHadir ?? 0,
         jumlah_tidak_hadir: parsed.jumlahTidakHadir ?? 0,
@@ -234,6 +285,7 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
       })
       .select("id")
       .single();
+
     if (rErr) {
       await setStatus({
         status: "perlu_review",
@@ -243,6 +295,7 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
       return;
     }
 
+    // Simpan foto
     let storagePath: string | null = null;
     if (mediaUrl && accessToken) {
       try {
@@ -261,7 +314,7 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
             await supabase.from("report_photos").insert({
               report_id: report.id,
               storage_path: storagePath,
-              nama_file: msg.document?.filename ?? `WhatsApp-${Date.now()}.${ext}`,
+              nama_file: fileName ?? `WhatsApp-${Date.now()}.${ext}`,
               uploaded_by: null,
             });
           }
