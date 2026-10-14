@@ -5,15 +5,15 @@ import { toast } from "sonner";
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Eye,
   FileCheck2,
   ImageIcon,
-  Info,
   MessageCircle,
   RefreshCcw,
   Search,
-  Send,
   Settings2,
   Sparkles,
   Trash2,
@@ -64,10 +64,8 @@ export const Route = createFileRoute("/_authenticated/pesan-whatsapp")({
   component: PesanWhatsAppPage,
 });
 
-/* =========================================================
-   NOMOR WA RESMI (dari Meta Cloud API)
-========================================================= */
 const NOMOR_WA_RESMI = "+62 819-3614-0126";
+const PER_HALAMAN = 10;
 
 type WhatsAppMessage = {
   id: string;
@@ -86,6 +84,33 @@ type WhatsAppMessage = {
   raw_payload: unknown;
   created_at: string | null;
 };
+
+/* =========================================================
+   HELPER BULAN
+========================================================= */
+
+function bulanIni() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function labelBulan(yyyymm: string) {
+  const [y, m] = yyyymm.split("-").map(Number);
+  return new Date(y!, (m ?? 1) - 1, 1).toLocaleDateString("id-ID", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function listBulan(startYear = 2026, endYear = 2040) {
+  const result: string[] = [];
+  for (let y = endYear; y >= startYear; y--) {
+    for (let m = 12; m >= 1; m--) {
+      result.push(`${y}-${String(m).padStart(2, "0")}`);
+    }
+  }
+  return result;
+}
 
 function formatTanggalWaktu(value: string | null | undefined) {
   if (!value) return "—";
@@ -189,15 +214,108 @@ function StatCard({
   );
 }
 
+/* =========================================================
+   PAGINATION COMPONENT
+========================================================= */
+
+function Pagination({
+  halaman,
+  totalHalaman,
+  onPindah,
+}: {
+  halaman: number;
+  totalHalaman: number;
+  onPindah: (h: number) => void;
+}) {
+  if (totalHalaman <= 1) return null;
+
+  const halamanList: (number | "...")[] = [];
+  const maxTampil = 5;
+
+  if (totalHalaman <= maxTampil) {
+    for (let i = 1; i <= totalHalaman; i++) halamanList.push(i);
+  } else {
+    halamanList.push(1);
+
+    const start = Math.max(2, halaman - 1);
+    const end = Math.min(totalHalaman - 1, halaman + 1);
+
+    if (start > 2) halamanList.push("...");
+    for (let i = start; i <= end; i++) halamanList.push(i);
+    if (end < totalHalaman - 1) halamanList.push("...");
+
+    halamanList.push(totalHalaman);
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
+      <p className="text-xs text-muted-foreground">
+        Halaman <strong>{halaman}</strong> dari <strong>{totalHalaman}</strong>
+      </p>
+
+      <div className="flex items-center gap-1">
+        <Button
+          size="icon"
+          variant="outline"
+          disabled={halaman <= 1}
+          onClick={() => onPindah(halaman - 1)}
+          title="Halaman sebelumnya"
+        >
+          <ChevronLeft className="size-4" />
+        </Button>
+
+        {halamanList.map((h, i) =>
+          h === "..." ? (
+            <span
+              key={`dots-${i}`}
+              className="px-2 text-xs text-muted-foreground"
+            >
+              …
+            </span>
+          ) : (
+            <Button
+              key={h}
+              size="sm"
+              variant={h === halaman ? "default" : "outline"}
+              onClick={() => onPindah(h)}
+              className="min-w-9"
+            >
+              {h}
+            </Button>
+          ),
+        )}
+
+        <Button
+          size="icon"
+          variant="outline"
+          disabled={halaman >= totalHalaman}
+          onClick={() => onPindah(halaman + 1)}
+          title="Halaman berikutnya"
+        >
+          <ChevronRight className="size-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   MAIN COMPONENT
+========================================================= */
+
 function PesanWhatsAppPage() {
   const { isStaff, loading } = useCurrentUser();
   const qc = useQueryClient();
 
   const [cari, setCari] = useState("");
   const [filterStatus, setFilterStatus] = useState("semua");
+  const [bulan, setBulan] = useState<string>(bulanIni());
+  const [halaman, setHalaman] = useState(1);
   const [detail, setDetail] = useState<WhatsAppMessage | null>(null);
   const [hapusTarget, setHapusTarget] = useState<WhatsAppMessage | null>(null);
   const [webhookCopied, setWebhookCopied] = useState(false);
+
+  const daftarBulan = useMemo(() => listBulan(2026, 2040), []);
 
   const { data: trainers = [] } = useQuery({
     queryKey: ["trainers", "wa"],
@@ -212,24 +330,51 @@ function PesanWhatsAppPage() {
   });
 
   const {
-    data: messages = [],
+    data: result,
     isLoading,
     isError,
     refetch,
   } = useQuery({
-    queryKey: ["whatsapp_messages"],
+    queryKey: ["whatsapp_messages", bulan, halaman],
     enabled: isStaff,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const [y, m] = bulan.split("-").map(Number);
+      const start = `${bulan}-01`;
+      const lastDay = new Date(y!, m!, 0).getDate();
+      const end = `${bulan}-${String(lastDay).padStart(2, "0")}`;
+
+      const from = (halaman - 1) * PER_HALAMAN;
+      const to = from + PER_HALAMAN - 1;
+
+      const { data, error, count } = await supabase
         .from("whatsapp_messages")
-        .select("*")
+        .select("*", { count: "exact" })
+        .gte("timestamp_pesan", start)
+        .lte("timestamp_pesan", `${end}T23:59:59`)
         .order("timestamp_pesan", { ascending: false })
-        .limit(200);
+        .range(from, to);
 
       if (error) throw error;
-      return (data ?? []) as WhatsAppMessage[];
+      return {
+        messages: (data ?? []) as WhatsAppMessage[],
+        total: count ?? 0,
+      };
     },
   });
+
+  const messages = result?.messages ?? [];
+  const totalPesan = result?.total ?? 0;
+  const totalHalaman = Math.max(1, Math.ceil(totalPesan / PER_HALAMAN));
+
+  // Reset halaman ke 1 kalau ganti bulan
+  function gantiBulan(b: string) {
+    setBulan(b);
+    setHalaman(1);
+  }
+
+  function resetHalamanSaatFilter() {
+    setHalaman(1);
+  }
 
   const filtered = useMemo(() => {
     const q = cari.trim().toLowerCase();
@@ -249,7 +394,7 @@ function PesanWhatsAppPage() {
   }, [messages, cari, filterStatus]);
 
   const stats = useMemo(() => {
-    const total = messages.length;
+    const total = totalPesan;
     const berhasil = messages.filter((m) => m.status === "berhasil").length;
     const perluReview = messages.filter(
       (m) => m.status === "perlu_review",
@@ -259,7 +404,7 @@ function PesanWhatsAppPage() {
     ).length;
 
     return { total, berhasil, perluReview, gagal };
-  }, [messages]);
+  }, [messages, totalPesan]);
 
   const statusOptions = useMemo(() => {
     const values = new Set<string>();
@@ -269,7 +414,7 @@ function PesanWhatsAppPage() {
     return [...values].sort();
   }, [messages]);
 
-  const webhookUrl = `https://kpapxeicbdnbmjylulcc.supabase.co/functions/v1/whatsapp-webhook`;
+  const webhookUrl = `https://laporan-kegiatan-hr-k3.lovable.app/api/public/whatsapp/webhook`;
 
   function salinWebhook() {
     navigator.clipboard.writeText(webhookUrl).then(() => {
@@ -302,7 +447,7 @@ function PesanWhatsAppPage() {
   });
 
   /* =========================================================
-     PROSES MANUAL (fallback kalau auto-parse gagal)
+     PROSES MANUAL
   ========================================================= */
   const prosesJadiLaporan = useMutation({
     mutationFn: async (msg: WhatsAppMessage) => {
@@ -462,7 +607,7 @@ function PesanWhatsAppPage() {
         <StatCard
           title="Total Pesan Masuk"
           value={stats.total}
-          description="Semua pesan"
+          description="Semua pesan bulan ini"
           icon={MessageCircle}
           tone="blue"
         />
@@ -593,15 +738,16 @@ function PesanWhatsAppPage() {
             <p className="font-semibold">Tips Format Pesan</p>
           </div>
           <pre className="overflow-x-auto rounded-lg border border-border bg-muted/30 p-4 text-xs leading-relaxed">
-{`Materi K3 H1A, PERATURAN PERUSAHAAN,
-Trainer Sufri Hi Rajak
-Jumlah peserta: 34
-Hadir: 32
-Tidak Hadir: 2
+{`Materi Apel Pagi
+Trainer Sukarno M Nur
+Kelas : 2A
+jumlah peserta: 50
+Hadir: 49
+Tidak Hadir: 1
 Tambahan: -`}
           </pre>
           <p className="mt-3 text-xs text-muted-foreground">
-            Nomor WhatsApp pengirim otomatis terbaca. Nama trainer dipakai sebagai fallback.
+            Nomor WhatsApp pengirim otomatis terbaca. Materi auto-match ke Master Jadwal.
           </p>
         </Panel>
       </div>
@@ -610,22 +756,46 @@ Tambahan: -`}
       <Panel className="overflow-hidden p-0">
         <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="font-semibold">Pesan Terbaru</p>
+            <p className="font-semibold">Riwayat Pesan</p>
             <p className="text-xs text-muted-foreground">
-              {filtered.length} dari {messages.length} pesan
+              {totalPesan} pesan · {labelBulan(bulan)}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {/* Filter Bulan */}
+            <Select value={bulan} onValueChange={gantiBulan}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Pilih bulan" />
+              </SelectTrigger>
+              <SelectContent>
+                {daftarBulan.map((b) => (
+                  <SelectItem key={b} value={b}>
+                    {labelBulan(b)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="w-56 pl-9"
                 placeholder="Cari nomor / isi pesan…"
                 value={cari}
-                onChange={(e) => setCari(e.target.value)}
+                onChange={(e) => {
+                  setCari(e.target.value);
+                  resetHalamanSaatFilter();
+                }}
               />
             </div>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
+
+            <Select
+              value={filterStatus}
+              onValueChange={(v) => {
+                setFilterStatus(v);
+                resetHalamanSaatFilter();
+              }}
+            >
               <SelectTrigger className="w-40">
                 <SelectValue placeholder="Semua Status" />
               </SelectTrigger>
@@ -638,6 +808,7 @@ Tambahan: -`}
                 ))}
               </SelectContent>
             </Select>
+
             <Button size="icon" variant="outline" onClick={() => refetch()}>
               <RefreshCcw className="size-4" />
             </Button>
@@ -659,82 +830,95 @@ Tambahan: -`}
             </div>
             <p className="mt-4 font-semibold">Belum ada pesan</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Pesan WhatsApp yang masuk akan tampil di sini.
+              {cari || filterStatus !== "semua"
+                ? "Tidak ada pesan yang cocok dengan filter."
+                : `Belum ada pesan di bulan ${labelBulan(bulan)}.`}
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/20 text-left">
-                <tr className="border-b border-border">
-                  <th className="eyebrow px-4 py-3 text-muted-foreground">
-                    Tanggal & Waktu
-                  </th>
-                  <th className="eyebrow px-4 py-3 text-muted-foreground">
-                    Pengirim
-                  </th>
-                  <th className="eyebrow px-4 py-3 text-muted-foreground">
-                    Isi Pesan
-                  </th>
-                  <th className="eyebrow px-4 py-3 text-muted-foreground">
-                    Status
-                  </th>
-                  <th className="eyebrow px-4 py-3 text-muted-foreground">
-                    Aksi
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((m) => (
-                  <tr
-                    key={m.id}
-                    className="border-b border-border/60 hover:bg-muted/20"
-                  >
-                    <td className="num whitespace-nowrap px-4 py-3 text-muted-foreground">
-                      {formatTanggalWaktu(m.timestamp_pesan)}
-                    </td>
-                    <td className="num px-4 py-3">
-                      {m.nomor_pengirim || m.nama_pengirim || "—"}
-                    </td>
-                    <td className="max-w-[420px] px-4 py-3">
-                      <p className="line-clamp-2 text-sm">
-                        {m.pesan || m.caption || "—"}
-                      </p>
-                      {m.error_reason ? (
-                        <p className="mt-1 text-[11px] text-status-warning">
-                          ⚠️ {m.error_reason}
-                        </p>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusPill status={m.status} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          title="Lihat detail"
-                          onClick={() => setDetail(m)}
-                        >
-                          <Eye className="size-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          title="Hapus pesan"
-                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => setHapusTarget(m)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    </td>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/20 text-left">
+                  <tr className="border-b border-border">
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">
+                      Tanggal & Waktu
+                    </th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">
+                      Pengirim
+                    </th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">
+                      Isi Pesan
+                    </th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">
+                      Status
+                    </th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">
+                      Aksi
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filtered.map((m) => (
+                    <tr
+                      key={m.id}
+                      className="border-b border-border/60 hover:bg-muted/20"
+                    >
+                      <td className="num whitespace-nowrap px-4 py-3 text-muted-foreground">
+                        {formatTanggalWaktu(m.timestamp_pesan)}
+                      </td>
+                      <td className="num px-4 py-3">
+                        {m.nomor_pengirim || m.nama_pengirim || "—"}
+                      </td>
+                      <td className="max-w-[420px] px-4 py-3">
+                        <p className="line-clamp-2 text-sm">
+                          {m.pesan || m.caption || "—"}
+                        </p>
+                        {m.error_reason ? (
+                          <p className="mt-1 text-[11px] text-status-warning">
+                            ⚠️ {m.error_reason}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusPill status={m.status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            title="Lihat detail"
+                            onClick={() => setDetail(m)}
+                          >
+                            <Eye className="size-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            title="Hapus pesan"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => setHapusTarget(m)}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <Pagination
+              halaman={halaman}
+              totalHalaman={totalHalaman}
+              onPindah={(h) => {
+                setHalaman(h);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            />
+          </>
         )}
       </Panel>
 
@@ -772,8 +956,9 @@ Tambahan: -`}
                 Hapus Pesan Ini?
               </DialogTitle>
               <DialogDescription>
-                Pesan WhatsApp ini akan dihapus dari daftar. Laporan yang
-                sudah ter-generate (kalau ada) tidak akan terhapus.
+                Pesan WhatsApp ini akan dihapus permanen dari riwayat.
+                Laporan yang sudah ter-generate (kalau ada) tidak akan
+                terhapus.
               </DialogDescription>
             </DialogHeader>
 
@@ -917,6 +1102,7 @@ function DetailPesanModal({
                 <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                   <Row label="Trainer" value={parsed.trainerNama || "—"} />
                   <Row label="Materi" value={parsed.materi.join(", ") || "—"} />
+                  <Row label="Kelas" value={parsed.kelas || "—"} />
                   <Row
                     label="Jumlah Peserta"
                     value={String(parsed.jumlahPeserta ?? "—")}
