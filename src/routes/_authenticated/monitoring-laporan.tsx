@@ -6,6 +6,8 @@ import {
   BarChart3,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Download,
   Eye,
@@ -70,6 +72,7 @@ export const Route = createFileRoute("/_authenticated/monitoring-laporan")({
 });
 
 const DEPARTEMEN_LABEL = "HR K3";
+const PER_HALAMAN = 10;
 
 type FilterStatus =
   | "semua"
@@ -448,6 +451,84 @@ function ActivityChart({ reports }: { reports: ReportWithTrainer[] }) {
   );
 }
 
+/* =========================================================
+   PAGINATION
+========================================================= */
+function Pagination({
+  halaman,
+  totalHalaman,
+  onPindah,
+}: {
+  halaman: number;
+  totalHalaman: number;
+  onPindah: (h: number) => void;
+}) {
+  if (totalHalaman <= 1) return null;
+
+  const halamanList: (number | "...")[] = [];
+  const maxTampil = 5;
+
+  if (totalHalaman <= maxTampil) {
+    for (let i = 1; i <= totalHalaman; i++) halamanList.push(i);
+  } else {
+    halamanList.push(1);
+    const start = Math.max(2, halaman - 1);
+    const end = Math.min(totalHalaman - 1, halaman + 1);
+    if (start > 2) halamanList.push("...");
+    for (let i = start; i <= end; i++) halamanList.push(i);
+    if (end < totalHalaman - 1) halamanList.push("...");
+    halamanList.push(totalHalaman);
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
+      <p className="text-xs text-muted-foreground">
+        Halaman <strong>{halaman}</strong> dari <strong>{totalHalaman}</strong>
+      </p>
+
+      <div className="flex items-center gap-1">
+        <Button
+          size="icon"
+          variant="outline"
+          disabled={halaman <= 1}
+          onClick={() => onPindah(halaman - 1)}
+          title="Halaman sebelumnya"
+        >
+          <ChevronLeft className="size-4" />
+        </Button>
+
+        {halamanList.map((h, i) =>
+          h === "..." ? (
+            <span key={`dots-${i}`} className="px-2 text-xs text-muted-foreground">
+              …
+            </span>
+          ) : (
+            <Button
+              key={h}
+              size="sm"
+              variant={h === halaman ? "default" : "outline"}
+              onClick={() => onPindah(h)}
+              className="min-w-9"
+            >
+              {h}
+            </Button>
+          ),
+        )}
+
+        <Button
+          size="icon"
+          variant="outline"
+          disabled={halaman >= totalHalaman}
+          onClick={() => onPindah(halaman + 1)}
+          title="Halaman berikutnya"
+        >
+          <ChevronRight className="size-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // =============================================================
 // Helper: fetch gambar → data URL (base64)
 // =============================================================
@@ -493,6 +574,8 @@ function MonitoringLaporanPage() {
   const [status, setStatus] = useState<FilterStatus>("semua");
   const [jenisKegiatan, setJenisKegiatan] = useState("semua");
   const [cari, setCari] = useState("");
+  const [halaman, setHalaman] = useState(1);
+
   const [preview, setPreview] = useState<ReportWithTrainer | null>(null);
   const [previewPhotos, setPreviewPhotos] = useState<ReportPhoto[]>([]);
   const [previewLoadingPhotos, setPreviewLoadingPhotos] = useState(false);
@@ -508,7 +591,6 @@ function MonitoringLaporanPage() {
   } | null>(null);
   const [catatanInput, setCatatanInput] = useState("");
 
-  // HAPUS STATE
   const [hapusAction, setHapusAction] = useState<ReportWithTrainer | null>(null);
   const [hapusConfirmText, setHapusConfirmText] = useState("");
 
@@ -574,6 +656,18 @@ function MonitoringLaporanPage() {
     );
   }, [reports, jenisKegiatan]);
 
+  // Pagination — potong data buat tabel
+  const totalHalaman = Math.max(1, Math.ceil(filteredReports.length / PER_HALAMAN));
+  const halamanAman = Math.min(halaman, totalHalaman);
+  const laporanTampil = useMemo(
+    () =>
+      filteredReports.slice(
+        (halamanAman - 1) * PER_HALAMAN,
+        halamanAman * PER_HALAMAN,
+      ),
+    [filteredReports, halamanAman],
+  );
+
   const stats = useMemo(() => {
     const total = filteredReports.length;
     const terverifikasi = filteredReports.filter(
@@ -616,6 +710,7 @@ function MonitoringLaporanPage() {
     setStatus("semua");
     setJenisKegiatan("semua");
     setCari("");
+    setHalaman(1);
   };
 
   const hasFilter =
@@ -717,7 +812,6 @@ function MonitoringLaporanPage() {
     setCatatanInput("");
   }
 
-  // ---------- Preview foto ----------
   async function bukaPreview(report: ReportWithTrainer) {
     setPreview(report);
     setPreviewPhotos([]);
@@ -810,7 +904,7 @@ function MonitoringLaporanPage() {
     const totalTrainer = trainerSections.length;
 
     const sections = trainerSections
-      .map(([trainerId, list], trainerIdx) => {
+      .map(([, list], trainerIdx) => {
         const firstReport = list[0];
         const trainerInfo = {
           nama: firstReport?.trainers?.nama_lengkap || "—",
@@ -832,7 +926,7 @@ function MonitoringLaporanPage() {
 
         let noUrut = 1;
         const tbodyHtml = tanggalList
-          .map(([tanggal, tglList]) => {
+          .map(([, tglList]) => {
             return tglList
               .map((item, idx) => {
                 const fotos = photoDataMap.get(item.id) ?? [];
@@ -1296,7 +1390,7 @@ function MonitoringLaporanPage() {
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-7">
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">Bulan</p>
-            <Select value={bulan} onValueChange={setBulan}>
+            <Select value={bulan} onValueChange={(v) => { setBulan(v); setHalaman(1); }}>
               <SelectTrigger>
                 <SelectValue placeholder="Pilih bulan" />
               </SelectTrigger>
@@ -1314,7 +1408,7 @@ function MonitoringLaporanPage() {
             <p className="text-xs font-medium text-muted-foreground">
               Dari tanggal
             </p>
-            <Input type="date" value={dari} onChange={(e) => setDari(e.target.value)} />
+            <Input type="date" value={dari} onChange={(e) => { setDari(e.target.value); setHalaman(1); }} />
           </div>
 
           <div className="space-y-1.5">
@@ -1324,7 +1418,7 @@ function MonitoringLaporanPage() {
             <Input
               type="date"
               value={sampai}
-              onChange={(e) => setSampai(e.target.value)}
+              onChange={(e) => { setSampai(e.target.value); setHalaman(1); }}
             />
           </div>
 
@@ -1333,7 +1427,7 @@ function MonitoringLaporanPage() {
               <p className="text-xs font-medium text-muted-foreground">
                 Trainer
               </p>
-              <Select value={trainerFilter} onValueChange={setTrainerFilter}>
+              <Select value={trainerFilter} onValueChange={(v) => { setTrainerFilter(v); setHalaman(1); }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Semua Trainer" />
                 </SelectTrigger>
@@ -1362,7 +1456,7 @@ function MonitoringLaporanPage() {
             <p className="text-xs font-medium text-muted-foreground">
               Jenis kegiatan
             </p>
-            <Select value={jenisKegiatan} onValueChange={setJenisKegiatan}>
+            <Select value={jenisKegiatan} onValueChange={(v) => { setJenisKegiatan(v); setHalaman(1); }}>
               <SelectTrigger>
                 <SelectValue placeholder="Semua Jenis" />
               </SelectTrigger>
@@ -1383,7 +1477,7 @@ function MonitoringLaporanPage() {
             </p>
             <Select
               value={status}
-              onValueChange={(value) => setStatus(value as FilterStatus)}
+              onValueChange={(value) => { setStatus(value as FilterStatus); setHalaman(1); }}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Semua Status" />
@@ -1410,7 +1504,7 @@ function MonitoringLaporanPage() {
                 className="pl-9"
                 placeholder="Materi, kegiatan, kelas…"
                 value={cari}
-                onChange={(e) => setCari(e.target.value)}
+                onChange={(e) => { setCari(e.target.value); setHalaman(1); }}
               />
             </div>
           </div>
@@ -1655,13 +1749,13 @@ function MonitoringLaporanPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredReports.map((report, index) => (
+                  {laporanTampil.map((report, index) => (
                     <tr
                       key={report.id}
                       className="border-b border-border/60 transition-colors hover:bg-muted/20"
                     >
                       <td className="num px-4 py-3 text-muted-foreground">
-                        {index + 1}
+                        {(halamanAman - 1) * PER_HALAMAN + index + 1}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
                         {formatTanggal(report.tanggal_kegiatan)}
@@ -1736,12 +1830,12 @@ function MonitoringLaporanPage() {
             </div>
 
             <div className="divide-y divide-border md:hidden">
-              {filteredReports.map((report, index) => (
+              {laporanTampil.map((report, index) => (
                 <div key={report.id} className="space-y-3 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-[11px] text-muted-foreground">
-                        No. {index + 1} · {formatTanggal(report.tanggal_kegiatan)}
+                        No. {(halamanAman - 1) * PER_HALAMAN + index + 1} · {formatTanggal(report.tanggal_kegiatan)}
                       </p>
                       <p className="mt-1 truncate font-semibold">
                         {report.materi || "Tanpa materi"}
@@ -1803,6 +1897,15 @@ function MonitoringLaporanPage() {
                 </div>
               ))}
             </div>
+
+            <Pagination
+              halaman={halamanAman}
+              totalHalaman={totalHalaman}
+              onPindah={(h) => {
+                setHalaman(h);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            />
           </>
         )}
       </Panel>
