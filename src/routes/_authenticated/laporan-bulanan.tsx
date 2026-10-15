@@ -6,6 +6,7 @@ import {
   BarChart3,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Clock3,
   Download,
@@ -67,6 +68,7 @@ export const Route = createFileRoute("/_authenticated/laporan-bulanan")({
 });
 
 const DEPARTEMEN_LABEL = "HR K3";
+const PER_HALAMAN = 10;
 
 type FilterStatus =
   | "semua"
@@ -209,7 +211,7 @@ function StatusPill({ status }: { status: string | null | undefined }) {
 }
 
 /* =========================================================
-   STAT CARD — kartu pastel dengan chevron arrow
+   STAT CARD
 ========================================================= */
 
 type StatTone = "blue" | "yellow" | "green" | "red" | "violet";
@@ -307,7 +309,7 @@ function StatCard({
 }
 
 /* =========================================================
-   BAR CHART — SVG custom (fix bar width + label pendek)
+   BAR CHART
 ========================================================= */
 
 function BarChart({ reports }: { reports: ReportWithTrainer[] }) {
@@ -316,7 +318,7 @@ function BarChart({ reports }: { reports: ReportWithTrainer[] }) {
     for (const r of reports) {
       const t = r.tanggal_kegiatan;
       if (!t) continue;
-      const key = t.slice(0, 7); // YYYY-MM
+      const key = t.slice(0, 7);
       map.set(key, (map.get(key) ?? 0) + 1);
     }
     return [...map.entries()]
@@ -341,7 +343,6 @@ function BarChart({ reports }: { reports: ReportWithTrainer[] }) {
   const padBottom = 8;
   const chartH = H - padTop - padBottom;
 
-  // Kalau cuma 1-2 bulan, pake slot min 4 biar bar gak kegedean
   const totalSlots = Math.max(data.length, 4);
   const slotW = (W - padX * 2) / totalSlots;
   const barW = Math.min(slotW * 0.55, 10);
@@ -353,7 +354,6 @@ function BarChart({ reports }: { reports: ReportWithTrainer[] }) {
         preserveAspectRatio="none"
         className="h-[240px] w-full"
       >
-        {/* Grid dashed */}
         {[0, 1, 2, 3, 4].map((i) => {
           const y = padTop + (chartH / 4) * i;
           return (
@@ -371,7 +371,6 @@ function BarChart({ reports }: { reports: ReportWithTrainer[] }) {
           );
         })}
 
-        {/* Bars */}
         {data.map(([key, value], i) => {
           const x = padX + slotW * i + (slotW - barW) / 2;
           const barH = (value / max) * chartH;
@@ -387,7 +386,6 @@ function BarChart({ reports }: { reports: ReportWithTrainer[] }) {
                 rx="0.8"
                 fill="url(#barGrad)"
               />
-              {/* Angka di atas bar */}
               <text
                 x={x + barW / 2}
                 y={y - 1.8}
@@ -426,7 +424,7 @@ function BarChart({ reports }: { reports: ReportWithTrainer[] }) {
 }
 
 /* =========================================================
-   DONUT CHART — SVG hex color (fix stuck 0%)
+   DONUT CHART
 ========================================================= */
 
 function DonutChart({
@@ -443,16 +441,8 @@ function DonutChart({
   terkirim: number;
 }) {
   const items = [
-    {
-      label: "Terverifikasi",
-      value: terverifikasi,
-      color: "#10b981",
-    },
-    {
-      label: "Menunggu Verifikasi",
-      value: menunggu,
-      color: "#f59e0b",
-    },
+    { label: "Terverifikasi", value: terverifikasi, color: "#10b981" },
+    { label: "Menunggu Verifikasi", value: menunggu, color: "#f59e0b" },
     { label: "Perlu Revisi", value: revisi, color: "#ef4444" },
     { label: "Terkirim", value: terkirim, color: "#3b82f6" },
   ];
@@ -541,7 +531,7 @@ function DonutChart({
 }
 
 /* =========================================================
-   HORIZONTAL BAR — jenis kegiatan (gradient biru)
+   HORIZONTAL BAR
 ========================================================= */
 
 function HorizontalBarChart({ reports }: { reports: ReportWithTrainer[] }) {
@@ -609,16 +599,8 @@ function RingkasanStatus({
   terkirim: number;
 }) {
   const items = [
-    {
-      label: "Terverifikasi",
-      value: terverifikasi,
-      dot: "bg-status-verified",
-    },
-    {
-      label: "Menunggu Verifikasi",
-      value: menunggu,
-      dot: "bg-status-warning",
-    },
+    { label: "Terverifikasi", value: terverifikasi, dot: "bg-status-verified" },
+    { label: "Menunggu Verifikasi", value: menunggu, dot: "bg-status-warning" },
     { label: "Perlu Revisi", value: revisi, dot: "bg-destructive" },
     { label: "Terkirim", value: terkirim, dot: "bg-primary" },
   ];
@@ -644,6 +626,86 @@ function RingkasanStatus({
       <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
         <span className="text-sm text-muted-foreground">Total</span>
         <span className="num text-lg font-bold">{total}</span>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   PAGINATION
+========================================================= */
+
+function Pagination({
+  halaman,
+  totalHalaman,
+  onPindah,
+}: {
+  halaman: number;
+  totalHalaman: number;
+  onPindah: (h: number) => void;
+}) {
+  if (totalHalaman <= 1) return null;
+
+  const halamanList: (number | "...")[] = [];
+  const maxTampil = 5;
+
+  if (totalHalaman <= maxTampil) {
+    for (let i = 1; i <= totalHalaman; i++) halamanList.push(i);
+  } else {
+    halamanList.push(1);
+    const start = Math.max(2, halaman - 1);
+    const end = Math.min(totalHalaman - 1, halaman + 1);
+    if (start > 2) halamanList.push("...");
+    for (let i = start; i <= end; i++) halamanList.push(i);
+    if (end < totalHalaman - 1) halamanList.push("...");
+    halamanList.push(totalHalaman);
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
+      <p className="text-xs text-muted-foreground">
+        Halaman <strong>{halaman}</strong> dari <strong>{totalHalaman}</strong>
+      </p>
+
+      <div className="flex items-center gap-1">
+        <Button
+          size="icon"
+          variant="outline"
+          disabled={halaman <= 1}
+          onClick={() => onPindah(halaman - 1)}
+        >
+          <ChevronLeft className="size-4" />
+        </Button>
+
+        {halamanList.map((h, i) =>
+          h === "..." ? (
+            <span
+              key={`dots-${i}`}
+              className="px-2 text-xs text-muted-foreground"
+            >
+              …
+            </span>
+          ) : (
+            <Button
+              key={h}
+              size="sm"
+              variant={h === halaman ? "default" : "outline"}
+              onClick={() => onPindah(h)}
+              className="min-w-9"
+            >
+              {h}
+            </Button>
+          ),
+        )}
+
+        <Button
+          size="icon"
+          variant="outline"
+          disabled={halaman >= totalHalaman}
+          onClick={() => onPindah(halaman + 1)}
+        >
+          <ChevronRight className="size-4" />
+        </Button>
       </div>
     </div>
   );
@@ -693,12 +755,12 @@ function LaporanBulananPage() {
   const [status, setStatus] = useState<FilterStatus>("semua");
   const [jenisKegiatan, setJenisKegiatan] = useState("semua");
   const [cari, setCari] = useState("");
+  const [halaman, setHalaman] = useState(1);
 
   const [pdfHtml, setPdfHtml] = useState<string | null>(null);
   const [pdfFileName, setPdfFileName] = useState("");
   const [pdfBuilding, setPdfBuilding] = useState(false);
 
-  // Preview state
   const [preview, setPreview] = useState<ReportWithTrainer | null>(null);
   const [previewPhotos, setPreviewPhotos] = useState<ReportPhoto[]>([]);
   const [previewLoadingPhotos, setPreviewLoadingPhotos] = useState(false);
@@ -706,7 +768,6 @@ function LaporanBulananPage() {
     null,
   );
 
-  // Hapus state
   const [hapusAction, setHapusAction] = useState<ReportWithTrainer | null>(null);
   const [hapusConfirmText, setHapusConfirmText] = useState("");
 
@@ -759,6 +820,18 @@ function LaporanBulananPage() {
     );
   }, [reports, jenisKegiatan]);
 
+  // Pagination
+  const totalHalaman = Math.max(1, Math.ceil(filteredReports.length / PER_HALAMAN));
+  const halamanAman = Math.min(halaman, totalHalaman);
+  const laporanTampil = useMemo(
+    () =>
+      filteredReports.slice(
+        (halamanAman - 1) * PER_HALAMAN,
+        halamanAman * PER_HALAMAN,
+      ),
+    [filteredReports, halamanAman],
+  );
+
   const stats = useMemo(() => {
     const total = filteredReports.length;
 
@@ -797,6 +870,7 @@ function LaporanBulananPage() {
     setStatus("semua");
     setJenisKegiatan("semua");
     setCari("");
+    setHalaman(1);
   };
 
   const hasFilter =
@@ -808,7 +882,7 @@ function LaporanBulananPage() {
     bulan !== bulanIni();
 
   /* =========================================================
-     HAPUS MUTATION
+     HAPUS
   ========================================================= */
   const hapusMutation = useMutation({
     mutationFn: async (report: ReportWithTrainer) => {
@@ -826,9 +900,6 @@ function LaporanBulananPage() {
     },
   });
 
-  /* =========================================================
-     PREVIEW FOTO
-  ========================================================= */
   async function bukaPreview(report: ReportWithTrainer) {
     setPreview(report);
     setPreviewPhotos([]);
@@ -850,7 +921,7 @@ function LaporanBulananPage() {
   }
 
   /* =========================================================
-     BUILD PDF (LOGIKA TETAP PERSIS KAYAK ASLINYA)
+     BUILD PDF
   ========================================================= */
   async function buildHTML(): Promise<{ html: string; fileName: string } | null> {
     if (filteredReports.length === 0) {
@@ -1323,7 +1394,6 @@ function LaporanBulananPage() {
         </Button>
       }
     >
-      {/* FILTER */}
       <Panel className="mb-5">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -1344,7 +1414,7 @@ function LaporanBulananPage() {
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">Bulan</p>
-            <Select value={bulan} onValueChange={setBulan}>
+            <Select value={bulan} onValueChange={(v) => { setBulan(v); setHalaman(1); }}>
               <SelectTrigger>
                 <SelectValue placeholder="Pilih bulan" />
               </SelectTrigger>
@@ -1362,7 +1432,7 @@ function LaporanBulananPage() {
             <p className="text-xs font-medium text-muted-foreground">
               Dari tanggal
             </p>
-            <Input type="date" value={dari} onChange={(e) => setDari(e.target.value)} />
+            <Input type="date" value={dari} onChange={(e) => { setDari(e.target.value); setHalaman(1); }} />
           </div>
 
           <div className="space-y-1.5">
@@ -1372,7 +1442,7 @@ function LaporanBulananPage() {
             <Input
               type="date"
               value={sampai}
-              onChange={(e) => setSampai(e.target.value)}
+              onChange={(e) => { setSampai(e.target.value); setHalaman(1); }}
             />
           </div>
 
@@ -1380,7 +1450,7 @@ function LaporanBulananPage() {
             <p className="text-xs font-medium text-muted-foreground">
               Jenis kegiatan
             </p>
-            <Select value={jenisKegiatan} onValueChange={setJenisKegiatan}>
+            <Select value={jenisKegiatan} onValueChange={(v) => { setJenisKegiatan(v); setHalaman(1); }}>
               <SelectTrigger>
                 <SelectValue placeholder="Semua Jenis" />
               </SelectTrigger>
@@ -1399,7 +1469,7 @@ function LaporanBulananPage() {
             <p className="text-xs font-medium text-muted-foreground">Status</p>
             <Select
               value={status}
-              onValueChange={(value) => setStatus(value as FilterStatus)}
+              onValueChange={(value) => { setStatus(value as FilterStatus); setHalaman(1); }}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Semua Status" />
@@ -1424,7 +1494,7 @@ function LaporanBulananPage() {
                 className="pl-9"
                 placeholder="Materi, kegiatan, kelas…"
                 value={cari}
-                onChange={(e) => setCari(e.target.value)}
+                onChange={(e) => { setCari(e.target.value); setHalaman(1); }}
               />
             </div>
           </div>
@@ -1439,7 +1509,6 @@ function LaporanBulananPage() {
         </p>
       </Panel>
 
-      {/* STAT CARDS 4 SEJAJAR */}
       <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           title="Total Laporan"
@@ -1471,7 +1540,6 @@ function LaporanBulananPage() {
         />
       </div>
 
-      {/* 2 PANEL BAWAH: Peserta + Periode */}
       <div className="mb-5 grid gap-4 sm:grid-cols-2">
         <Panel>
           <div className="flex items-center gap-3">
@@ -1503,7 +1571,6 @@ function LaporanBulananPage() {
         </Panel>
       </div>
 
-      {/* CHART ROW 1: Bar + Donut */}
       <div className="mb-5 grid gap-5 xl:grid-cols-[1.5fr_1fr]">
         <Panel>
           <div className="mb-5 flex items-center gap-2">
@@ -1537,7 +1604,6 @@ function LaporanBulananPage() {
         </Panel>
       </div>
 
-      {/* CHART ROW 2: Horizontal bar + Ringkasan */}
       <div className="mb-5 grid gap-5 xl:grid-cols-2">
         <Panel>
           <div className="mb-5 flex items-center gap-2">
@@ -1571,7 +1637,6 @@ function LaporanBulananPage() {
         </Panel>
       </div>
 
-      {/* TABEL DAFTAR */}
       <Panel className="overflow-hidden p-0">
         <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
@@ -1616,105 +1681,115 @@ function LaporanBulananPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/20 text-left">
-                  <th className="eyebrow px-4 py-3 text-muted-foreground">No</th>
-                  <th className="eyebrow px-4 py-3 text-muted-foreground">
-                    Tanggal
-                  </th>
-                  <th className="eyebrow px-4 py-3 text-muted-foreground">
-                    Peserta
-                  </th>
-                  <th className="eyebrow px-4 py-3 text-muted-foreground">
-                    Jenis
-                  </th>
-                  <th className="eyebrow px-4 py-3 text-muted-foreground">
-                    Lokasi
-                  </th>
-                  <th className="eyebrow px-4 py-3 text-muted-foreground">
-                    Masa
-                  </th>
-                  <th className="eyebrow px-4 py-3 text-muted-foreground">
-                    Status
-                  </th>
-                  <th className="eyebrow px-4 py-3 text-muted-foreground">
-                    Aksi
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredReports.map((r, index) => (
-                  <tr
-                    key={r.id}
-                    className="border-b border-border/60 transition-colors hover:bg-muted/20"
-                  >
-                    <td className="num px-4 py-3 text-muted-foreground">
-                      {index + 1}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      {formatTanggal(r.tanggal_kegiatan)}
-                    </td>
-                    <td className="max-w-[240px] px-4 py-3">
-                      <p className="truncate font-medium">
-                        {r.materi || "Tanpa materi"}
-                      </p>
-                      {r.kelas ? (
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          Kelas: {r.kelas}
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/20 text-left">
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">No</th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">
+                      Tanggal
+                    </th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">
+                      Peserta
+                    </th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">
+                      Jenis
+                    </th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">
+                      Lokasi
+                    </th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">
+                      Masa
+                    </th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">
+                      Status
+                    </th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">
+                      Aksi
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {laporanTampil.map((r, index) => (
+                    <tr
+                      key={r.id}
+                      className="border-b border-border/60 transition-colors hover:bg-muted/20"
+                    >
+                      <td className="num px-4 py-3 text-muted-foreground">
+                        {(halamanAman - 1) * PER_HALAMAN + index + 1}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        {formatTanggal(r.tanggal_kegiatan)}
+                      </td>
+                      <td className="max-w-[240px] px-4 py-3">
+                        <p className="truncate font-medium">
+                          {r.materi || "Tanpa materi"}
                         </p>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-                        {r.jenis_kegiatan || "Lainnya"}
-                      </span>
-                    </td>
-                    <td className="max-w-[160px] px-4 py-3 text-muted-foreground">
-                      <span className="line-clamp-2">{r.lokasi || "—"}</span>
-                    </td>
-                    <td className="num px-4 py-3">
-                      {r.jumlah_hadir ?? 0}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusPill status={r.status_laporan} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          title="Preview laporan"
-                          onClick={() => bukaPreview(r)}
-                        >
-                          <Eye className="size-4" />
-                        </Button>
-                        {isStaff ? (
+                        {r.kelas ? (
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            Kelas: {r.kelas}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                          {r.jenis_kegiatan || "Lainnya"}
+                        </span>
+                      </td>
+                      <td className="max-w-[160px] px-4 py-3 text-muted-foreground">
+                        <span className="line-clamp-2">{r.lokasi || "—"}</span>
+                      </td>
+                      <td className="num px-4 py-3">
+                        {r.jumlah_hadir ?? 0}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusPill status={r.status_laporan} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
                           <Button
                             size="icon"
                             variant="outline"
-                            title="Hapus laporan permanent"
-                            onClick={() => {
-                              setHapusAction(r);
-                              setHapusConfirmText("");
-                            }}
-                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            title="Preview laporan"
+                            onClick={() => bukaPreview(r)}
                           >
-                            <Trash2 className="size-4" />
+                            <Eye className="size-4" />
                           </Button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                          {isStaff ? (
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              title="Hapus laporan permanent"
+                              onClick={() => {
+                                setHapusAction(r);
+                                setHapusConfirmText("");
+                              }}
+                              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <Pagination
+              halaman={halamanAman}
+              totalHalaman={totalHalaman}
+              onPindah={(h) => {
+                setHalaman(h);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            />
+          </>
         )}
       </Panel>
 
-      {/* PDF PREVIEW MODAL */}
       {pdfHtml ? (
         <div className="fixed inset-0 z-50 flex flex-col bg-black/70 backdrop-blur-sm">
           <div className="flex items-center justify-between border-b border-white/10 bg-background/95 px-5 py-3">
@@ -1752,7 +1827,6 @@ function LaporanBulananPage() {
         </div>
       ) : null}
 
-      {/* PREVIEW DETAIL MODAL */}
       {preview ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
@@ -1926,7 +2000,6 @@ function LaporanBulananPage() {
         </div>
       ) : null}
 
-      {/* MODAL HAPUS PERMANENT */}
       {hapusAction ? (
         <Dialog
           open
@@ -2002,7 +2075,6 @@ function LaporanBulananPage() {
         </Dialog>
       ) : null}
 
-      {/* LIGHTBOX */}
       {lightbox ? (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4"
