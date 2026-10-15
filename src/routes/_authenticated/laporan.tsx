@@ -3,6 +3,8 @@ import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  ChevronLeft,
+  ChevronRight,
   Download,
   Eye,
   Image as ImageIcon,
@@ -47,6 +49,8 @@ export const Route = createFileRoute("/_authenticated/laporan")({
   }),
   component: LaporanPage,
 });
+
+const PER_HALAMAN = 10;
 
 type FilterStatus =
   | "semua"
@@ -148,6 +152,85 @@ function StatusPill({ status }: { status: string | null | undefined }) {
     >
       {label}
     </span>
+  );
+}
+
+/* =========================================================
+   PAGINATION
+========================================================= */
+function Pagination({
+  halaman,
+  totalHalaman,
+  onPindah,
+}: {
+  halaman: number;
+  totalHalaman: number;
+  onPindah: (h: number) => void;
+}) {
+  if (totalHalaman <= 1) return null;
+
+  const halamanList: (number | "...")[] = [];
+  const maxTampil = 5;
+
+  if (totalHalaman <= maxTampil) {
+    for (let i = 1; i <= totalHalaman; i++) halamanList.push(i);
+  } else {
+    halamanList.push(1);
+    const start = Math.max(2, halaman - 1);
+    const end = Math.min(totalHalaman - 1, halaman + 1);
+    if (start > 2) halamanList.push("...");
+    for (let i = start; i <= end; i++) halamanList.push(i);
+    if (end < totalHalaman - 1) halamanList.push("...");
+    halamanList.push(totalHalaman);
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
+      <p className="text-xs text-muted-foreground">
+        Halaman <strong>{halaman}</strong> dari <strong>{totalHalaman}</strong>
+      </p>
+
+      <div className="flex items-center gap-1">
+        <Button
+          size="icon"
+          variant="outline"
+          disabled={halaman <= 1}
+          onClick={() => onPindah(halaman - 1)}
+        >
+          <ChevronLeft className="size-4" />
+        </Button>
+
+        {halamanList.map((h, i) =>
+          h === "..." ? (
+            <span
+              key={`dots-${i}`}
+              className="px-2 text-xs text-muted-foreground"
+            >
+              …
+            </span>
+          ) : (
+            <Button
+              key={h}
+              size="sm"
+              variant={h === halaman ? "default" : "outline"}
+              onClick={() => onPindah(h)}
+              className="min-w-9"
+            >
+              {h}
+            </Button>
+          ),
+        )}
+
+        <Button
+          size="icon"
+          variant="outline"
+          disabled={halaman >= totalHalaman}
+          onClick={() => onPindah(halaman + 1)}
+        >
+          <ChevronRight className="size-4" />
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -868,6 +951,7 @@ function LaporanPage() {
   const [trainerFilter, setTrainerFilter] = useState("semua");
   const [status, setStatus] = useState<FilterStatus>("semua");
   const [cari, setCari] = useState("");
+  const [halaman, setHalaman] = useState(1);
 
   const [preview, setPreview] = useState<ReportWithTrainer | null>(null);
   const [revisiReport, setRevisiReport] = useState<ReportWithTrainer | null>(
@@ -878,7 +962,6 @@ function LaporanPage() {
   const [catatanRevisi, setCatatanRevisi] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
 
-  // HAPUS STATE
   const [hapusAction, setHapusAction] = useState<ReportWithTrainer | null>(null);
   const [hapusConfirmText, setHapusConfirmText] = useState("");
 
@@ -925,6 +1008,18 @@ function LaporanPage() {
   });
 
   const daftarBulan = useMemo(() => listBulan(2026, 2040), []);
+
+  // Pagination
+  const totalHalaman = Math.max(1, Math.ceil(reports.length / PER_HALAMAN));
+  const halamanAman = Math.min(halaman, totalHalaman);
+  const laporanTampil = useMemo(
+    () =>
+      reports.slice(
+        (halamanAman - 1) * PER_HALAMAN,
+        halamanAman * PER_HALAMAN,
+      ),
+    [reports, halamanAman],
+  );
 
   async function refreshReports() {
     await queryClient.invalidateQueries({ queryKey: ["reports", "laporan"] });
@@ -1050,6 +1145,7 @@ function LaporanPage() {
     setTrainerFilter("semua");
     setStatus("semua");
     setCari("");
+    setHalaman(1);
   }
 
   const hasFilter =
@@ -1089,7 +1185,7 @@ function LaporanPage() {
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               Bulan
             </p>
-            <Select value={bulan} onValueChange={setBulan}>
+            <Select value={bulan} onValueChange={(v) => { setBulan(v); setHalaman(1); }}>
               <SelectTrigger>
                 <SelectValue placeholder="Pilih bulan" />
               </SelectTrigger>
@@ -1110,7 +1206,7 @@ function LaporanPage() {
             <Input
               type="date"
               value={dari}
-              onChange={(e) => setDari(e.target.value)}
+              onChange={(e) => { setDari(e.target.value); setHalaman(1); }}
               placeholder={awalBulan(bulan)}
             />
           </div>
@@ -1122,7 +1218,7 @@ function LaporanPage() {
             <Input
               type="date"
               value={sampai}
-              onChange={(e) => setSampai(e.target.value)}
+              onChange={(e) => { setSampai(e.target.value); setHalaman(1); }}
               placeholder={akhirBulan(bulan)}
             />
           </div>
@@ -1132,7 +1228,7 @@ function LaporanPage() {
               <p className="mb-1.5 text-xs font-medium text-muted-foreground">
                 Trainer
               </p>
-              <Select value={trainerFilter} onValueChange={setTrainerFilter}>
+              <Select value={trainerFilter} onValueChange={(v) => { setTrainerFilter(v); setHalaman(1); }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Semua trainer" />
                 </SelectTrigger>
@@ -1154,7 +1250,7 @@ function LaporanPage() {
             </p>
             <Select
               value={status}
-              onValueChange={(value) => setStatus(value as FilterStatus)}
+              onValueChange={(value) => { setStatus(value as FilterStatus); setHalaman(1); }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -1177,7 +1273,7 @@ function LaporanPage() {
             </p>
             <Input
               value={cari}
-              onChange={(e) => setCari(e.target.value)}
+              onChange={(e) => { setCari(e.target.value); setHalaman(1); }}
               placeholder="Materi, kegiatan, kelas..."
             />
           </div>
@@ -1258,13 +1354,13 @@ function LaporanPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {reports.map((r, index) => (
+                  {laporanTampil.map((r, index) => (
                     <tr
                       key={r.id}
                       className="border-b border-border/60 last:border-0"
                     >
                       <td className="num px-4 py-3 text-muted-foreground">
-                        {index + 1}
+                        {(halamanAman - 1) * PER_HALAMAN + index + 1}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
                         {formatTanggal(r.tanggal_kegiatan)}
@@ -1385,12 +1481,12 @@ function LaporanPage() {
             </div>
 
             <div className="divide-y divide-border md:hidden">
-              {reports.map((r, index) => (
+              {laporanTampil.map((r, index) => (
                 <div key={r.id} className="space-y-3 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-xs text-muted-foreground">
-                        No. {index + 1}
+                        No. {(halamanAman - 1) * PER_HALAMAN + index + 1}
                       </p>
                       <p className="mt-1 font-semibold">
                         {r.materi || "Tanpa materi"}
@@ -1517,6 +1613,15 @@ function LaporanPage() {
                 </div>
               ))}
             </div>
+
+            <Pagination
+              halaman={halamanAman}
+              totalHalaman={totalHalaman}
+              onPindah={(h) => {
+                setHalaman(h);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            />
           </>
         )}
       </Panel>
@@ -1700,7 +1805,6 @@ function LaporanPage() {
         </div>
       )}
 
-      {/* MODAL HAPUS PERMANENT */}
       {hapusAction && (
         <Dialog
           open
