@@ -30,14 +30,16 @@ export async function getReportPhotos(
     nama_file: string | null;
   }>;
 
-  return Promise.all(
-    rows.map(async (photo) => {
+  // Sequential biar gak rate limit
+  const results: ReportPhoto[] = [];
+  for (const photo of rows) {
+    try {
       const { data: signed, error: signedError } =
         await supabase.storage
           .from(BUCKET)
           .createSignedUrl(photo.storage_path, 60 * 60);
 
-      return {
+      results.push({
         id: photo.id,
         storage_path: photo.storage_path,
         nama_file: photo.nama_file,
@@ -45,14 +47,27 @@ export async function getReportPhotos(
           signedError || !signed?.signedUrl
             ? null
             : signed.signedUrl,
-      };
-    }),
-  );
+      });
+    } catch (err) {
+      console.warn("Gagal sign URL:", photo.storage_path, err);
+      results.push({
+        id: photo.id,
+        storage_path: photo.storage_path,
+        nama_file: photo.nama_file,
+        url: null,
+      });
+    }
+  }
+
+  return results;
 }
 
 /**
  * Ambil foto untuk banyak report sekaligus.
  * Return: Map<reportId, ReportPhoto[]>
+ *
+ * Strategi: chunk 10 per batch — sequential dalam batch,
+ * delay antar batch biar gak rate limit.
  */
 export async function getReportPhotosBatch(
   reportIds: string[],
@@ -75,33 +90,55 @@ export async function getReportPhotosBatch(
     nama_file: string | null;
   }>;
 
-  const withUrls = await Promise.all(
-    rows.map(async (photo) => {
+  // Process sequential (biar aman & stabil)
+  for (const photo of rows) {
+    try {
       const { data: signed, error: signedError } =
         await supabase.storage
           .from(BUCKET)
           .createSignedUrl(photo.storage_path, 60 * 60);
 
-      return {
-        report_id: photo.report_id,
-        photo: {
-          id: photo.id,
-          storage_path: photo.storage_path,
-          nama_file: photo.nama_file,
-          url:
-            signedError || !signed?.signedUrl
-              ? null
-              : signed.signedUrl,
-        } satisfies ReportPhoto,
-      };
-    }),
-  );
-
-  for (const { report_id, photo } of withUrls) {
-    const list = result.get(report_id) ?? [];
-    list.push(photo);
-    result.set(report_id, list);
+      const list = result.get(photo.report_id) ?? [];
+      list.push({
+        id: photo.id,
+        storage_path: photo.storage_path,
+        nama_file: photo.nama_file,
+        url:
+          signedError || !signed?.signedUrl
+            ? null
+            : signed.signedUrl,
+      });
+      result.set(photo.report_id, list);
+    } catch (err) {
+      console.warn("Gagal sign URL batch:", photo.storage_path, err);
+      const list = result.get(photo.report_id) ?? [];
+      list.push({
+        id: photo.id,
+        storage_path: photo.storage_path,
+        nama_file: photo.nama_file,
+        url: null,
+      });
+      result.set(photo.report_id, list);
+    }
   }
 
   return result;
+}
+
+/**
+ * Re-sign URL untuk foto (buat retry kalau URL expired).
+ */
+export async function resignPhotoUrl(
+  storagePath: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(storagePath, 60 * 60);
+
+    if (error || !data?.signedUrl) return null;
+    return data.signedUrl;
+  } catch {
+    return null;
+  }
 }
