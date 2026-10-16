@@ -867,18 +867,30 @@ function MonitoringLaporanPage() {
     }
 
     const photoDataMap = new Map<string, string[]>();
-    await Promise.all(
-      laporanPeriode.map(async (r) => {
-        const fotos = (photosMap.get(r.id) ?? []).filter((p) => p.url);
-        const dataUrls: string[] = [];
-        for (const foto of fotos.slice(0, 5)) {
-          if (!foto.url) continue;
-          const dataUrl = await urlToDataUrlWithTimeout(foto.url);
-          if (dataUrl) dataUrls.push(dataUrl);
-        }
-        photoDataMap.set(r.id, dataUrls);
-      }),
-    );
+const totalLaporan = laporanPeriode.length;
+
+// Sequential download biar gak rate limit
+for (let i = 0; i < laporanPeriode.length; i++) {
+  const r = laporanPeriode[i];
+  const fotos = (photosMap.get(r.id) ?? []).filter((p) => p.url);
+  const dataUrls: string[] = [];
+
+  for (const foto of fotos.slice(0, 5)) {
+    if (!foto.url) continue;
+    let dataUrl = await urlToDataUrlWithTimeout(foto.url);
+
+    // Retry 1x kalau gagal
+    if (!dataUrl) {
+      console.warn(`Retry foto: ${foto.storage_path}`);
+      dataUrl = await urlToDataUrlWithTimeout(foto.url, 15000);
+    }
+
+    if (dataUrl) dataUrls.push(dataUrl);
+  }
+
+  photoDataMap.set(r.id, dataUrls);
+  console.log(`Download foto ${i + 1}/${totalLaporan} — ${dataUrls.length} foto`);
+}
 
     let logoDataUrl: string | null = null;
     if (brandingLogo) {
