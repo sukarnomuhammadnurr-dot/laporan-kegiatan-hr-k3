@@ -551,7 +551,7 @@ async function urlToDataUrl(url: string): Promise<string | null> {
 
 async function urlToDataUrlWithTimeout(
   url: string,
-  timeoutMs = 8000,
+  timeoutMs = 20000,
 ): Promise<string | null> {
   return Promise.race([
     urlToDataUrl(url),
