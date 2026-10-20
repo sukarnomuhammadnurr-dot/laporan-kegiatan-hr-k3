@@ -1099,10 +1099,24 @@ function DetailPesanModal({
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Hasil Parser
                 </p>
-                <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                                <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                   <Row label="Trainer" value={parsed.trainerNama || "—"} />
                   <Row label="Materi" value={parsed.materi.join(", ") || "—"} />
                   <Row label="Kelas" value={parsed.kelas || "—"} />
+                  <Row
+                    label="Tanggal Kegiatan"
+                    value={
+                      parsed.tanggalKegiatan
+                        ? new Date(
+                            `${parsed.tanggalKegiatan}T00:00:00`,
+                          ).toLocaleDateString("id-ID", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })
+                        : "⚠️ Otomatis (tanggal kirim WA)"
+                    }
+                  />
                   <Row
                     label="Jumlah Peserta"
                     value={String(parsed.jumlahPeserta ?? "—")}
