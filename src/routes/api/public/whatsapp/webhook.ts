@@ -253,10 +253,19 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
     // Lokasi: auto dari nama kegiatan
     const lokasiFinal = tentukanLokasi(jadwal.nama_kegiatan);
 
-    // Tanggal kegiatan — pakai WIT (UTC+9)
-    const tanggal = new Date(new Date(tsIso).getTime() + 9 * 3600 * 1000)
-      .toISOString()
-      .slice(0, 10);
+        // Tanggal kegiatan: prioritas dari WA, fallback ke tanggal kirim
+    let tanggal: string;
+    let tanggalOtomatis = true;
+
+    if (parsed.tanggalKegiatan) {
+      tanggal = parsed.tanggalKegiatan;
+      tanggalOtomatis = false;
+    } else {
+      // Fallback: tanggal kirim WA dalam WIT (UTC+9)
+      tanggal = new Date(new Date(tsIso).getTime() + 9 * 3600 * 1000)
+        .toISOString()
+        .slice(0, 10);
+    }
 
     const { data: report, error: rErr } = await supabase
       .from("reports")
