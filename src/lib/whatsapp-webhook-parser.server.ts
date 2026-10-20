@@ -84,7 +84,7 @@ export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
     trainerNama = removeTrailingPunctuation(normalizeText(trainerMatch[1]));
   }
 
-    // KELAS
+      // KELAS
   const kelasMatch = source.match(
     /\bkelas\s*:?\s*([A-Za-z0-9][A-Za-z0-9\s\-]*?)(?=\s*(?:tanggal|jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan|materi|trainer)\s*:?\s*|$)/i,
   );
@@ -116,9 +116,9 @@ export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
     }
   }
 
-  // MATERI
+    // MATERI
   const materiMatch = source.match(
-    /\bmateri\s*:?\s*(.+?)(?=\s*(?:trainer|kelas|jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan)\s*:?\s*|$)/i,
+    /\bmateri\s*:?\s*(.+?)(?=\s*(?:trainer|kelas|tanggal|jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan)\s*:?\s*|$)/i,
   );
   if (materiMatch?.[1]) {
     materi = parseMaterials(materiMatch[1]);
