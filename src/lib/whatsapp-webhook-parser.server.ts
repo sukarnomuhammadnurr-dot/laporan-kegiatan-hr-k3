@@ -76,9 +76,9 @@ export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
   let jumlahTidakHadir: number | null = null;
   let jumlahTambahan = 0;
 
-  // TRAINER
+    // TRAINER
   const trainerMatch = source.match(
-    /\btrainer\s*:?\s*(.+?)(?=\s*(?:kelas|jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan)\s*:?\s*|$)/i,
+    /\btrainer\s*:?\s*(.+?)(?=\s*(?:kelas|tanggal|jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan)\s*:?\s*|$)/i,
   );
   if (trainerMatch?.[1]) {
     trainerNama = removeTrailingPunctuation(normalizeText(trainerMatch[1]));
