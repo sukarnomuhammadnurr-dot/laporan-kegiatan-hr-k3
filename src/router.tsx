@@ -6,11 +6,10 @@ export const getRouter = () => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 1000 * 60 * 5,      // 5 menit — data dianggap fresh
-        gcTime: 1000 * 60 * 10,        // 10 menit — cache disimpan
-        refetchOnWindowFocus: false,   // gak refetch tiap balik tab
-        refetchOnMount: false,         // gak refetch tiap mount
-        retry: 1,                      // retry 1x aja kalau gagal
+        staleTime: 1000 * 60 * 5,
+        gcTime: 1000 * 60 * 10,
+        refetchOnWindowFocus: false,
+        retry: 1,
       },
     },
   });
@@ -19,9 +18,8 @@ export const getRouter = () => {
     routeTree,
     context: { queryClient },
     scrollRestoration: true,
-    defaultPreload: "intent",            // ← KUNCI: preload pas hover
-    defaultPreloadStaleTime: 1000 * 60,  // ← preload valid 1 menit
-    defaultPreloadDelay: 50,             // ← delay 50ms (biar gak spam)
+    defaultPreload: "intent",
+    // defaultPreloadStaleTime: default (30 detik) — biarin aja
   });
 
   return router;
