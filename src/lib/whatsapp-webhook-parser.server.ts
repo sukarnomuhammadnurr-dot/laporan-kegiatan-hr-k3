@@ -7,7 +7,8 @@
 export type ParsedWhatsAppReport = {
   trainerNama: string | null;
   materi: string[];
-  kelas: string | null;           // ← BARU
+  kelas: string | null;
+  tanggalKegiatan: string | null;    // ← BARU (YYYY-MM-DD)
   jumlahPeserta: number | null;
   jumlahHadir: number | null;
   jumlahTidakHadir: number | null;
