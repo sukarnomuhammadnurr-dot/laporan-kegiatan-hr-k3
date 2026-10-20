@@ -151,10 +151,11 @@ export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
     }
   }
 
-  return {
+    return {
     trainerNama,
     materi,
     kelas,
+    tanggalKegiatan,
     jumlahPeserta,
     jumlahHadir,
     jumlahTidakHadir,
