@@ -70,6 +70,7 @@ export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
   let trainerNama: string | null = null;
   let materi: string[] = [];
   let kelas: string | null = null;
+  let tanggalKegiatan: string | null = null;
   let jumlahPeserta: number | null = null;
   let jumlahHadir: number | null = null;
   let jumlahTidakHadir: number | null = null;
