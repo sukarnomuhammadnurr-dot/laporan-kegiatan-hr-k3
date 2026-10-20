@@ -333,12 +333,16 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
       }
     }
 
-    await setStatus({
+        await setStatus({
       status: "berhasil",
       trainer_id: trainerId,
       report_id: report.id,
       media_storage_path: storagePath,
-      error_reason: null,
+      error_reason: tanggalOtomatis
+        ? `⚠️ Tanggal kegiatan otomatis pakai tanggal kirim WA (${tanggal}). ` +
+          `Trainer tidak mencantumkan "Tanggal:" di pesan. ` +
+          `Cek & edit di halaman Laporan kalau perlu.`
+        : null,
     });
   } catch (err) {
     console.error("Proses pesan gagal:", err);
