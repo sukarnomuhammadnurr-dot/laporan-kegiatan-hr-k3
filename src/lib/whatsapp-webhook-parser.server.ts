@@ -88,8 +88,32 @@ export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
   const kelasMatch = source.match(
     /\bkelas\s*:?\s*([A-Za-z0-9][A-Za-z0-9\s\-]*?)(?=\s*(?:jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan|materi|trainer)\s*:?\s*|$)/i,
   );
-  if (kelasMatch?.[1]) {
+    if (kelasMatch?.[1]) {
     kelas = removeTrailingPunctuation(normalizeText(kelasMatch[1]));
+  }
+
+  // TANGGAL KEGIATAN — format DD-MM-YYYY
+  const tanggalMatch = source.match(
+    /\btanggal\s*:?\s*(\d{1,2})[-\s](\d{1,2})[-\s](\d{2,4})/i,
+  );
+
+  if (tanggalMatch) {
+    const day = Number(tanggalMatch[1]);
+    const month = Number(tanggalMatch[2]);
+    let year = Number(tanggalMatch[3]);
+
+    // Kalau tahun 2 digit (26) → jadi 2026
+    if (year < 100) {
+      year = year < 50 ? 2000 + year : 1900 + year;
+    }
+
+    // Validasi range
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 2000 && year <= 2100) {
+      const pad = (n: number) => String(n).padStart(2, "0");
+      tanggalKegiatan = `${year}-${pad(month)}-${pad(day)}`;
+    } else {
+      console.warn("Tanggal invalid:", tanggalMatch[0]);
+    }
   }
 
   // MATERI
