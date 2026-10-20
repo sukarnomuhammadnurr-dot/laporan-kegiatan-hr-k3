@@ -84,9 +84,9 @@ export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
     trainerNama = removeTrailingPunctuation(normalizeText(trainerMatch[1]));
   }
 
-  // KELAS — support "Kelas : 2A" / "Kelas: 2A" / "Kelas 2A"
+    // KELAS
   const kelasMatch = source.match(
-    /\bkelas\s*:?\s*([A-Za-z0-9][A-Za-z0-9\s\-]*?)(?=\s*(?:jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan|materi|trainer)\s*:?\s*|$)/i,
+    /\bkelas\s*:?\s*([A-Za-z0-9][A-Za-z0-9\s\-]*?)(?=\s*(?:tanggal|jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan|materi|trainer)\s*:?\s*|$)/i,
   );
     if (kelasMatch?.[1]) {
     kelas = removeTrailingPunctuation(normalizeText(kelasMatch[1]));
