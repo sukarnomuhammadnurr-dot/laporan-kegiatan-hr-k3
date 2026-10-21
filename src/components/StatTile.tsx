@@ -8,6 +8,7 @@ import {
   FileText,
   type LucideIcon,
 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 
 import { cn } from "@/lib/utils";
 
@@ -86,6 +87,19 @@ const ICON_MAP: Record<string, LucideIcon> = {
   sent: CalendarDays,
 };
 
+type StatTileProps = {
+  label: string;
+  value: string | number;
+  hint?: string;
+  tone?: Tone;
+  icon?: LucideIcon;
+  onClick?: () => void;
+  /** Kalau diisi, kartu jadi link ke route ini */
+  to?: string;
+  /** Query params saat klik (dipakai bareng `to`) */
+  search?: Record<string, string | undefined>;
+};
+
 export function StatTile({
   label,
   value,
@@ -93,27 +107,14 @@ export function StatTile({
   tone = "default",
   icon,
   onClick,
-}: {
-  label: string;
-  value: string | number;
-  hint?: string;
-  tone?: Tone;
-  icon?: LucideIcon;
-  onClick?: () => void;
-}) {
+  to,
+  search,
+}: StatTileProps) {
   const config = TONE_CONFIG[tone];
   const Icon = icon ?? ICON_MAP[tone] ?? FileText;
 
-  return (
-    <div
-      className={cn(
-        "relative overflow-hidden rounded-2xl border p-4 transition-all hover:shadow-md",
-        config.bg,
-        config.border,
-        onClick && "cursor-pointer",
-      )}
-      onClick={onClick}
-    >
+  const content = (
+    <>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold text-foreground/70">{label}</p>
@@ -135,7 +136,6 @@ export function StatTile({
         </div>
 
         <div className="flex shrink-0 flex-col items-center gap-3">
-          {/* Icon bulat */}
           <div
             className={cn(
               "grid size-9 place-items-center rounded-full",
@@ -148,7 +148,6 @@ export function StatTile({
         </div>
       </div>
 
-      {/* Arrow di kanan bawah */}
       <div
         className={cn(
           "absolute right-3 bottom-3 grid size-7 place-items-center rounded-full",
@@ -157,6 +156,34 @@ export function StatTile({
       >
         <ArrowRight className="size-3.5" />
       </div>
+    </>
+  );
+
+  const baseClassName = cn(
+    "relative overflow-hidden rounded-2xl border p-4 transition-all",
+    config.bg,
+    config.border,
+    (onClick || to) && "cursor-pointer hover:-translate-y-0.5 hover:shadow-md",
+  );
+
+  // Kalau ada `to` → jadi link
+  if (to) {
+    return (
+      <Link
+        to={to}
+        search={search as any}
+        className={baseClassName}
+        onClick={onClick}
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  // Kalau cuma `onClick` → jadi button-like div
+  return (
+    <div className={baseClassName} onClick={onClick}>
+      {content}
     </div>
   );
 }
