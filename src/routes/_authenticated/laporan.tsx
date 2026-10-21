@@ -944,12 +944,17 @@ function escapeHtml(value: string | number | null | undefined) {
 function LaporanPage() {
   const { isStaff, isTrainer, trainer, user, loading } = useCurrentUser();
   const queryClient = useQueryClient();
+  const searchParams = Route.useSearch();
 
-  const [bulan, setBulan] = useState<string>(bulanIni());
-  const [dari, setDari] = useState("");
-  const [sampai, setSampai] = useState("");
+  const [bulan, setBulan] = useState<string>(
+    searchParams.bulan || bulanIni()
+  );
+  const [dari, setDari] = useState(searchParams.dari || "");
+  const [sampai, setSampai] = useState(searchParams.sampai || "");
   const [trainerFilter, setTrainerFilter] = useState("semua");
-  const [status, setStatus] = useState<FilterStatus>("semua");
+  const [status, setStatus] = useState<FilterStatus>(
+    (searchParams.status as FilterStatus) || "semua"
+  );
   const [cari, setCari] = useState("");
   const [halaman, setHalaman] = useState(1);
 
