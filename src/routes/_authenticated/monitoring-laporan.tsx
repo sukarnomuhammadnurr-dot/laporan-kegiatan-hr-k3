@@ -153,6 +153,51 @@ function escapeHtml(value: string | number | null | undefined) {
     .replaceAll("'", "&#039;");
 }
 
+/* ============ HELPER DURASI ============ */
+
+/**
+ * Hitung durasi dalam menit dari jam_mulai dan jam_selesai (format HH:MM).
+ * Kalau jam_selesai lebih kecil dari jam_mulai (lewat tengah malam), tambah 24 jam.
+ */
+function hitungDurasiMenit(
+  jamMulai: string | null | undefined,
+  jamSelesai: string | null | undefined,
+): number {
+  if (!jamMulai || !jamSelesai) return 0;
+
+  const [h1, m1] = jamMulai.slice(0, 5).split(":").map(Number);
+  const [h2, m2] = jamSelesai.slice(0, 5).split(":").map(Number);
+
+  if (
+    Number.isNaN(h1) ||
+    Number.isNaN(m1) ||
+    Number.isNaN(h2) ||
+    Number.isNaN(m2)
+  ) {
+    return 0;
+  }
+
+  let menit = h2! * 60 + m2! - (h1! * 60 + m1!);
+  if (menit < 0) menit += 24 * 60;
+  return menit;
+}
+
+/**
+ * Format menit jadi "X jam Y menit" (atau "Y menit" kalau < 60).
+ */
+function formatDurasi(totalMenit: number): string {
+  if (!totalMenit || totalMenit <= 0) return "0 menit";
+
+  const jam = Math.floor(totalMenit / 60);
+  const menit = totalMenit % 60;
+
+  if (jam === 0) return `${menit} menit`;
+  if (menit === 0) return `${jam} jam`;
+  return `${jam} jam ${menit} menit`;
+}
+
+/* ============ STATUS PILL ============ */
+
 function StatusPill({ status }: { status: string | null | undefined }) {
   const config =
     status === "terverifikasi"
@@ -492,14 +537,16 @@ function Pagination({
           variant="outline"
           disabled={halaman <= 1}
           onClick={() => onPindah(halaman - 1)}
-          title="Halaman sebelumnya"
         >
           <ChevronLeft className="size-4" />
         </Button>
 
         {halamanList.map((h, i) =>
           h === "..." ? (
-            <span key={`dots-${i}`} className="px-2 text-xs text-muted-foreground">
+            <span
+              key={`dots-${i}`}
+              className="px-2 text-xs text-muted-foreground"
+            >
               …
             </span>
           ) : (
@@ -520,7 +567,6 @@ function Pagination({
           variant="outline"
           disabled={halaman >= totalHalaman}
           onClick={() => onPindah(halaman + 1)}
-          title="Halaman berikutnya"
         >
           <ChevronRight className="size-4" />
         </Button>
@@ -656,7 +702,6 @@ function MonitoringLaporanPage() {
     );
   }, [reports, jenisKegiatan]);
 
-  // Pagination — potong data buat tabel
   const totalHalaman = Math.max(1, Math.ceil(filteredReports.length / PER_HALAMAN));
   const halamanAman = Math.min(halaman, totalHalaman);
   const laporanTampil = useMemo(
@@ -722,7 +767,6 @@ function MonitoringLaporanPage() {
     cari ||
     bulan !== bulanIni();
 
-  // ---------- Aksi verifikasi ----------
   const verifikasiMutation = useMutation({
     mutationFn: async ({
       report,
@@ -787,7 +831,6 @@ function MonitoringLaporanPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // ---------- Aksi HAPUS PERMANENT ----------
   const hapusMutation = useMutation({
     mutationFn: async (report: ReportWithTrainer) => {
       await hapusLaporanPermanent(report.id);
@@ -833,7 +876,7 @@ function MonitoringLaporanPage() {
   }
 
   // =============================================================
-  // BUILD HTML PDF
+  // BUILD HTML PDF (DENGAN TOTAL DURASI)
   // =============================================================
   async function buildHTML(): Promise<{ html: string; fileName: string } | null> {
     if (filteredReports.length === 0) {
@@ -867,30 +910,28 @@ function MonitoringLaporanPage() {
     }
 
     const photoDataMap = new Map<string, string[]>();
-const totalLaporan = laporanPeriode.length;
+    const totalLaporan = laporanPeriode.length;
 
-// Sequential download biar gak rate limit
-for (let i = 0; i < laporanPeriode.length; i++) {
-  const r = laporanPeriode[i];
-  const fotos = (photosMap.get(r.id) ?? []).filter((p) => p.url);
-  const dataUrls: string[] = [];
+    for (let i = 0; i < laporanPeriode.length; i++) {
+      const r = laporanPeriode[i];
+      const fotos = (photosMap.get(r.id) ?? []).filter((p) => p.url);
+      const dataUrls: string[] = [];
 
-  for (const foto of fotos.slice(0, 5)) {
-    if (!foto.url) continue;
-    let dataUrl = await urlToDataUrlWithTimeout(foto.url);
+      for (const foto of fotos.slice(0, 3)) {
+        if (!foto.url) continue;
+        let dataUrl = await urlToDataUrlWithTimeout(foto.url);
 
-    // Retry 1x kalau gagal
-    if (!dataUrl) {
-      console.warn(`Retry foto: ${foto.storage_path}`);
-      dataUrl = await urlToDataUrlWithTimeout(foto.url, 15000);
+        if (!dataUrl) {
+          console.warn(`Retry foto: ${foto.storage_path}`);
+          dataUrl = await urlToDataUrlWithTimeout(foto.url, 15000);
+        }
+
+        if (dataUrl) dataUrls.push(dataUrl);
+      }
+
+      photoDataMap.set(r.id, dataUrls);
+      console.log(`Download foto ${i + 1}/${totalLaporan} — ${dataUrls.length} foto`);
     }
-
-    if (dataUrl) dataUrls.push(dataUrl);
-  }
-
-  photoDataMap.set(r.id, dataUrls);
-  console.log(`Download foto ${i + 1}/${totalLaporan} — ${dataUrls.length} foto`);
-}
 
     let logoDataUrl: string | null = null;
     if (brandingLogo) {
@@ -1041,6 +1082,13 @@ for (let i = 0; i < laporanPeriode.length; i++) {
           0,
         );
 
+        // Total durasi trainer ini
+        const totalMenitTrainer = list.reduce(
+          (sum, r) =>
+            sum + hitungDurasiMenit(r.jam_mulai, r.jam_selesai),
+          0,
+        );
+
         const isFirst = trainerIdx === 0;
 
         const logoHtml = logoDataUrl
@@ -1116,8 +1164,11 @@ for (let i = 0; i < laporanPeriode.length; i++) {
             </table>
 
             <div class="summary">
-              Total kegiatan: ${list.length} &nbsp;•&nbsp; 
-              Total peserta hadir: ${totalHadirTrainer.toLocaleString("id-ID")} orang
+              <span>Total kegiatan: <strong>${list.length}</strong></span>
+              <span class="summary-sep">•</span>
+              <span>Total peserta hadir: <strong>${totalHadirTrainer.toLocaleString("id-ID")}</strong> orang</span>
+              <span class="summary-sep">•</span>
+              <span>Total durasi: <strong>${formatDurasi(totalMenitTrainer)}</strong></span>
             </div>
 
             <div class="footer">
@@ -1236,7 +1287,10 @@ for (let i = 0; i < laporanPeriode.length; i++) {
       border-radius: 6px; padding: 8px 12px;
       font-size: 9px; color: #124a82; font-weight: 700;
       margin-top: 6px;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
     }
+    .summary strong { color: #0b5aa5; }
+    .summary-sep { color: #8ba0b3; }
     .footer {
       margin-top: 10px; padding-top: 6px;
       border-top: 1px solid #d4e4f2;
