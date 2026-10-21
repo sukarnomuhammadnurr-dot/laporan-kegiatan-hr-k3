@@ -1185,12 +1185,15 @@ function LaporanBulananPage() {
       grid-column: span 2; height: 130px;
     }
     .no-photo { padding: 20px 4px; color: #8ba0b3; font-size: 8px; }
-    .summary {
+        .summary {
       background: #f0f7ff; border: 1.5px solid #b8d9f7;
       border-radius: 6px; padding: 8px 12px;
       font-size: 9px; color: #124a82; font-weight: 700;
       margin-top: 6px;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
     }
+    .summary strong { color: #0b5aa5; }
+    .summary-sep { color: #8ba0b3; }
     .footer {
       margin-top: 10px; padding-top: 6px;
       border-top: 1px solid #d4e4f2;
