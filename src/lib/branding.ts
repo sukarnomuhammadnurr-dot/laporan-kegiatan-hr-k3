@@ -115,14 +115,25 @@ export async function uploadGambar(
   if (!TIPE_GAMBAR.includes(file.type))
     throw new Error("Format harus JPG, JPEG, PNG, atau WEBP.");
   if (file.size > 5 * 1024 * 1024) throw new Error("Ukuran maksimal 5 MB.");
+
   const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
   const path = `${folder}/${Date.now()}-${Math.random()
     .toString(36)
     .slice(2, 8)}.${ext}`;
+
   const { error } = await supabase.storage
     .from(BUCKET)
-    .upload(path, file, { contentType: file.type });
-  if (error) throw new Error("Gagal mengunggah gambar.");
+    .upload(path, file, {
+      contentType: file.type,
+      cacheControl: "3600",   // ← INI WAJIB (string, bukan number)
+    });
+
+  if (error) {
+    // Tampilkan error detail biar keliatan
+    console.error("Upload error:", error);
+    throw new Error(`Gagal mengunggah gambar: ${error.message}`);
+  }
+
   return path;
 }
 
