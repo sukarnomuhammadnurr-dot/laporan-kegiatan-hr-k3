@@ -1273,9 +1273,12 @@ function LaporanBulananPage() {
       </tbody>
     </table>
 
-    <div class="summary">
-      Total kegiatan: ${laporanPeriode.length} &nbsp;•&nbsp; 
-      Total peserta hadir: ${totalHadirTrainer.toLocaleString("id-ID")} orang
+        <div class="summary">
+      <span>Total kegiatan: <strong>${laporanPeriode.length}</strong></span>
+      <span class="summary-sep">•</span>
+      <span>Total peserta hadir: <strong>${totalHadirTrainer.toLocaleString("id-ID")}</strong> orang</span>
+      <span class="summary-sep">•</span>
+      <span>Total durasi: <strong>${formatDurasi(totalMenit)}</strong></span>
     </div>
 
     <div class="footer">
