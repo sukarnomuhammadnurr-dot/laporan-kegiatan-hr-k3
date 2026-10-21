@@ -1132,7 +1132,7 @@ function LaporanPage() {
     }
   }
 
-  async function handleHapus() {
+   async function handleHapus() {
     if (!hapusAction) return;
     try {
       await hapusLaporanPermanent(hapusAction.id);
@@ -1143,9 +1143,10 @@ function LaporanPage() {
       await refreshReports();
     } catch (error) {
       console.error("Gagal hapus:", error);
-      alert(
-        error instanceof Error ? error.message : "Gagal menghapus laporan.",
-      );
+      const msg =
+        error instanceof Error ? error.message : "Gagal menghapus laporan.";
+      // Tampilin error detail biar keliatan penyebabnya
+      alert(`GAGAL HAPUS: ${msg}`);
     }
   }
 
