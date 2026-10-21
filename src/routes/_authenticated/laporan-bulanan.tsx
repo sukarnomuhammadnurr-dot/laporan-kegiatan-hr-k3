@@ -159,6 +159,41 @@ function escapeHtml(value: string | number | null | undefined) {
     .replaceAll("'", "&#039;");
 }
 
+/* ============ HELPER DURASI ============ */
+function hitungDurasiMenit(
+  jamMulai: string | null | undefined,
+  jamSelesai: string | null | undefined,
+): number {
+  if (!jamMulai || !jamSelesai) return 0;
+
+  const [h1, m1] = jamMulai.slice(0, 5).split(":").map(Number);
+  const [h2, m2] = jamSelesai.slice(0, 5).split(":").map(Number);
+
+  if (
+    Number.isNaN(h1) ||
+    Number.isNaN(m1) ||
+    Number.isNaN(h2) ||
+    Number.isNaN(m2)
+  ) {
+    return 0;
+  }
+
+  let menit = h2! * 60 + m2! - (h1! * 60 + m1!);
+  if (menit < 0) menit += 24 * 60;
+  return menit;
+}
+
+function formatDurasi(totalMenit: number): string {
+  if (!totalMenit || totalMenit <= 0) return "0 menit";
+
+  const jam = Math.floor(totalMenit / 60);
+  const menit = totalMenit % 60;
+
+  if (jam === 0) return `${menit} menit`;
+  if (menit === 0) return `${jam} jam`;
+  return `${jam} jam ${menit} menit`;
+}
+
 /* =========================================================
    STATUS PILL
 ========================================================= */
@@ -733,7 +768,7 @@ async function urlToDataUrl(url: string): Promise<string | null> {
 
 async function urlToDataUrlWithTimeout(
   url: string,
-  timeoutMs = 8000,
+  timeoutMs = 20000,
 ): Promise<string | null> {
   return Promise.race([
     urlToDataUrl(url),
@@ -820,7 +855,6 @@ function LaporanBulananPage() {
     );
   }, [reports, jenisKegiatan]);
 
-  // Pagination
   const totalHalaman = Math.max(1, Math.ceil(filteredReports.length / PER_HALAMAN));
   const halamanAman = Math.min(halaman, totalHalaman);
   const laporanTampil = useMemo(
@@ -881,9 +915,6 @@ function LaporanBulananPage() {
     cari ||
     bulan !== bulanIni();
 
-  /* =========================================================
-     HAPUS
-  ========================================================= */
   const hapusMutation = useMutation({
     mutationFn: async (report: ReportWithTrainer) => {
       await hapusLaporanPermanent(report.id);
@@ -920,9 +951,6 @@ function LaporanBulananPage() {
     setLightbox(null);
   }
 
-  /* =========================================================
-     BUILD PDF
-  ========================================================= */
   async function buildHTML(): Promise<{ html: string; fileName: string } | null> {
     if (filteredReports.length === 0) {
       toast.error("Tidak ada laporan untuk diunduh.");
@@ -955,18 +983,28 @@ function LaporanBulananPage() {
     }
 
     const photoDataMap = new Map<string, string[]>();
-    await Promise.all(
-      laporanPeriode.map(async (r) => {
-        const fotos = (photosMap.get(r.id) ?? []).filter((p) => p.url);
-        const dataUrls: string[] = [];
-        for (const foto of fotos.slice(0, 5)) {
-          if (!foto.url) continue;
-          const dataUrl = await urlToDataUrlWithTimeout(foto.url);
-          if (dataUrl) dataUrls.push(dataUrl);
+    const totalLaporan = laporanPeriode.length;
+
+    for (let i = 0; i < laporanPeriode.length; i++) {
+      const r = laporanPeriode[i];
+      const fotos = (photosMap.get(r.id) ?? []).filter((p) => p.url);
+      const dataUrls: string[] = [];
+
+      for (const foto of fotos.slice(0, 3)) {
+        if (!foto.url) continue;
+        let dataUrl = await urlToDataUrlWithTimeout(foto.url);
+
+        if (!dataUrl) {
+          console.warn(`Retry foto: ${foto.storage_path}`);
+          dataUrl = await urlToDataUrlWithTimeout(foto.url, 15000);
         }
-        photoDataMap.set(r.id, dataUrls);
-      }),
-    );
+
+        if (dataUrl) dataUrls.push(dataUrl);
+      }
+
+      photoDataMap.set(r.id, dataUrls);
+      console.log(`Download foto ${i + 1}/${totalLaporan} — ${dataUrls.length} foto`);
+    }
 
     let logoDataUrl: string | null = null;
     if (brandingLogo) {
@@ -1086,7 +1124,12 @@ function LaporanBulananPage() {
         tanggalUnik.set(tgl, Number(r.jumlah_hadir || 0));
       }
     }
-        // Total durasi seluruh laporan
+    const totalHadirTrainer = [...tanggalUnik.values()].reduce(
+      (s, v) => s + v,
+      0,
+    );
+
+    // TOTAL DURASI
     const totalMenit = laporanPeriode.reduce(
       (sum, r) => sum + hitungDurasiMenit(r.jam_mulai, r.jam_selesai),
       0,
@@ -1185,7 +1228,7 @@ function LaporanBulananPage() {
       grid-column: span 2; height: 130px;
     }
     .no-photo { padding: 20px 4px; color: #8ba0b3; font-size: 8px; }
-        .summary {
+    .summary {
       background: #f0f7ff; border: 1.5px solid #b8d9f7;
       border-radius: 6px; padding: 8px 12px;
       font-size: 9px; color: #124a82; font-weight: 700;
@@ -1276,7 +1319,7 @@ function LaporanBulananPage() {
       </tbody>
     </table>
 
-        <div class="summary">
+    <div class="summary">
       <span>Total kegiatan: <strong>${laporanPeriode.length}</strong></span>
       <span class="summary-sep">•</span>
       <span>Total peserta hadir: <strong>${totalHadirTrainer.toLocaleString("id-ID")}</strong> orang</span>
