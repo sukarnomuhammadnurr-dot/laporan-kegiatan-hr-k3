@@ -1086,8 +1086,9 @@ function LaporanBulananPage() {
         tanggalUnik.set(tgl, Number(r.jumlah_hadir || 0));
       }
     }
-    const totalHadirTrainer = [...tanggalUnik.values()].reduce(
-      (s, v) => s + v,
+        // Total durasi seluruh laporan
+    const totalMenit = laporanPeriode.reduce(
+      (sum, r) => sum + hitungDurasiMenit(r.jam_mulai, r.jam_selesai),
       0,
     );
 
