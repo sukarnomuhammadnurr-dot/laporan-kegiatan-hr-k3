@@ -1595,7 +1595,7 @@ function LaporanPage() {
                       </Button>
                     )}
 
-                    {isTrainer && r.status_laporan === "perlu_revisi" && (
+                                        {isTrainer && r.status_laporan === "perlu_revisi" && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -1606,10 +1606,10 @@ function LaporanPage() {
                       </Button>
                     )}
 
-                                             {(isStaff ||
-                            (isTrainer &&
-                              (r.status_laporan === "menunggu_verifikasi" ||
-                                r.status_laporan === "perlu_revisi"))) && (
+                    {(isStaff ||
+                      (isTrainer &&
+                        (r.status_laporan === "menunggu_verifikasi" ||
+                          r.status_laporan === "perlu_revisi"))) && (
                       <Button
                         size="sm"
                         variant="outline"
