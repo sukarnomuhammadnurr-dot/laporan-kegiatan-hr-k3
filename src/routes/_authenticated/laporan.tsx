@@ -1402,7 +1402,7 @@ function LaporanPage() {
                       <td className="px-4 py-3">
                         <StatusPill status={r.status_laporan} />
                       </td>
-                      <td className="px-4 py-3">
+                                            <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
                           <Button
                             size="icon"
@@ -1469,7 +1469,8 @@ function LaporanPage() {
 
                           {(isStaff ||
                             (isTrainer &&
-                              r.status_laporan !== "terverifikasi")) && (
+                              (r.status_laporan === "menunggu_verifikasi" ||
+                                r.status_laporan === "perlu_revisi"))) && (
                             <Button
                               size="icon"
                               variant="outline"
