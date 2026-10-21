@@ -98,26 +98,36 @@ function Dashboard() {
     value={jumlahHariIni}
     hint={formatTanggalPendek(hariIni)}
     tone="default"
+    to="/laporan"
+    search={{ dari: hariIni, sampai: hariIni }}
   />
   <StatTile
     label="Laporan Bulan Ini"
     value={jumlahBulanIni}
     tone="purple"
+    to="/laporan"
+    search={{ bulan: bulanIni }}
   />
   <StatTile
     label="Terverifikasi"
     value={terverifikasiBulanIni}
     tone="verified"
+    to="/laporan"
+    search={{ bulan: bulanIni, status: "terverifikasi" }}
   />
   <StatTile
     label="Menunggu Verifikasi"
     value={menungguVerifikasi}
     tone="review"
+    to="/laporan"
+    search={{ bulan: bulanIni, status: "menunggu_verifikasi" }}
   />
   <StatTile
     label="Perlu Revisi"
     value={perluRevisi}
     tone="revision"
+    to="/laporan"
+    search={{ bulan: bulanIni, status: "perlu_revisi" }}
   />
 </div>
 
