@@ -47,6 +47,12 @@ export const Route = createFileRoute("/_authenticated/laporan")({
   head: () => ({
     meta: [{ title: "Laporan Kegiatan · Laporan Trainer K3 PT IWIP" }],
   }),
+  validateSearch: (search: Record<string, unknown>) => ({
+    bulan: (search.bulan as string) || undefined,
+    dari: (search.dari as string) || undefined,
+    sampai: (search.sampai as string) || undefined,
+    status: (search.status as string) || undefined,
+  }),
   component: LaporanPage,
 });
 
