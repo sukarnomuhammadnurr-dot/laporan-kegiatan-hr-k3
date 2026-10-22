@@ -55,10 +55,13 @@ function Dashboard() {
   const qc = useQueryClient();
 
   const { data: reports = [], isLoading } = useQuery({
-    queryKey: ["reports", "dashboard", trainer?.id ?? "semua", isStaff],
-    queryFn: () => fetchReports(isStaff ? {} : { trainerId: trainer?.id ?? "" }),
-    enabled: isStaff || Boolean(trainer?.id),
-  });
+  queryKey: ["reports", "dashboard", trainer?.id ?? "semua", isStaff],
+  queryFn: () => fetchReports(isStaff ? {} : { trainerId: trainer?.id ?? "" }),
+  enabled: isStaff || Boolean(trainer?.id),
+  staleTime: 0,
+  refetchOnMount: "always",
+  refetchOnWindowFocus: true,
+});
 
   const hariIni = hariIniISO();
   const bulanIni = hariIni.slice(0, 7);
