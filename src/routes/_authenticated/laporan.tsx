@@ -1032,8 +1032,9 @@ function LaporanPage() {
     [reports, halamanAman],
   );
 
-  async function refreshReports() {
-    await queryClient.invalidateQueries({ queryKey: ["reports", "laporan"] });
+    async function refreshReports() {
+    await queryClient.invalidateQueries({ queryKey: ["reports"] });
+    await queryClient.invalidateQueries({ queryKey: ["reports", "dashboard"] });
     await queryClient.invalidateQueries({ queryKey: ["report-photos"] });
   }
 
