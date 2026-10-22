@@ -824,7 +824,7 @@ function MonitoringLaporanPage() {
             : "Verifikasi dibatalkan, laporan perlu revisi.";
       toast.success(msg);
             qc.invalidateQueries({ queryKey: ["reports"] });
-      qc.invalidateQueries({ queryKey: ["reports", "dashboard"] });  // ← tambah
+      qc.invalidateQueries({ queryKey: ["reports", "dashboard"] });
       setVerifAction(null);
       setCatatanInput("");
       setPreview(null);
