@@ -117,3 +117,24 @@ export const hapusAkunTrainer = createServerFn({ method: "POST" })
 
     return { ok: true };
   });
+
+export const setPasswordSementara = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ trainerId: z.string().uuid(), password: z.string().min(6).max(72) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await pastikanAdmin(context);
+    const t = await ambilTrainer(context, data.trainerId);
+    if (!t.user_id) throw new Error("Trainer belum memiliki akun.");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(t.user_id, {
+      password: data.password,
+      user_metadata: { wajib_ganti_password: true },
+    });
+    if (error) throw new Error("Gagal mengatur password sementara.");
+    await supabaseAdmin.from("audit_logs").insert({
+      table_name: "trainers", record_id: t.id, aksi: "RESET_PASSWORD", actor_id: context.userId,
+    });
+    return { ok: true };
+  });

@@ -57,6 +57,13 @@
       "when": 1791865697659,
       "tag": "0007_drop_loose_storage_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792628574317,
+      "tag": "0008_tighten_storage_branding_trainer_photos",
+      "breakpoints": true
     }
   ]
 }
