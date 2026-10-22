@@ -77,22 +77,43 @@ export const ubahStatusAkun = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const setPasswordSementara = createServerFn({ method: "POST" })
+
+export const hapusAkunTrainer = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ trainerId: z.string().uuid(), password: z.string().min(6).max(72) }).parse(d))
+  .inputValidator((d) =>
+    z.object({ trainerId: z.string().uuid() }).parse(d),
+  )
   .handler(async ({ data, context }) => {
     await pastikanAdmin(context);
     const t = await ambilTrainer(context, data.trainerId);
     if (!t.user_id) throw new Error("Trainer belum memiliki akun.");
-    if (t.user_id === context.userId) throw new Error("Gunakan menu Ubah Password untuk akun Anda sendiri.");
+    if (t.user_id === context.userId) {
+      throw new Error("Tidak dapat menghapus akun Anda sendiri.");
+    }
+
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin.auth.admin.updateUserById(t.user_id, {
-      password: data.password,
-      user_metadata: { wajib_ganti_password: true },
-    });
-    if (error) throw new Error("Gagal mengatur password sementara.");
+
+    // Hapus dari auth.users (otomatis hapus identities, sessions, dst)
+    const { error: authErr } = await supabaseAdmin.auth.admin.deleteUser(t.user_id);
+    if (authErr) throw new Error(`Gagal menghapus akun: ${authErr.message}`);
+
+    // Reset user_id & akun_aktif di trainers
+    await supabaseAdmin
+      .from("trainers")
+      .update({ user_id: null, akun_aktif: false })
+      .eq("id", t.id);
+
+    // Hapus user_roles
+    await supabaseAdmin.from("user_roles").delete().eq("user_id", t.user_id);
+
+    // Audit log
     await supabaseAdmin.from("audit_logs").insert({
-      table_name: "trainers", record_id: t.id, aksi: "RESET_PASSWORD", actor_id: context.userId,
+      table_name: "trainers",
+      record_id: t.id,
+      aksi: "HAPUS_AKUN",
+      actor_id: context.userId,
+      data_sesudah: { user_id: t.user_id },
     });
+
     return { ok: true };
   });
