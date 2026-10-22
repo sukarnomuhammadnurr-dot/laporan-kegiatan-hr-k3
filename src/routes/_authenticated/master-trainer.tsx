@@ -1328,20 +1328,8 @@ function FormTrainer({
         throw error;
       }
 
-      // Sync role ke user_roles kalau trainer udah punya akun
-      if (edit && trainerUserId) {
-        await supabase
-          .from("user_roles")
-          .delete()
-          .eq("user_id", trainerUserId);
-
-        await supabase
-          .from("user_roles")
-          .insert({
-            user_id: trainerUserId,
-            role: f.role,
-          });
-      }
+      // Trigger database (sync_trainer_role) otomatis sync ke user_roles.
+      // Gak perlu manual sync di frontend.
 
       toast.success(
         edit
