@@ -26,6 +26,7 @@ import { useCurrentUser, type AppRole, type Trainer } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import {
   buatAkunTrainer,
+  hapusAkunTrainer,
   setPasswordSementara,
   ubahStatusAkun,
 } from "@/lib/trainer-accounts.functions";
@@ -150,6 +151,8 @@ function MasterTrainer() {
   const [akun, setAkun] = useState<Trainer | null>(null);
   const [resetAkun, setResetAkun] = useState<Trainer | null>(null);
   const [statusAkun, setStatusAkun] = useState<Trainer | null>(null);
+  const [hapusAkun, setHapusAkun] = useState<Trainer | null>(null);
+  const [hapusAkunConfirmText, setHapusAkunConfirmText] = useState("");
 
   const { data: trainers = [], isLoading } = useQuery({
     queryKey: ["trainers", "master"],
@@ -236,6 +239,24 @@ function MasterTrainer() {
     onError: (e) =>
       toast.error(
         e instanceof Error ? e.message : "Gagal mengubah status akun.",
+      ),
+  });
+
+  const hapusAkunMutation = useMutation({
+    mutationFn: async (t: Trainer) => {
+      await hapusAkunTrainer({
+        data: { trainerId: t.id },
+      });
+    },
+    onSuccess: () => {
+      toast.success("Akun trainer berhasil dihapus permanent.");
+      qc.invalidateQueries({ queryKey: ["trainers"] });
+      setHapusAkun(null);
+      setHapusAkunConfirmText("");
+    },
+    onError: (e) =>
+      toast.error(
+        e instanceof Error ? e.message : "Gagal menghapus akun.",
       ),
   });
 
@@ -395,6 +416,7 @@ function MasterTrainer() {
                           onAccount={setAkun}
                           onResetPassword={setResetAkun}
                           onToggleAccount={setStatusAkun}
+                          onHapusAkun={setHapusAkun}
                         />
                       </td>
                     </tr>
@@ -439,6 +461,7 @@ function MasterTrainer() {
                     onAccount={setAkun}
                     onResetPassword={setResetAkun}
                     onToggleAccount={setStatusAkun}
+                    onHapusAkun={setHapusAkun}
                   />
                 </div>
               ))}
@@ -564,6 +587,81 @@ function MasterTrainer() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={!!hapusAkun}
+        onOpenChange={(o) => {
+          if (!o) {
+            setHapusAkun(null);
+            setHapusAkunConfirmText("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-destructive">
+              ⚠️ Hapus Akun Trainer Permanent?
+            </DialogTitle>
+            <DialogDescription>
+              Akun login <strong>{hapusAkun?.nama_lengkap}</strong> akan{" "}
+              <strong>dihapus selamanya</strong> dari sistem. Data trainer,
+              laporan, dan foto <strong>tetap tersimpan</strong>, tapi trainer
+              gak bisa login lagi sampai dibuatkan akun baru.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+              <p className="font-medium">{hapusAkun?.nama_lengkap}</p>
+              <p className="text-xs text-muted-foreground">
+                {hapusAkun?.email || "—"} · {hapusAkun?.nomor_id_trainer}
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">
+                Ketik{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-bold">
+                  HAPUS
+                </code>{" "}
+                untuk konfirmasi:
+              </Label>
+              <Input
+                value={hapusAkunConfirmText}
+                onChange={(e) => setHapusAkunConfirmText(e.target.value)}
+                placeholder="Ketik: HAPUS"
+                autoFocus
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setHapusAkun(null);
+                setHapusAkunConfirmText("");
+              }}
+            >
+              Batal
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={
+                hapusAkunConfirmText !== "HAPUS" ||
+                hapusAkunMutation.isPending
+              }
+              onClick={() =>
+                hapusAkun && hapusAkunMutation.mutate(hapusAkun)
+              }
+            >
+              {hapusAkunMutation.isPending
+                ? "Menghapus..."
+                : "Hapus Akun Permanent"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
@@ -590,6 +688,7 @@ function Aksi({
   onAccount,
   onResetPassword,
   onToggleAccount,
+  onHapusAkun,
 }: {
   t: Trainer;
   isAdmin: boolean;
@@ -599,6 +698,7 @@ function Aksi({
   onAccount: (t: Trainer) => void;
   onResetPassword: (t: Trainer) => void;
   onToggleAccount: (t: Trainer) => void;
+  onHapusAkun: (t: Trainer) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -649,6 +749,15 @@ function Aksi({
                 {t.akun_aktif === false
                   ? "Aktifkan Akun"
                   : "Nonaktifkan Akun"}
+              </Button>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => onHapusAkun(t)}
+              >
+                Hapus Akun
               </Button>
             </>
           )}
@@ -1200,15 +1309,32 @@ function FormTrainer({
           : "Nonaktif",
       };
 
-           // Update user_roles kalau trainer udah punya akun
+      const { error } = edit
+        ? await supabase
+            .from("trainers")
+            .update(payload)
+            .eq("id", f.id!)
+        : await supabase
+            .from("trainers")
+            .insert(payload);
+
+      if (error) {
+        if (error.code === "23505") {
+          throw new Error(
+            "ID Trainer atau email sudah digunakan.",
+          );
+        }
+
+        throw error;
+      }
+
+      // Sync role ke user_roles kalau trainer udah punya akun
       if (edit && trainerUserId) {
-        // Hapus role lama
         await supabase
           .from("user_roles")
           .delete()
           .eq("user_id", trainerUserId);
 
-        // Insert role baru
         await supabase
           .from("user_roles")
           .insert({
@@ -1217,7 +1343,7 @@ function FormTrainer({
           });
       }
 
-      toast.success(...);
+      toast.success(
         edit
           ? "Data trainer berhasil diperbarui."
           : "Data trainer berhasil ditambahkan.",
