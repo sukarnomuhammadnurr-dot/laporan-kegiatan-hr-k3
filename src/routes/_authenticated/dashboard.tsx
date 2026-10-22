@@ -75,8 +75,8 @@ function Dashboard() {
   ).length;
   const perluRevisi = reports.filter((r) => r.status_laporan === "perlu_revisi").length;
   const menungguVerifikasi = reports.filter(
-    (r) => r.status_laporan === "menunggu_verifikasi" || r.status_laporan === "terkirim",
-  ).length;
+  (r) => r.status_laporan === "menunggu_verifikasi",
+).length;
 
   const terbaru = reports.slice(0, 8);
 
