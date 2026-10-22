@@ -913,7 +913,7 @@ function MonitoringLaporanPage() {
     const totalLaporan = laporanPeriode.length;
 
     for (let i = 0; i < laporanPeriode.length; i++) {
-      const r = laporanPeriode[i];
+      const r = laporanPeriode[i]!;
       const fotos = (photosMap.get(r.id) ?? []).filter((p) => p.url);
       const dataUrls: string[] = [];
 
