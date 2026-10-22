@@ -1200,26 +1200,24 @@ function FormTrainer({
           : "Nonaktif",
       };
 
-      const { error } = edit
-        ? await supabase
-            .from("trainers")
-            .update(payload)
-            .eq("id", f.id!)
-        : await supabase
-            .from("trainers")
-            .insert(payload);
+           // Update user_roles kalau trainer udah punya akun
+      if (edit && trainerUserId) {
+        // Hapus role lama
+        await supabase
+          .from("user_roles")
+          .delete()
+          .eq("user_id", trainerUserId);
 
-      if (error) {
-        if (error.code === "23505") {
-          throw new Error(
-            "ID Trainer atau email sudah digunakan.",
-          );
-        }
-
-        throw error;
+        // Insert role baru
+        await supabase
+          .from("user_roles")
+          .insert({
+            user_id: trainerUserId,
+            role: f.role,
+          });
       }
 
-      toast.success(
+      toast.success(...);
         edit
           ? "Data trainer berhasil diperbarui."
           : "Data trainer berhasil ditambahkan.",
