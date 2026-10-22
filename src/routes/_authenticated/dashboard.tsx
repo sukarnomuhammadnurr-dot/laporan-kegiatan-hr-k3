@@ -73,10 +73,16 @@ function Dashboard() {
       r.status_laporan === "terverifikasi" &&
       r.tanggal_kegiatan.startsWith(bulanIni),
   ).length;
-  const perluRevisi = reports.filter((r) => r.status_laporan === "perlu_revisi").length;
+    const perluRevisi = reports.filter(
+    (r) =>
+      r.status_laporan === "perlu_revisi" &&
+      r.tanggal_kegiatan.startsWith(bulanIni),
+  ).length;
   const menungguVerifikasi = reports.filter(
-  (r) => r.status_laporan === "menunggu_verifikasi",
-).length;
+    (r) =>
+      r.status_laporan === "menunggu_verifikasi" &&
+      r.tanggal_kegiatan.startsWith(bulanIni),
+  ).length;
 
   const terbaru = reports.slice(0, 8);
 
