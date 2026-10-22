@@ -314,7 +314,7 @@ function BuatLaporan() {
               : "Terjadi kesalahan saat memuat laporan.",
         });
 
-        navigate({ to: "/laporan" });
+        navigate({ to: "/laporan", search: {} });
       } finally {
         if (!cancelled) {
           setLoadingEdit(false);
@@ -667,7 +667,7 @@ function BuatLaporan() {
       setPenanggungJawabOption("");
       setRevisionNote("");
 
-      navigate({ to: "/laporan" });
+      navigate({ to: "/laporan", search: {} });
     },
 
     onError: (error) => {
@@ -975,7 +975,7 @@ function BuatLaporan() {
       actions={
         <Button
           variant="outline"
-          onClick={() => navigate({ to: "/laporan" })}
+          onClick={() => navigate({ to: "/laporan", search: {} })}
         >
           <ArrowLeft className="mr-2 size-4" />
           Kembali
