@@ -5,6 +5,7 @@ import {
   matchWhatsAppTrainer,
   parseWhatsAppReport,
   validateParsedWhatsAppReport,
+  validasiLaporanMenyeluruh,
 } from "@/lib/whatsapp-webhook-parser.server";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -35,6 +36,45 @@ async function verifySignature(raw: string, header: string | null, secret: strin
   let diff = 0;
   for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ given.charCodeAt(i);
   return diff === 0;
+}
+
+/**
+ * Deteksi apakah pesan adalah "chat sampah" yang gak perlu diproses.
+ */
+function isPesanSampah(teks: string): boolean {
+  const lower = teks.toLowerCase().trim();
+  const sampah = [
+    "makasih", "terima kasih", "thanks", "thank you",
+    "ok", "oke", "okay", "sip", "siap", "baik",
+    "noted", "diterima", "sudah", "done", "beres",
+    "👍", "🙏", "mantap", "keren",
+  ];
+  return lower.length < 20 && sampah.some((s) => lower.includes(s));
+}
+
+/**
+ * Generate catatan revisi dari list error.
+ * Ditampilkan ke trainer di halaman "Laporan Saya".
+ */
+function buatCatatanRevisi(errors: string[]): string {
+  return [
+    "⚠️ Laporan Ditolak Otomatis",
+    "",
+    "Alasan:",
+    ...errors.map((e) => `• ${e}`),
+    "",
+    "Silakan perbaiki dan kirim ulang dari aplikasi.",
+    "",
+    "Format yang benar:",
+    "Materi: [nama materi]",
+    "Trainer: [nama lengkap]",
+    "Tanggal: DD-MM-YYYY (opsional kalau hari ini)",
+    "Kelas: [kelas]",
+    "Jumlah peserta: [angka]",
+    "Hadir: [angka]",
+    "Tidak Hadir: [angka]",
+    "Tambahan: [angka/-]",
+  ].join("\n");
 }
 
 export const Route = createFileRoute("/api/public/whatsapp/webhook")({
@@ -92,7 +132,12 @@ export const Route = createFileRoute("/api/public/whatsapp/webhook")({
   },
 });
 
-async function handleMessage(supabase: any, msg: any, contacts: any[], accessToken: string) {
+async function handleMessage(
+  supabase: any,
+  msg: any,
+  contacts: any[],
+  accessToken: string,
+) {
   const from: string = msg.from;
   const tsIso = msg.timestamp
     ? new Date(Number(msg.timestamp) * 1000).toISOString()
@@ -141,6 +186,14 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
 
   const pesanLengkap = [pesan, caption].filter(Boolean).join("\n") || null;
 
+  // ============================================================
+  // FILTER: Abaikan "chat sampah" — hemat DB & gak balas
+  // ============================================================
+  if (pesanLengkap && isPesanSampah(pesanLengkap)) {
+    console.log(`Pesan sampah dari ${from}, diabaikan: "${pesanLengkap.slice(0, 50)}"`);
+    return;
+  }
+
   const { data: inserted, error } = await supabase
     .from("whatsapp_messages")
     .insert({
@@ -183,21 +236,109 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
     if (sr.error) throw sr.error;
 
     const parsed = parseWhatsAppReport(pesanLengkap);
-    const valid = validateParsedWhatsAppReport(parsed);
     const trainerMatch = matchWhatsAppTrainer(parsed.trainerNama, from, tr.data ?? []);
     const materialMatches = matchWhatsAppMaterials(parsed.materi, mr.data ?? []);
+    const scheduleMatch = matchWhatsAppSchedule(parsed.materi, sr.data ?? []);
+    const jadwal = scheduleMatch.schedule;
 
+    // ============================================================
+    // VALIDASI MENYELURUH
+    // ============================================================
+    const tanggalKirimWA = new Date(tsIso).toISOString().slice(0, 10);
+    const validasi = validasiLaporanMenyeluruh(parsed, jadwal, tanggalKirimWA);
+
+    // ============================================================
+    // KALAU INVALID → INSERT ke reports dengan status "perlu_revisi"
+    // (biar trainer liat di aplikasi & benerin sendiri)
+    // ============================================================
+    if (!validasi.valid) {
+      // Kalau trainer gak match, gak bisa insert ke reports (FK constraint)
+      // → simpan di whatsapp_messages aja
+      if (trainerMatch.status !== "matched" || !trainerMatch.trainer) {
+        await setStatus({
+          status: "perlu_review",
+          trainer_id: null,
+          error_reason: `Trainer tidak ditemukan. ${validasi.errors.join("; ")}`,
+        });
+        console.log(`Pesan ${messageId} → perlu_review (trainer gak match)`);
+        return;
+      }
+
+      const trainerId = trainerMatch.trainer.id;
+
+      // Insert ke reports sebagai draft "perlu_revisi"
+      // Biar muncul di halaman "Laporan Saya" trainer
+      const tanggalFallback = parsed.tanggalKegiatan || tanggalKirimWA;
+
+      const { data: draftReport, error: draftErr } = await supabase
+        .from("reports")
+        .insert({
+          trainer_id: trainerId,
+          tanggal_kegiatan: tanggalFallback,
+          materi: jadwal?.nama_kegiatan || parsed.materi.join(", "),
+          material_id: jadwal?.material_id || null,
+          schedule_id: jadwal?.id || null,
+          jam_mulai: jadwal?.jam_mulai || null,
+          jam_selesai: jadwal?.jam_selesai || null,
+          jam_perlu_konfirmasi: !jadwal?.jam_mulai,
+          jenis_kegiatan: jadwal?.kategori || null,
+          kelas: parsed.kelas || jadwal?.kelas || null,
+          lokasi: jadwal
+            ? tentukanLokasi(jadwal.nama_kegiatan)
+            : "Dalam Ruangan",
+          penanggung_jawab: "Muhammad Halid (Superintendent)",
+          jumlah_peserta: parsed.jumlahPeserta ?? 0,
+          jumlah_hadir: parsed.jumlahHadir ?? 0,
+          jumlah_tidak_hadir: parsed.jumlahTidakHadir ?? 0,
+          jumlah_tambahan: parsed.jumlahTambahan ?? 0,
+          keterangan: caption || pesanLengkap,
+          sumber_laporan: "whatsapp",
+          status_laporan: "perlu_revisi", // ← LANGSUNG PERLU REVISI
+          catatan_revisi: buatCatatanRevisi(validasi.errors),
+          waktu_laporan_dikirim: tsIso,
+          created_by: null,
+        })
+        .select("id")
+        .single();
+
+      if (draftErr) {
+        console.error("Gagal insert draft revisi:", draftErr);
+        await setStatus({
+          status: "perlu_review",
+          trainer_id: trainerId,
+          error_reason: `Validasi gagal: ${validasi.errors.join("; ")}. Gagal buat draft: ${draftErr.message}`,
+        });
+        return;
+      }
+
+      // Update whatsapp_messages → link ke draft report
+      await setStatus({
+        status: "berhasil",
+        trainer_id: trainerId,
+        report_id: draftReport.id,
+        error_reason: validasi.errors.join("; "),
+      });
+
+      console.log(
+        `Pesan ${messageId} → Laporan DRAFT ${draftReport.id} (perlu_revisi)`,
+      );
+
+      // ❌ GAK kirim WA balik — trainer liat di aplikasi
+      return;
+    }
+
+    // ============================================================
+    // VALIDASI LOLOS — cek trainer & jadwal detail
+    // ============================================================
     if (trainerMatch.status !== "matched" || !trainerMatch.trainer) {
       await setStatus({
         status: "perlu_review",
         trainer_id: null,
-        error_reason:
-          trainerMatch.status === "ambiguous"
-            ? "Trainer ambigu — perlu konfirmasi manual."
-            : "Pengirim Tidak Dikenal — trainer tidak ditemukan di Master Trainer.",
+        error_reason: "Trainer tidak ditemukan di Master Trainer.",
       });
       return;
     }
+
     const trainerId = trainerMatch.trainer.id;
     const trainerRow = (tr.data ?? []).find((t: any) => t.id === trainerId);
     if (trainerRow && trainerRow.aktif === false) {
@@ -208,77 +349,56 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
       });
       return;
     }
-    if (!valid.valid) {
+
+    const validDasar = validateParsedWhatsAppReport(parsed);
+    if (!validDasar.valid) {
       await setStatus({
         status: "perlu_review",
         trainer_id: trainerId,
-        error_reason: `Data belum lengkap: ${valid.errors.join("; ")}`,
+        error_reason: `Data belum lengkap: ${validDasar.errors.join("; ")}`,
       });
       return;
     }
 
-    // Match jadwal dari Master Jadwal
-    const scheduleMatch = matchWhatsAppSchedule(parsed.materi, sr.data ?? []);
-    const jadwal = scheduleMatch.schedule;
-
-    if (!jadwal) {
+    if (!jadwal!.jam_mulai || !jadwal!.jam_selesai) {
       await setStatus({
         status: "perlu_review",
         trainer_id: trainerId,
-        error_reason: `Materi tidak cocok dengan Master Jadwal: "${parsed.materi.join(", ")}"`,
-      });
-      return;
-    }
-
-    if (!jadwal.jam_mulai || !jadwal.jam_selesai) {
-      await setStatus({
-        status: "perlu_review",
-        trainer_id: trainerId,
-        error_reason: `Jam kegiatan "${jadwal.nama_kegiatan}" belum ditentukan di Master Jadwal.`,
+        error_reason: `Jam kegiatan "${jadwal!.nama_kegiatan}" belum ditentukan di Master Jadwal.`,
       });
       return;
     }
 
     const materialId =
-      jadwal.material_id ??
+      jadwal!.material_id ??
       (materialMatches.length === 1 &&
       materialMatches[0]?.status === "matched" &&
       materialMatches[0]?.material
         ? materialMatches[0].material.id
         : null);
 
-    // Kelas: prioritas dari WA, fallback ke jadwal
-    const kelasFinal = parsed.kelas || jadwal.kelas || null;
+    const kelasFinal = parsed.kelas || jadwal!.kelas || null;
+    const lokasiFinal = tentukanLokasi(jadwal!.nama_kegiatan);
 
-    // Lokasi: auto dari nama kegiatan
-    const lokasiFinal = tentukanLokasi(jadwal.nama_kegiatan);
+    const tanggal = new Date(new Date(tsIso).getTime() + 9 * 3600 * 1000)
+      .toISOString()
+      .slice(0, 10);
 
-        // Tanggal kegiatan: prioritas dari WA, fallback ke tanggal kirim
-    let tanggal: string;
-    let tanggalOtomatis = true;
-
-    if (parsed.tanggalKegiatan) {
-      tanggal = parsed.tanggalKegiatan;
-      tanggalOtomatis = false;
-    } else {
-      // Fallback: tanggal kirim WA dalam WIT (UTC+9)
-      tanggal = new Date(new Date(tsIso).getTime() + 9 * 3600 * 1000)
-        .toISOString()
-        .slice(0, 10);
-    }
-
+    // ============================================================
+    // LAPORAN VALID → AUTO-TERVERIFIKASI
+    // ============================================================
     const { data: report, error: rErr } = await supabase
       .from("reports")
       .insert({
         trainer_id: trainerId,
-        tanggal_kegiatan: tanggal,
-        materi: jadwal.nama_kegiatan,
+        tanggal_kegiatan: parsed.tanggalKegiatan || tanggal,
+        materi: jadwal!.nama_kegiatan,
         material_id: materialId,
-        schedule_id: jadwal.id,
-        jam_mulai: jadwal.jam_mulai,
-        jam_selesai: jadwal.jam_selesai,
+        schedule_id: jadwal!.id,
+        jam_mulai: jadwal!.jam_mulai,
+        jam_selesai: jadwal!.jam_selesai,
         jam_perlu_konfirmasi: false,
-        jenis_kegiatan: jadwal.kategori || null,
+        jenis_kegiatan: jadwal!.kategori || null,
         kelas: kelasFinal,
         lokasi: lokasiFinal,
         penanggung_jawab: "Muhammad Halid (Superintendent)",
@@ -288,7 +408,9 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
         jumlah_tambahan: parsed.jumlahTambahan ?? 0,
         keterangan: caption || null,
         sumber_laporan: "whatsapp",
-        status_laporan: "menunggu_verifikasi",
+        status_laporan: "terverifikasi",
+        verified_at: new Date().toISOString(),
+        verified_by: null,
         waktu_laporan_dikirim: tsIso,
         created_by: null,
       })
@@ -333,17 +455,15 @@ async function handleMessage(supabase: any, msg: any, contacts: any[], accessTok
       }
     }
 
-        await setStatus({
+    await setStatus({
       status: "berhasil",
       trainer_id: trainerId,
       report_id: report.id,
       media_storage_path: storagePath,
-      error_reason: tanggalOtomatis
-        ? `⚠️ Tanggal kegiatan otomatis pakai tanggal kirim WA (${tanggal}). ` +
-          `Trainer tidak mencantumkan "Tanggal:" di pesan. ` +
-          `Cek & edit di halaman Laporan kalau perlu.`
-        : null,
+      error_reason: null,
     });
+
+    console.log(`✅ Pesan ${messageId} → Laporan ${report.id} AUTO-TERVERIFIKASI`);
   } catch (err) {
     console.error("Proses pesan gagal:", err);
     await setStatus({
