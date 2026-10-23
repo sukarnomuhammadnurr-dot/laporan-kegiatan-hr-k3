@@ -5,7 +5,6 @@ import {
   matchWhatsAppTrainer,
   parseWhatsAppReport,
   validateParsedWhatsAppReport,
-  validasiLaporanMenyeluruh,
 } from "@/lib/whatsapp-webhook-parser.server";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -245,7 +244,7 @@ async function handleMessage(
     // VALIDASI MENYELURUH
     // ============================================================
     const tanggalKirimWA = new Date(tsIso).toISOString().slice(0, 10);
-    const validasi = validasiLaporanMenyeluruh(parsed, jadwal, tanggalKirimWA);
+    const validasi = validateParsedWhatsAppReport(parsed);
 
     // ============================================================
     // KALAU INVALID → INSERT ke reports dengan status "perlu_revisi"
@@ -360,25 +359,27 @@ async function handleMessage(
       return;
     }
 
-    if (!jadwal!.jam_mulai || !jadwal!.jam_selesai) {
+    if (!jadwal || !jadwal.jam_mulai || !jadwal.jam_selesai) {
       await setStatus({
         status: "perlu_review",
         trainer_id: trainerId,
-        error_reason: `Jam kegiatan "${jadwal!.nama_kegiatan}" belum ditentukan di Master Jadwal.`,
+        error_reason: jadwal
+          ? `Jam kegiatan "${jadwal.nama_kegiatan}" belum ditentukan di Master Jadwal.`
+          : "Jadwal kegiatan tidak ditemukan di Master Jadwal.",
       });
       return;
     }
 
     const materialId =
-      jadwal!.material_id ??
+      jadwal.material_id ??
       (materialMatches.length === 1 &&
       materialMatches[0]?.status === "matched" &&
       materialMatches[0]?.material
         ? materialMatches[0].material.id
         : null);
 
-    const kelasFinal = parsed.kelas || jadwal!.kelas || null;
-    const lokasiFinal = tentukanLokasi(jadwal!.nama_kegiatan);
+    const kelasFinal = parsed.kelas || jadwal.kelas || null;
+    const lokasiFinal = tentukanLokasi(jadwal.nama_kegiatan);
 
     const tanggal = new Date(new Date(tsIso).getTime() + 9 * 3600 * 1000)
       .toISOString()
@@ -392,13 +393,13 @@ async function handleMessage(
       .insert({
         trainer_id: trainerId,
         tanggal_kegiatan: parsed.tanggalKegiatan || tanggal,
-        materi: jadwal!.nama_kegiatan,
+        materi: jadwal.nama_kegiatan,
         material_id: materialId,
-        schedule_id: jadwal!.id,
-        jam_mulai: jadwal!.jam_mulai,
-        jam_selesai: jadwal!.jam_selesai,
+        schedule_id: jadwal.id,
+        jam_mulai: jadwal.jam_mulai,
+        jam_selesai: jadwal.jam_selesai,
         jam_perlu_konfirmasi: false,
-        jenis_kegiatan: jadwal!.kategori || null,
+        jenis_kegiatan: jadwal.kategori || null,
         kelas: kelasFinal,
         lokasi: lokasiFinal,
         penanggung_jawab: "Muhammad Halid (Superintendent)",
