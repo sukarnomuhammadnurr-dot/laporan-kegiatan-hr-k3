@@ -153,12 +153,63 @@ function escapeHtml(value: string | number | null | undefined) {
     .replaceAll("'", "&#039;");
 }
 
+/* ============ HELPER HITUNG HADIR (BARU) ============ */
+
+function parseTipeKelas(kelasInput: string | null | undefined): "A" | "B" | "AB" | "UNKNOWN" {
+  if (!kelasInput) return "UNKNOWN";
+  const str = kelasInput.toUpperCase().replace(/\s+/g, "");
+
+  if (str.includes("A&B") || str.includes("GABUNGAN") || str.includes("AB")) {
+    return "AB";
+  }
+  if (str.includes("B")) return "B";
+  if (str.includes("A")) return "A";
+
+  return "UNKNOWN";
+}
+
+function hitungTotalHadirPintar(laporanPeriode: ReportWithTrainer[]): number {
+  const byTanggal = new Map<string, ReportWithTrainer[]>();
+  for (const r of laporanPeriode) {
+    const tgl = r.tanggal_kegiatan || "tanpa-tanggal";
+    if (!byTanggal.has(tgl)) byTanggal.set(tgl, []);
+    byTanggal.get(tgl)!.push(r);
+  }
+
+  let totalHadir = 0;
+
+  for (const [, tglList] of byTanggal.entries()) {
+    const maxHadirPerKelas: Record<string, number> = {};
+
+    for (const l of tglList) {
+      const tipe = parseTipeKelas(l.kelas);
+      const hadir = Number(l.jumlah_hadir || 0);
+      
+      if (!maxHadirPerKelas[tipe] || hadir > maxHadirPerKelas[tipe]) {
+        maxHadirPerKelas[tipe] = hadir;
+      }
+    }
+
+    if (maxHadirPerKelas["AB"] !== undefined) {
+      totalHadir += maxHadirPerKelas["AB"];
+    } else {
+      const totalA = maxHadirPerKelas["A"] || 0;
+      const totalB = maxHadirPerKelas["B"] || 0;
+      const totalUnknown = maxHadirPerKelas["UNKNOWN"] || 0;
+      
+      if (totalA > 0 || totalB > 0) {
+        totalHadir += totalA + totalB;
+      } else if (totalUnknown > 0) {
+        totalHadir += totalUnknown;
+      }
+    }
+  }
+
+  return totalHadir;
+}
+
 /* ============ HELPER DURASI ============ */
 
-/**
- * Hitung durasi dalam menit dari jam_mulai dan jam_selesai (format HH:MM).
- * Kalau jam_selesai lebih kecil dari jam_mulai (lewat tengah malam), tambah 24 jam.
- */
 function hitungDurasiMenit(
   jamMulai: string | null | undefined,
   jamSelesai: string | null | undefined,
@@ -182,9 +233,6 @@ function hitungDurasiMenit(
   return menit;
 }
 
-/**
- * Format menit jadi "X jam Y menit" (atau "Y menit" kalau < 60).
- */
 function formatDurasi(totalMenit: number): string {
   if (!totalMenit || totalMenit <= 0) return "0 menit";
 
@@ -767,6 +815,7 @@ function MonitoringLaporanPage() {
     cari ||
     bulan !== bulanIni();
 
+  // ---------- Aksi verifikasi ----------
   const verifikasiMutation = useMutation({
     mutationFn: async ({
       report,
@@ -823,8 +872,7 @@ function MonitoringLaporanPage() {
             ? "Laporan dikembalikan untuk revisi."
             : "Verifikasi dibatalkan, laporan perlu revisi.";
       toast.success(msg);
-            qc.invalidateQueries({ queryKey: ["reports"] });
-      qc.invalidateQueries({ queryKey: ["reports", "dashboard"] });
+      qc.invalidateQueries({ queryKey: ["reports"] });
       setVerifAction(null);
       setCatatanInput("");
       setPreview(null);
@@ -832,6 +880,7 @@ function MonitoringLaporanPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // ---------- Aksi HAPUS PERMANENT ----------
   const hapusMutation = useMutation({
     mutationFn: async (report: ReportWithTrainer) => {
       await hapusLaporanPermanent(report.id);
@@ -877,7 +926,7 @@ function MonitoringLaporanPage() {
   }
 
   // =============================================================
-  // BUILD HTML PDF (DENGAN TOTAL DURASI)
+  // BUILD HTML PDF (DENGAN TOTAL DURASI + LOGIKA HADIR PINTAR)
   // =============================================================
   async function buildHTML(): Promise<{ html: string; fileName: string } | null> {
     if (filteredReports.length === 0) {
@@ -914,7 +963,7 @@ function MonitoringLaporanPage() {
     const totalLaporan = laporanPeriode.length;
 
     for (let i = 0; i < laporanPeriode.length; i++) {
-      const r = laporanPeriode[i]!;
+      const r = laporanPeriode[i];
       const fotos = (photosMap.get(r.id) ?? []).filter((p) => p.url);
       const dataUrls: string[] = [];
 
@@ -1071,24 +1120,15 @@ function MonitoringLaporanPage() {
           })
           .join("");
 
-        const tanggalUnik = new Map<string, number>();
-        for (const r of list) {
-          const tgl = r.tanggal_kegiatan || "tanpa-tanggal";
-          if (!tanggalUnik.has(tgl)) {
-            tanggalUnik.set(tgl, Number(r.jumlah_hadir || 0));
-          }
-        }
-        const totalHadirTrainer = [...tanggalUnik.values()].reduce(
-          (s, v) => s + v,
-          0,
-        );
-
         // Total durasi trainer ini
         const totalMenitTrainer = list.reduce(
           (sum, r) =>
             sum + hitungDurasiMenit(r.jam_mulai, r.jam_selesai),
           0,
         );
+
+        // Total hadir pakai logika pintar (A + B = gabungan)
+        const totalHadirTrainer = hitungTotalHadirPintar(list);
 
         const isFirst = trainerIdx === 0;
 
