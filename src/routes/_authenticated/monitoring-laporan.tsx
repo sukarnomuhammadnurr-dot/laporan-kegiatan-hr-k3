@@ -885,8 +885,7 @@ function MonitoringLaporanPage() {
     const photoDataMap = new Map<string, string[]>();
     const totalLaporan = laporanPeriode.length;
 
-    for (let i = 0; i < laporanPeriode.length; i++) {
-      const r = laporanPeriode[i];
+    for (const [i, r] of laporanPeriode.entries()) {
       const fotos = (photosMap.get(r.id) ?? []).filter((p) => p.url);
       const dataUrls: string[] = [];
 
