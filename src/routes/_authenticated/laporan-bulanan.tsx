@@ -224,45 +224,6 @@ function hitungTotalHadirPintar(laporanPeriode: ReportWithTrainer[]): number {
 
   return totalHadir;
 }
-function hitungTotalHadirPintar(laporanPeriode: ReportWithTrainer[]): number {
-  const byTanggal = new Map<string, ReportWithTrainer[]>();
-  for (const r of laporanPeriode) {
-    const tgl = r.tanggal_kegiatan || "tanpa-tanggal";
-    if (!byTanggal.has(tgl)) byTanggal.set(tgl, []);
-    byTanggal.get(tgl)!.push(r);
-  }
-
-  let totalHadir = 0;
-
-  for (const [, tglList] of byTanggal.entries()) {
-    const maxHadirPerKelas: Record<string, number> = {};
-
-    for (const l of tglList) {
-      const tipe = parseTipeKelas(l.kelas);
-      const hadir = Number(l.jumlah_hadir || 0);
-      
-      if (!maxHadirPerKelas[tipe] || hadir > maxHadirPerKelas[tipe]) {
-        maxHadirPerKelas[tipe] = hadir;
-      }
-    }
-
-    if (maxHadirPerKelas["AB"] !== undefined) {
-      totalHadir += maxHadirPerKelas["AB"];
-    } else {
-      const totalA = maxHadirPerKelas["A"] || 0;
-      const totalB = maxHadirPerKelas["B"] || 0;
-      const totalUnknown = maxHadirPerKelas["UNKNOWN"] || 0;
-      
-      if (totalA > 0 || totalB > 0) {
-        totalHadir += totalA + totalB;
-      } else if (totalUnknown > 0) {
-        totalHadir += totalUnknown;
-      }
-    }
-  }
-
-  return totalHadir;
-}
 
 /* ============ HELPER DURASI ============ */
 
@@ -1091,8 +1052,7 @@ function LaporanBulananPage() {
     const photoDataMap = new Map<string, string[]>();
     const totalLaporan = laporanPeriode.length;
 
-    for (let i = 0; i < laporanPeriode.length; i++) {
-      const r = laporanPeriode[i];
+    for (const [i, r] of laporanPeriode.entries()) {
       const fotos = (photosMap.get(r.id) ?? []).filter((p) => p.url);
       const dataUrls: string[] = [];
 
