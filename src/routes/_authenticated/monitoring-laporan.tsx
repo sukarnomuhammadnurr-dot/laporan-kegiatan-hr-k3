@@ -153,7 +153,7 @@ function escapeHtml(value: string | number | null | undefined) {
     .replaceAll("'", "&#039;");
 }
 
-/* ============ HELPER HITUNG HADIR (BARU) ============ */
+/* ============ HELPER HITUNG HADIR ============ */
 
 function parseTipeKelas(kelasInput: string | null | undefined): "A" | "B" | "AB" | "UNKNOWN" {
   if (!kelasInput) return "UNKNOWN";
@@ -165,58 +165,6 @@ function parseTipeKelas(kelasInput: string | null | undefined): "A" | "B" | "AB"
   if (str.includes("B")) return "B";
   if (str.includes("A")) return "A";
   return "UNKNOWN";
-}
-
-/**
- * Hitung total hadir per trainer dengan logika deduplikasi kelas.
- */
-function hitungTotalHadirPintar(laporanPeriode: ReportWithTrainer[]): number {
-  // 1. Group by tanggal
-  const byTanggal = new Map<string, ReportWithTrainer[]>();
-  for (const r of laporanPeriode) {
-    const tgl = r.tanggal_kegiatan || "tanpa-tanggal";
-    if (!byTanggal.has(tgl)) byTanggal.set(tgl, []);
-    byTanggal.get(tgl)!.push(r);
-  }
-
-  let totalHadir = 0;
-
-  // 2. Iterasi tiap tanggal
-  for (const [, tglList] of byTanggal.entries()) {
-    const maxHadirPerKelas: Record<string, number> = {}; 
-    // maxHadirPerKelas fungsinya nyimpen nilai hadir tertinggi per kelas di tanggal itu.
-    // Jadi kalau 1A ada 3 materi (42, 42, 42), dia cuma nyimpen 42.
-
-    for (const l of tglList) {
-      const tipe = parseTipeKelas(l.kelas);
-      const hadir = Number(l.jumlah_hadir || 0);
-      
-      // Simpan nilai hadir tertinggi aja per tipe kelas
-      if (!maxHadirPerKelas[tipe] || hadir > maxHadirPerKelas[tipe]) {
-        maxHadirPerKelas[tipe] = hadir;
-      }
-    }
-
-    // 3. Hitung total untuk tanggal ini
-    if (maxHadirPerKelas["AB"] !== undefined) {
-      // Kalau ada gabungan A&B, pake angka gabungan aja.
-      // Kelas A dan B individu di tanggal itu diabaikan (gak dijumlahin lagi).
-      totalHadir += maxHadirPerKelas["AB"];
-    } else {
-      // Kalau gak ada gabungan, jumlahkan Kelas A dan Kelas B
-      const totalA = maxHadirPerKelas["A"] || 0;
-      const totalB = maxHadirPerKelas["B"] || 0;
-      const totalUnknown = maxHadirPerKelas["UNKNOWN"] || 0;
-      
-      if (totalA > 0 || totalB > 0) {
-        totalHadir += totalA + totalB;
-      } else if (totalUnknown > 0) {
-        totalHadir += totalUnknown;
-      }
-    }
-  }
-
-  return totalHadir;
 }
 
 function hitungTotalHadirPintar(laporanPeriode: ReportWithTrainer[]): number {
@@ -270,12 +218,7 @@ function hitungDurasiMenit(
   const [h1, m1] = jamMulai.slice(0, 5).split(":").map(Number);
   const [h2, m2] = jamSelesai.slice(0, 5).split(":").map(Number);
 
-  if (
-    Number.isNaN(h1) ||
-    Number.isNaN(m1) ||
-    Number.isNaN(h2) ||
-    Number.isNaN(m2)
-  ) {
+  if (Number.isNaN(h1) || Number.isNaN(m1) || Number.isNaN(h2) || Number.isNaN(m2)) {
     return 0;
   }
 
@@ -302,8 +245,7 @@ function StatusPill({ status }: { status: string | null | undefined }) {
     status === "terverifikasi"
       ? {
           label: "Terverifikasi",
-          className:
-            "bg-status-verified/15 text-status-verified border-status-verified/20",
+          className: "bg-status-verified/15 text-status-verified border-status-verified/20",
           dot: "bg-status-verified",
         }
       : status === "perlu_revisi"
@@ -315,8 +257,7 @@ function StatusPill({ status }: { status: string | null | undefined }) {
         : status === "menunggu_verifikasi"
           ? {
               label: "Menunggu Verifikasi",
-              className:
-                "bg-status-warning/15 text-status-warning border-status-warning/20",
+              className: "bg-status-warning/15 text-status-warning border-status-warning/20",
               dot: "bg-status-warning",
             }
           : status === "terkirim"
@@ -359,14 +300,8 @@ function StatCard({
 }) {
   const toneClass = {
     blue: { icon: "bg-primary/10 text-primary", value: "text-foreground" },
-    yellow: {
-      icon: "bg-status-warning/15 text-status-warning",
-      value: "text-foreground",
-    },
-    green: {
-      icon: "bg-status-verified/15 text-status-verified",
-      value: "text-foreground",
-    },
+    yellow: { icon: "bg-status-warning/15 text-status-warning", value: "text-foreground" },
+    green: { icon: "bg-status-verified/15 text-status-verified", value: "text-foreground" },
     red: { icon: "bg-destructive/10 text-destructive", value: "text-foreground" },
   }[tone];
 
@@ -380,12 +315,7 @@ function StatCard({
           </p>
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
-        <div
-          className={cn(
-            "flex size-10 shrink-0 items-center justify-center rounded-xl",
-            toneClass.icon,
-          )}
-        >
+        <div className={cn("flex size-10 shrink-0 items-center justify-center rounded-xl", toneClass.icon)}>
           <Icon className="size-5" />
         </div>
       </div>
@@ -421,9 +351,7 @@ function TrendChart({ reports }: { reports: ReportWithTrainer[] }) {
       if (!tanggal) continue;
       map.set(tanggal, (map.get(tanggal) ?? 0) + 1);
     }
-    return [...map.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-14);
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-14);
   }, [reports]);
 
   const max = Math.max(...data.map(([, value]) => value), 1);
@@ -447,10 +375,7 @@ function TrendChart({ reports }: { reports: ReportWithTrainer[] }) {
         {data.map(([tanggal, value]) => {
           const height = Math.max(8, (value / max) * 165);
           return (
-            <div
-              key={tanggal}
-              className="group relative z-10 flex h-full min-w-0 flex-1 flex-col justify-end"
-            >
+            <div key={tanggal} className="group relative z-10 flex h-full min-w-0 flex-1 flex-col justify-end">
               <div className="relative flex justify-center">
                 <div
                   className="w-full max-w-10 rounded-t-lg bg-primary/80 transition-all duration-200 group-hover:bg-primary"
@@ -467,10 +392,7 @@ function TrendChart({ reports }: { reports: ReportWithTrainer[] }) {
       </div>
       <div className="mt-2 flex gap-2 px-2">
         {data.map(([tanggal]) => (
-          <div
-            key={tanggal}
-            className="min-w-0 flex-1 text-center text-[10px] text-muted-foreground"
-          >
+          <div key={tanggal} className="min-w-0 flex-1 text-center text-[10px] text-muted-foreground">
             {new Date(`${tanggal}T00:00:00`).toLocaleDateString("id-ID", {
               day: "2-digit",
               month: "short",
@@ -541,13 +463,9 @@ function StatusChart({
           <div key={item.label} className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               <span className={cn("size-2.5 rounded-full", item.className)} />
-              <span className="truncate text-xs text-muted-foreground">
-                {item.label}
-              </span>
+              <span className="truncate text-xs text-muted-foreground">{item.label}</span>
             </div>
-            <span className="num text-sm font-semibold">
-              {item.value.toLocaleString("id-ID")}
-            </span>
+            <span className="num text-sm font-semibold">{item.value.toLocaleString("id-ID")}</span>
           </div>
         ))}
       </div>
@@ -595,9 +513,6 @@ function ActivityChart({ reports }: { reports: ReportWithTrainer[] }) {
   );
 }
 
-/* =========================================================
-   PAGINATION
-========================================================= */
 function Pagination({
   halaman,
   totalHalaman,
@@ -642,12 +557,7 @@ function Pagination({
 
         {halamanList.map((h, i) =>
           h === "..." ? (
-            <span
-              key={`dots-${i}`}
-              className="px-2 text-xs text-muted-foreground"
-            >
-              …
-            </span>
+            <span key={`dots-${i}`} className="px-2 text-xs text-muted-foreground">…</span>
           ) : (
             <Button
               key={h}
@@ -674,10 +584,6 @@ function Pagination({
   );
 }
 
-// =============================================================
-// Helper: fetch gambar → data URL (base64)
-// =============================================================
-
 async function urlToDataUrl(url: string): Promise<string | null> {
   try {
     const res = await fetch(url);
@@ -694,19 +600,12 @@ async function urlToDataUrl(url: string): Promise<string | null> {
   }
 }
 
-async function urlToDataUrlWithTimeout(
-  url: string,
-  timeoutMs = 20000,
-): Promise<string | null> {
+async function urlToDataUrlWithTimeout(url: string, timeoutMs = 20000): Promise<string | null> {
   return Promise.race([
     urlToDataUrl(url),
     new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
   ]);
 }
-
-// =============================================================
-// Komponen utama
-// =============================================================
 
 function MonitoringLaporanPage() {
   const { isStaff, isTrainer, trainer, loading, user } = useCurrentUser();
@@ -814,36 +713,14 @@ function MonitoringLaporanPage() {
 
   const stats = useMemo(() => {
     const total = filteredReports.length;
-    const terverifikasi = filteredReports.filter(
-      (r) => r.status_laporan === "terverifikasi",
-    ).length;
-    const menunggu = filteredReports.filter(
-      (r) => r.status_laporan === "menunggu_verifikasi",
-    ).length;
-    const revisi = filteredReports.filter(
-      (r) => r.status_laporan === "perlu_revisi",
-    ).length;
-    const terkirim = filteredReports.filter(
-      (r) => r.status_laporan === "terkirim",
-    ).length;
-    const totalHadir = filteredReports.reduce(
-      (sum, report) => sum + (report.jumlah_hadir ?? 0),
-      0,
-    );
-    const totalPeserta = filteredReports.reduce(
-      (sum, report) => sum + (report.jumlah_peserta ?? 0),
-      0,
-    );
+    const terverifikasi = filteredReports.filter((r) => r.status_laporan === "terverifikasi").length;
+    const menunggu = filteredReports.filter((r) => r.status_laporan === "menunggu_verifikasi").length;
+    const revisi = filteredReports.filter((r) => r.status_laporan === "perlu_revisi").length;
+    const terkirim = filteredReports.filter((r) => r.status_laporan === "terkirim").length;
+    const totalHadir = filteredReports.reduce((sum, report) => sum + (report.jumlah_hadir ?? 0), 0);
+    const totalPeserta = filteredReports.reduce((sum, report) => sum + (report.jumlah_peserta ?? 0), 0);
 
-    return {
-      total,
-      terverifikasi,
-      menunggu,
-      revisi,
-      terkirim,
-      totalHadir,
-      totalPeserta,
-    };
+    return { total, terverifikasi, menunggu, revisi, terkirim, totalHadir, totalPeserta };
   }, [filteredReports]);
 
   const resetFilter = () => {
@@ -866,7 +743,6 @@ function MonitoringLaporanPage() {
     cari ||
     bulan !== bulanIni();
 
-  // ---------- Aksi verifikasi ----------
   const verifikasiMutation = useMutation({
     mutationFn: async ({
       report,
@@ -931,7 +807,6 @@ function MonitoringLaporanPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // ---------- Aksi HAPUS PERMANENT ----------
   const hapusMutation = useMutation({
     mutationFn: async (report: ReportWithTrainer) => {
       await hapusLaporanPermanent(report.id);
@@ -976,9 +851,6 @@ function MonitoringLaporanPage() {
     setLightbox(null);
   }
 
-  // =============================================================
-  // BUILD HTML PDF (DENGAN TOTAL DURASI + LOGIKA HADIR PINTAR)
-  // =============================================================
   async function buildHTML(): Promise<{ html: string; fileName: string } | null> {
     if (filteredReports.length === 0) {
       toast.error("Tidak ada laporan untuk diunduh.");
@@ -1074,9 +946,7 @@ function MonitoringLaporanPage() {
           cur.push(r);
           byTanggal.set(key, cur);
         }
-        const tanggalList = [...byTanggal.entries()].sort(([a], [b]) =>
-          a.localeCompare(b),
-        );
+        const tanggalList = [...byTanggal.entries()].sort(([a], [b]) => a.localeCompare(b));
 
         let noUrut = 1;
         const tbodyHtml = tanggalList
@@ -1088,30 +958,18 @@ function MonitoringLaporanPage() {
                 const isFirstRow = idx === 0;
                 const currentNo = noUrut++;
 
-                const tglSelesai = (item as any).tanggal_selesai as
-                  | string
-                  | null
-                  | undefined;
-                const isRange = Boolean(
-                  tglSelesai && tglSelesai !== item.tanggal_kegiatan,
-                );
+                const tglSelesai = (item as any).tanggal_selesai as string | null | undefined;
+                const isRange = Boolean(tglSelesai && tglSelesai !== item.tanggal_kegiatan);
 
                 let durasiHari = 0;
                 if (isRange && item.tanggal_kegiatan && tglSelesai) {
-                  const s = new Date(
-                    `${item.tanggal_kegiatan}T00:00:00`,
-                  ).getTime();
+                  const s = new Date(`${item.tanggal_kegiatan}T00:00:00`).getTime();
                   const e = new Date(`${tglSelesai}T00:00:00`).getTime();
-                  durasiHari =
-                    Math.floor((e - s) / (1000 * 60 * 60 * 24)) + 1;
+                  durasiHari = Math.floor((e - s) / (1000 * 60 * 60 * 24)) + 1;
                 }
 
                 const tanggalText = isRange
-                  ? `${formatTanggal(
-                      item.tanggal_kegiatan,
-                    )} - ${formatTanggal(
-                      tglSelesai!,
-                    )}<br><span class="durasi-hari">(${durasiHari} hari)</span>`
+                  ? `${formatTanggal(item.tanggal_kegiatan)} - ${formatTanggal(tglSelesai!)}<br><span class="durasi-hari">(${durasiHari} hari)</span>`
                   : formatTanggal(item.tanggal_kegiatan);
 
                 const tanggalCell = isFirstRow
@@ -1120,27 +978,13 @@ function MonitoringLaporanPage() {
 
                 const materiText = [
                   escapeHtml(item.materi || "—"),
-                  item.jenis_kegiatan
-                    ? `<div class="materi-jenis">${escapeHtml(
-                        item.jenis_kegiatan,
-                      )}</div>`
-                    : "",
-                  item.keterangan
-                    ? `<div class="materi-desc">${escapeHtml(
-                        item.keterangan,
-                      )}</div>`
-                    : "",
+                  item.jenis_kegiatan ? `<div class="materi-jenis">${escapeHtml(item.jenis_kegiatan)}</div>` : "",
+                  item.keterangan ? `<div class="materi-desc">${escapeHtml(item.keterangan)}</div>` : "",
                 ].join("");
 
-                const fotoHtml =
-                  fotos.length === 0
+                const fotoHtml = fotos.length === 0
                     ? `<div class="no-photo">Tidak ada foto</div>`
-                    : `<div class="photo-grid">${fotos
-                        .map(
-                          (src) =>
-                            `<img src="${src}" class="photo" alt="Dokumentasi" />`,
-                        )
-                        .join("")}</div>`;
+                    : `<div class="photo-grid">${fotos.map((src) => `<img src="${src}" class="photo" alt="Dokumentasi" />`).join("")}</div>`;
 
                 return `
                   <tr>
@@ -1152,16 +996,8 @@ function MonitoringLaporanPage() {
                     </td>
                     <td class="col-materi">${materiText}</td>
                     <td class="col-kelas">${escapeHtml(item.kelas || "-")}</td>
-                    <td class="col-lokasi">${escapeHtml(
-                      item.lokasi || "-",
-                    )}</td>
-                    ${
-                      idx === 0
-                        ? `<td class="col-hadir" rowspan="${rowSpan}">${
-                            item.jumlah_hadir ?? 0
-                          }</td>`
-                        : ""
-                    }
+                    <td class="col-lokasi">${escapeHtml(item.lokasi || "-")}</td>
+                    ${idx === 0 ? `<td class="col-hadir" rowspan="${rowSpan}">${item.jumlah_hadir ?? 0}</td>` : ""}
                     <td class="col-pj">Muhammad Halid (Superintendent)</td>
                     <td class="col-foto">${fotoHtml}</td>
                   </tr>
@@ -1171,21 +1007,11 @@ function MonitoringLaporanPage() {
           })
           .join("");
 
-        // Total durasi trainer ini
-        const totalMenitTrainer = list.reduce(
-          (sum, r) =>
-            sum + hitungDurasiMenit(r.jam_mulai, r.jam_selesai),
-          0,
-        );
-
-        // Total hadir pakai logika pintar (A + B = gabungan)
+        const totalMenitTrainer = list.reduce((sum, r) => sum + hitungDurasiMenit(r.jam_mulai, r.jam_selesai), 0);
         const totalHadirTrainer = hitungTotalHadirPintar(list);
-
         const isFirst = trainerIdx === 0;
 
-        const logoHtml = logoDataUrl
-          ? `<img src="${logoDataUrl}" class="logo" alt="Logo" />`
-          : `<div class="logo-fallback">K3</div>`;
+        const logoHtml = logoDataUrl ? `<img src="${logoDataUrl}" class="logo" alt="Logo" />` : `<div class="logo-fallback">K3</div>`;
 
         return `
           <section class="page ${isFirst ? "" : "page-break"}">
@@ -1219,9 +1045,7 @@ function MonitoringLaporanPage() {
               </div>
               <div class="trainer-cell">
                 <div class="trainer-label">DEPARTEMEN</div>
-                <div class="trainer-value">${escapeHtml(
-                  trainerInfo.departemen,
-                )}</div>
+                <div class="trainer-value">${escapeHtml(trainerInfo.departemen)}</div>
               </div>
             </div>
 
@@ -1264,16 +1088,8 @@ function MonitoringLaporanPage() {
             </div>
 
             <div class="footer">
-              <span>Trainer ${trainerIdx + 1} dari ${totalTrainer} &nbsp;|&nbsp; Periode: <strong>${escapeHtml(
-                bulanLabel,
-              )}</strong></span>
-              <span>Dicetak: <strong>${escapeHtml(
-                new Date().toLocaleDateString("id-ID", {
-                  day: "2-digit",
-                  month: "long",
-                  year: "numeric",
-                }),
-              )}</strong></span>
+              <span>Trainer ${trainerIdx + 1} dari ${totalTrainer} &nbsp;|&nbsp; Periode: <strong>${escapeHtml(bulanLabel)}</strong></span>
+              <span>Dicetak: <strong>${escapeHtml(new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }))}</strong></span>
             </div>
           </section>
         `;
@@ -1406,10 +1222,7 @@ function MonitoringLaporanPage() {
 </html>
     `;
 
-    return {
-      html,
-      fileName: `Laporan-Bulanan-K3-${bulanFinal}`,
-    };
+    return { html, fileName: `Laporan-Bulanan-K3-${bulanFinal}` };
   }
 
   async function previewPDF() {
@@ -1421,9 +1234,7 @@ function MonitoringLaporanPage() {
       setPdfFileName(result.fileName);
     } catch (error) {
       console.error("Gagal menyiapkan PDF:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Gagal menyiapkan PDF.",
-      );
+      toast.error(error instanceof Error ? error.message : "Gagal menyiapkan PDF.");
     } finally {
       setPdfBuilding(false);
     }
@@ -1471,11 +1282,7 @@ function MonitoringLaporanPage() {
   if (loading) {
     return (
       <AppShell title="Monitoring Laporan" eyebrow="Laporan Kegiatan Trainer K3">
-        <Panel>
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            Memuat monitoring laporan…
-          </p>
-        </Panel>
+        <Panel><p className="py-10 text-center text-sm text-muted-foreground">Memuat monitoring laporan…</p></Panel>
       </AppShell>
     );
   }
@@ -1483,11 +1290,7 @@ function MonitoringLaporanPage() {
   if (!isStaff && !isTrainer) {
     return (
       <AppShell title="Monitoring Laporan">
-        <Panel>
-          <p className="text-sm text-muted-foreground">
-            Anda tidak memiliki akses ke halaman monitoring laporan.
-          </p>
-        </Panel>
+        <Panel><p className="text-sm text-muted-foreground">Anda tidak memiliki akses ke halaman monitoring laporan.</p></Panel>
       </AppShell>
     );
   }
@@ -1497,11 +1300,7 @@ function MonitoringLaporanPage() {
       title="Monitoring Laporan"
       eyebrow="Laporan Kegiatan Trainer K3"
       actions={
-        <Button
-          variant="outline"
-          onClick={previewPDF}
-          disabled={filteredReports.length === 0 || pdfBuilding}
-        >
+        <Button variant="outline" onClick={previewPDF} disabled={filteredReports.length === 0 || pdfBuilding}>
           <Download className="mr-2 size-4" />
           {pdfBuilding ? "Menyiapkan…" : "Download Laporan Bulanan"}
         </Button>
@@ -1510,22 +1309,13 @@ function MonitoringLaporanPage() {
       <div className="mb-5 overflow-hidden rounded-2xl border border-primary/10 bg-gradient-to-r from-primary/10 via-background to-primary/5 p-5 sm:p-6">
         <div className="flex flex-col justify-between gap-5 md:flex-row md:items-center">
           <div className="flex items-start gap-4">
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-              <BarChart3 className="size-6" />
-            </div>
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm"><BarChart3 className="size-6" /></div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight sm:text-2xl">
-                Monitoring Laporan
-              </h1>
-              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-                Pantau status, perkembangan, dan aktivitas laporan trainer K3
-                secara terpusat.
-              </p>
+              <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Monitoring Laporan</h1>
+              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Pantau status, perkembangan, dan aktivitas laporan trainer K3 secara terpusat.</p>
             </div>
           </div>
-          <div className="hidden shrink-0 md:block">
-            <FileBarChart2 className="size-20 text-primary/15" />
-          </div>
+          <div className="hidden shrink-0 md:block"><FileBarChart2 className="size-20 text-primary/15" /></div>
         </div>
       </div>
 
@@ -1533,14 +1323,11 @@ function MonitoringLaporanPage() {
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="font-semibold">Filter Monitoring</p>
-            <p className="text-xs text-muted-foreground">
-              Gunakan filter untuk melihat laporan sesuai kebutuhan.
-            </p>
+            <p className="text-xs text-muted-foreground">Gunakan filter untuk melihat laporan sesuai kebutuhan.</p>
           </div>
           {hasFilter ? (
             <Button size="sm" variant="outline" onClick={resetFilter}>
-              <RefreshCcw className="mr-2 size-3.5" />
-              Reset Filter
+              <RefreshCcw className="mr-2 size-3.5" />Reset Filter
             </Button>
           ) : null}
         </div>
@@ -1549,191 +1336,89 @@ function MonitoringLaporanPage() {
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">Bulan</p>
             <Select value={bulan} onValueChange={(v) => { setBulan(v); setHalaman(1); }}>
-              <SelectTrigger>
-                <SelectValue placeholder="Pilih bulan" />
-              </SelectTrigger>
-              <SelectContent>
-                {daftarBulan.map((b) => (
-                  <SelectItem key={b} value={b}>
-                    {labelBulan(b)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
+              <SelectTrigger><SelectValue placeholder="Pilih bulan" /></SelectTrigger>
+              <SelectContent>{daftarBulan.map((b) => (<SelectItem key={b} value={b}>{labelBulan(b)}</SelectItem>))}</SelectContent>
             </Select>
           </div>
-
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Dari tanggal
-            </p>
+            <p className="text-xs font-medium text-muted-foreground">Dari tanggal</p>
             <Input type="date" value={dari} onChange={(e) => { setDari(e.target.value); setHalaman(1); }} />
           </div>
-
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Sampai tanggal
-            </p>
-            <Input
-              type="date"
-              value={sampai}
-              onChange={(e) => { setSampai(e.target.value); setHalaman(1); }}
-            />
+            <p className="text-xs font-medium text-muted-foreground">Sampai tanggal</p>
+            <Input type="date" value={sampai} onChange={(e) => { setSampai(e.target.value); setHalaman(1); }} />
           </div>
-
           {isStaff ? (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">
-                Trainer
-              </p>
+              <p className="text-xs font-medium text-muted-foreground">Trainer</p>
               <Select value={trainerFilter} onValueChange={(v) => { setTrainerFilter(v); setHalaman(1); }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Semua Trainer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="semua">Semua Trainer</SelectItem>
-                  {trainers.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.nama_lengkap}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
+                <SelectTrigger><SelectValue placeholder="Semua Trainer" /></SelectTrigger>
+                <SelectContent><SelectItem value="semua">Semua Trainer</SelectItem>{trainers.map((item) => (<SelectItem key={item.id} value={item.id}>{item.nama_lengkap}</SelectItem>))}</SelectContent>
               </Select>
             </div>
           ) : (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">
-                Trainer
-              </p>
-              <div className="flex h-10 items-center rounded-md border border-input bg-muted/30 px-3 text-sm">
-                {trainer?.nama_lengkap || "Trainer"}
-              </div>
+              <p className="text-xs font-medium text-muted-foreground">Trainer</p>
+              <div className="flex h-10 items-center rounded-md border border-input bg-muted/30 px-3 text-sm">{trainer?.nama_lengkap || "Trainer"}</div>
             </div>
           )}
-
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Jenis kegiatan
-            </p>
+            <p className="text-xs font-medium text-muted-foreground">Jenis kegiatan</p>
             <Select value={jenisKegiatan} onValueChange={(v) => { setJenisKegiatan(v); setHalaman(1); }}>
-              <SelectTrigger>
-                <SelectValue placeholder="Semua Jenis" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="semua">Semua Jenis</SelectItem>
-                {jenisOptions.map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {item}
-                  </SelectItem>
-                ))}
-              </SelectContent>
+              <SelectTrigger><SelectValue placeholder="Semua Jenis" /></SelectTrigger>
+              <SelectContent><SelectItem value="semua">Semua Jenis</SelectItem>{jenisOptions.map((item) => (<SelectItem key={item} value={item}>{item}</SelectItem>))}</SelectContent>
             </Select>
           </div>
-
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Status
-            </p>
-            <Select
-              value={status}
-              onValueChange={(value) => { setStatus(value as FilterStatus); setHalaman(1); }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Semua Status" />
-              </SelectTrigger>
+            <p className="text-xs font-medium text-muted-foreground">Status</p>
+            <Select value={status} onValueChange={(value) => { setStatus(value as FilterStatus); setHalaman(1); }}>
+              <SelectTrigger><SelectValue placeholder="Semua Status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="semua">Semua Status</SelectItem>
                 <SelectItem value="terkirim">Terkirim</SelectItem>
-                <SelectItem value="menunggu_verifikasi">
-                  Menunggu Verifikasi
-                </SelectItem>
+                <SelectItem value="menunggu_verifikasi">Menunggu Verifikasi</SelectItem>
                 <SelectItem value="terverifikasi">Terverifikasi</SelectItem>
                 <SelectItem value="perlu_revisi">Perlu Revisi</SelectItem>
               </SelectContent>
             </Select>
           </div>
-
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Cari
-            </p>
+            <p className="text-xs font-medium text-muted-foreground">Cari</p>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="Materi, kegiatan, kelas…"
-                value={cari}
-                onChange={(e) => { setCari(e.target.value); setHalaman(1); }}
-              />
+              <Input className="pl-9" placeholder="Materi, kegiatan, kelas…" value={cari} onChange={(e) => { setCari(e.target.value); setHalaman(1); }} />
             </div>
           </div>
         </div>
 
         <p className="mt-3 text-xs text-muted-foreground">
-          Menampilkan periode:{" "}
-          <strong>{formatTanggal(dariEfektif)}</strong> s/d{" "}
-          <strong>{formatTanggal(sampaiEfektif)}</strong>
-          {!dari && !sampai ? (
-            <span> (bulan {labelBulan(bulan)})</span>
-          ) : null}
+          Menampilkan periode: <strong>{formatTanggal(dariEfektif)}</strong> s/d <strong>{formatTanggal(sampaiEfektif)}</strong>
+          {!dari && !sampai ? <span> (bulan {labelBulan(bulan)})</span> : null}
         </p>
       </Panel>
 
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Total Laporan"
-          value={stats.total}
-          description="Laporan sesuai filter"
-          icon={FileText}
-          tone="blue"
-        />
-        <StatCard
-          title="Menunggu Verifikasi"
-          value={stats.menunggu}
-          description="Perlu diperiksa staff"
-          icon={Clock3}
-          tone="yellow"
-        />
-        <StatCard
-          title="Terverifikasi"
-          value={stats.terverifikasi}
-          description="Laporan sudah selesai"
-          icon={CheckCircle2}
-          tone="green"
-        />
-        <StatCard
-          title="Perlu Revisi"
-          value={stats.revisi}
-          description="Menunggu perbaikan trainer"
-          icon={XCircle}
-          tone="red"
-        />
+        <StatCard title="Total Laporan" value={stats.total} description="Laporan sesuai filter" icon={FileText} tone="blue" />
+        <StatCard title="Menunggu Verifikasi" value={stats.menunggu} description="Perlu diperiksa staff" icon={Clock3} tone="yellow" />
+        <StatCard title="Terverifikasi" value={stats.terverifikasi} description="Laporan sudah selesai" icon={CheckCircle2} tone="green" />
+        <StatCard title="Perlu Revisi" value={stats.revisi} description="Menunggu perbaikan trainer" icon={XCircle} tone="red" />
       </div>
 
       <div className="mb-5 grid gap-4 sm:grid-cols-2">
         <Panel>
           <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Users className="size-5" />
-            </div>
+            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><Users className="size-5" /></div>
             <div>
-              <p className="text-xs text-muted-foreground">
-                Total Peserta Hadir
-              </p>
-              <p className="num text-2xl font-bold">
-                {stats.totalHadir.toLocaleString("id-ID")}
-              </p>
+              <p className="text-xs text-muted-foreground">Total Peserta Hadir</p>
+              <p className="num text-2xl font-bold">{stats.totalHadir.toLocaleString("id-ID")}</p>
             </div>
           </div>
         </Panel>
         <Panel>
           <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <CalendarDays className="size-5" />
-            </div>
+            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><CalendarDays className="size-5" /></div>
             <div>
-              <p className="text-xs text-muted-foreground">
-                Periode Monitoring
-              </p>
+              <p className="text-xs text-muted-foreground">Periode Monitoring</p>
               <p className="text-sm font-semibold">{labelBulan(bulan)}</p>
             </div>
           </div>
@@ -1744,26 +1429,16 @@ function MonitoringLaporanPage() {
         <Panel>
           <div className="mb-5">
             <p className="font-semibold">Tren Laporan</p>
-            <p className="text-xs text-muted-foreground">
-              Perkembangan jumlah laporan berdasarkan tanggal kegiatan.
-            </p>
+            <p className="text-xs text-muted-foreground">Perkembangan jumlah laporan berdasarkan tanggal kegiatan.</p>
           </div>
           <TrendChart reports={filteredReports} />
         </Panel>
         <Panel>
           <div className="mb-5">
             <p className="font-semibold">Status Laporan</p>
-            <p className="text-xs text-muted-foreground">
-              Distribusi status laporan pada periode yang dipilih.
-            </p>
+            <p className="text-xs text-muted-foreground">Distribusi status laporan pada periode yang dipilih.</p>
           </div>
-          <StatusChart
-            total={stats.total}
-            terverifikasi={stats.terverifikasi}
-            menunggu={stats.menunggu}
-            revisi={stats.revisi}
-            terkirim={stats.terkirim}
-          />
+          <StatusChart total={stats.total} terverifikasi={stats.terverifikasi} menunggu={stats.menunggu} revisi={stats.revisi} terkirim={stats.terkirim} />
         </Panel>
       </div>
 
@@ -1771,40 +1446,20 @@ function MonitoringLaporanPage() {
         <Panel>
           <div className="mb-5">
             <p className="font-semibold">Jenis Kegiatan</p>
-            <p className="text-xs text-muted-foreground">
-              Jumlah laporan berdasarkan jenis kegiatan.
-            </p>
+            <p className="text-xs text-muted-foreground">Jumlah laporan berdasarkan jenis kegiatan.</p>
           </div>
           <ActivityChart reports={filteredReports} />
         </Panel>
         <Panel>
           <div className="mb-5">
             <p className="font-semibold">Ringkasan Status</p>
-            <p className="text-xs text-muted-foreground">
-              Kondisi laporan yang sedang dipantau.
-            </p>
+            <p className="text-xs text-muted-foreground">Kondisi laporan yang sedang dipantau.</p>
           </div>
           <div className="space-y-4">
-            <MiniLegend
-              label="Terverifikasi"
-              value={stats.terverifikasi}
-              className="bg-status-verified"
-            />
-            <MiniLegend
-              label="Menunggu Verifikasi"
-              value={stats.menunggu}
-              className="bg-status-warning"
-            />
-            <MiniLegend
-              label="Perlu Revisi"
-              value={stats.revisi}
-              className="bg-destructive"
-            />
-            <MiniLegend
-              label="Terkirim"
-              value={stats.terkirim}
-              className="bg-primary"
-            />
+            <MiniLegend label="Terverifikasi" value={stats.terverifikasi} className="bg-status-verified" />
+            <MiniLegend label="Menunggu Verifikasi" value={stats.menunggu} className="bg-status-warning" />
+            <MiniLegend label="Perlu Revisi" value={stats.revisi} className="bg-destructive" />
+            <MiniLegend label="Terkirim" value={stats.terkirim} className="bg-primary" />
             <div className="border-t border-border pt-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Total</span>
@@ -1819,57 +1474,23 @@ function MonitoringLaporanPage() {
         <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="font-semibold">Daftar Laporan</p>
-            <p className="text-xs text-muted-foreground">
-              {filteredReports.length.toLocaleString("id-ID")} laporan ditemukan
-              · periode {labelBulan(bulan)}
-            </p>
+            <p className="text-xs text-muted-foreground">{filteredReports.length.toLocaleString("id-ID")} laporan ditemukan · periode {labelBulan(bulan)}</p>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={previewPDF}
-            disabled={filteredReports.length === 0 || pdfBuilding}
-          >
-            <Download className="mr-2 size-4" />
-            {pdfBuilding ? "Menyiapkan…" : "Download Bulanan"}
+          <Button size="sm" variant="outline" onClick={previewPDF} disabled={filteredReports.length === 0 || pdfBuilding}>
+            <Download className="mr-2 size-4" />{pdfBuilding ? "Menyiapkan…" : "Download Bulanan"}
           </Button>
         </div>
 
         {isLoading ? (
-          <div className="p-10 text-center">
-            <p className="text-sm text-muted-foreground">
-              Memuat data monitoring…
-            </p>
-          </div>
+          <div className="p-10 text-center"><p className="text-sm text-muted-foreground">Memuat data monitoring…</p></div>
         ) : isError ? (
-          <div className="p-10 text-center">
-            <p className="font-medium text-destructive">
-              Gagal mengambil data laporan.
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Coba refresh halaman atau ubah filter.
-            </p>
-          </div>
+          <div className="p-10 text-center"><p className="font-medium text-destructive">Gagal mengambil data laporan.</p><p className="mt-1 text-sm text-muted-foreground">Coba refresh halaman atau ubah filter.</p></div>
         ) : filteredReports.length === 0 ? (
           <div className="p-12 text-center">
-            <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
-              <FileText className="size-5 text-muted-foreground" />
-            </div>
+            <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted"><FileText className="size-5 text-muted-foreground" /></div>
             <p className="mt-4 font-semibold">Belum ada laporan</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Tidak ada laporan pada periode {labelBulan(bulan)}.
-            </p>
-            {hasFilter ? (
-              <Button
-                className="mt-4"
-                variant="outline"
-                size="sm"
-                onClick={resetFilter}
-              >
-                <RefreshCcw className="mr-2 size-4" />
-                Reset Filter
-              </Button>
-            ) : null}
+            <p className="mt-1 text-sm text-muted-foreground">Tidak ada laporan pada periode {labelBulan(bulan)}.</p>
+            {hasFilter ? <Button className="mt-4" variant="outline" size="sm" onClick={resetFilter}><RefreshCcw className="mr-2 size-4" />Reset Filter</Button> : null}
           </div>
         ) : (
           <>
@@ -1877,107 +1498,41 @@ function MonitoringLaporanPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/20 text-left">
-                    <th className="eyebrow whitespace-nowrap px-4 py-3 text-muted-foreground">
-                      No
-                    </th>
-                    <th className="eyebrow whitespace-nowrap px-4 py-3 text-muted-foreground">
-                      Tanggal
-                    </th>
-                    <th className="eyebrow px-4 py-3 text-muted-foreground">
-                      Trainer
-                    </th>
-                    <th className="eyebrow px-4 py-3 text-muted-foreground">
-                      Materi / Kegiatan
-                    </th>
-                    <th className="eyebrow px-4 py-3 text-muted-foreground">
-                      Jenis
-                    </th>
-                    <th className="eyebrow px-4 py-3 text-muted-foreground">
-                      Lokasi
-                    </th>
-                    <th className="eyebrow whitespace-nowrap px-4 py-3 text-muted-foreground">
-                      Hadir
-                    </th>
-                    <th className="eyebrow px-4 py-3 text-muted-foreground">
-                      Status
-                    </th>
-                    <th className="eyebrow px-4 py-3 text-muted-foreground">
-                      Aksi
-                    </th>
+                    <th className="eyebrow whitespace-nowrap px-4 py-3 text-muted-foreground">No</th>
+                    <th className="eyebrow whitespace-nowrap px-4 py-3 text-muted-foreground">Tanggal</th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">Trainer</th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">Materi / Kegiatan</th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">Jenis</th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">Lokasi</th>
+                    <th className="eyebrow whitespace-nowrap px-4 py-3 text-muted-foreground">Hadir</th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">Status</th>
+                    <th className="eyebrow px-4 py-3 text-muted-foreground">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   {laporanTampil.map((report, index) => (
-                    <tr
-                      key={report.id}
-                      className="border-b border-border/60 transition-colors hover:bg-muted/20"
-                    >
-                      <td className="num px-4 py-3 text-muted-foreground">
-                        {(halamanAman - 1) * PER_HALAMAN + index + 1}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        {formatTanggal(report.tanggal_kegiatan)}
-                      </td>
+                    <tr key={report.id} className="border-b border-border/60 transition-colors hover:bg-muted/20">
+                      <td className="num px-4 py-3 text-muted-foreground">{(halamanAman - 1) * PER_HALAMAN + index + 1}</td>
+                      <td className="whitespace-nowrap px-4 py-3">{formatTanggal(report.tanggal_kegiatan)}</td>
                       <td className="px-4 py-3">
                         <div className="min-w-[140px]">
-                          <p className="font-medium">
-                            {report.trainers?.nama_lengkap || "—"}
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-muted-foreground">
-                            {report.trainers?.nomor_id_trainer || "—"}
-                          </p>
+                          <p className="font-medium">{report.trainers?.nama_lengkap || "—"}</p>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">{report.trainers?.nomor_id_trainer || "—"}</p>
                         </div>
                       </td>
                       <td className="max-w-[240px] px-4 py-3">
-                        <p className="truncate font-medium">
-                          {report.materi || "Tanpa materi"}
-                        </p>
-                        {report.kelas ? (
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            Kelas: {report.kelas}
-                          </p>
-                        ) : null}
+                        <p className="truncate font-medium">{report.materi || "Tanpa materi"}</p>
+                        {report.kelas ? <p className="mt-0.5 text-xs text-muted-foreground">Kelas: {report.kelas}</p> : null}
                       </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-                          {report.jenis_kegiatan || "Lainnya"}
-                        </span>
-                      </td>
-                      <td className="max-w-[150px] px-4 py-3 text-muted-foreground">
-                        <span className="line-clamp-2">
-                          {report.lokasi || "—"}
-                        </span>
-                      </td>
-                      <td className="num px-4 py-3">
-                        {report.jumlah_hadir ?? 0}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusPill status={report.status_laporan} />
-                      </td>
+                      <td className="px-4 py-3"><span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{report.jenis_kegiatan || "Lainnya"}</span></td>
+                      <td className="max-w-[150px] px-4 py-3 text-muted-foreground"><span className="line-clamp-2">{report.lokasi || "—"}</span></td>
+                      <td className="num px-4 py-3">{report.jumlah_hadir ?? 0}</td>
+                      <td className="px-4 py-3"><StatusPill status={report.status_laporan} /></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            title="Preview laporan"
-                            onClick={() => bukaPreview(report)}
-                          >
-                            <Eye className="size-4" />
-                          </Button>
-
+                          <Button size="icon" variant="outline" title="Preview laporan" onClick={() => bukaPreview(report)}><Eye className="size-4" /></Button>
                           {isStaff ? (
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              title="Hapus laporan permanent"
-                              onClick={() => {
-                                setHapusAction(report);
-                                setHapusConfirmText("");
-                              }}
-                              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
+                            <Button size="icon" variant="outline" title="Hapus laporan permanent" onClick={() => { setHapusAction(report); setHapusConfirmText(""); }} className="text-destructive hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></Button>
                           ) : null}
                         </div>
                       </td>
@@ -1992,334 +1547,158 @@ function MonitoringLaporanPage() {
                 <div key={report.id} className="space-y-3 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-[11px] text-muted-foreground">
-                        No. {(halamanAman - 1) * PER_HALAMAN + index + 1} · {formatTanggal(report.tanggal_kegiatan)}
-                      </p>
-                      <p className="mt-1 truncate font-semibold">
-                        {report.materi || "Tanpa materi"}
-                      </p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {report.trainers?.nama_lengkap || "—"}
-                      </p>
+                      <p className="text-[11px] text-muted-foreground">No. {(halamanAman - 1) * PER_HALAMAN + index + 1} · {formatTanggal(report.tanggal_kegiatan)}</p>
+                      <p className="mt-1 truncate font-semibold">{report.materi || "Tanpa materi"}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{report.trainers?.nama_lengkap || "—"}</p>
                     </div>
                     <StatusPill status={report.status_laporan} />
                   </div>
-
                   <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted/30 p-3 text-xs">
                     <div>
                       <p className="text-muted-foreground">Jenis</p>
-                      <p className="mt-0.5 font-medium">
-                        {report.jenis_kegiatan || "Lainnya"}
-                      </p>
+                      <p className="mt-0.5 font-medium">{report.jenis_kegiatan || "Lainnya"}</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Hadir</p>
-                      <p className="num mt-0.5 font-medium">
-                        {report.jumlah_hadir ?? 0}
-                      </p>
+                      <p className="num mt-0.5 font-medium">{report.jumlah_hadir ?? 0}</p>
                     </div>
                     <div className="col-span-2">
                       <p className="text-muted-foreground">Lokasi</p>
-                      <p className="mt-0.5 font-medium">
-                        {report.lokasi || "—"}
-                      </p>
+                      <p className="mt-0.5 font-medium">{report.lokasi || "—"}</p>
                     </div>
                   </div>
-
                   <div className="flex flex-wrap gap-2">
-                    <Button
-                      className="flex-1"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => bukaPreview(report)}
-                    >
-                      <Eye className="mr-2 size-4" />
-                      Lihat Detail
-                    </Button>
-
+                    <Button className="flex-1" variant="outline" size="sm" onClick={() => bukaPreview(report)}><Eye className="mr-2 size-4" />Lihat Detail</Button>
                     {isStaff ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="border-destructive/30 text-destructive hover:bg-destructive/10"
-                        onClick={() => {
-                          setHapusAction(report);
-                          setHapusConfirmText("");
-                        }}
-                      >
-                        <Trash2 className="mr-2 size-4" />
-                        Hapus
-                      </Button>
+                      <Button variant="outline" size="sm" className="border-destructive/30 text-destructive hover:bg-destructive/10" onClick={() => { setHapusAction(report); setHapusConfirmText(""); }}><Trash2 className="mr-2 size-4" />Hapus</Button>
                     ) : null}
                   </div>
                 </div>
               ))}
             </div>
 
-            <Pagination
-              halaman={halamanAman}
-              totalHalaman={totalHalaman}
-              onPindah={(h) => {
-                setHalaman(h);
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-            />
+            <Pagination halaman={halamanAman} totalHalaman={totalHalaman} onPindah={(h) => { setHalaman(h); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
           </>
         )}
       </Panel>
 
-      {/* PDF PREVIEW MODAL */}
       {pdfHtml ? (
         <div className="fixed inset-0 z-50 flex flex-col bg-black/70 backdrop-blur-sm">
           <div className="flex items-center justify-between border-b border-white/10 bg-background/95 px-5 py-3">
             <div>
               <p className="text-sm font-semibold">Preview Laporan Bulanan</p>
-              <p className="text-xs text-muted-foreground">
-                {pdfFileName}.pdf
-              </p>
+              <p className="text-xs text-muted-foreground">{pdfFileName}.pdf</p>
             </div>
-            <Button size="icon" variant="outline" onClick={closePdfPreview}>
-              <X className="size-4" />
-            </Button>
+            <Button size="icon" variant="outline" onClick={closePdfPreview}><X className="size-4" /></Button>
           </div>
-
           <div className="flex-1 overflow-auto bg-neutral-200 p-4">
             <div className="mx-auto max-w-[1400px] rounded-lg bg-white shadow-2xl">
-              <iframe
-                srcDoc={pdfHtml}
-                title="Preview Laporan"
-                className="block h-[80vh] w-full rounded-lg border-0 bg-white"
-                sandbox="allow-same-origin"
-              />
+              <iframe srcDoc={pdfHtml} title="Preview Laporan" className="block h-[80vh] w-full rounded-lg border-0 bg-white" sandbox="allow-same-origin" />
             </div>
           </div>
-
           <div className="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 bg-background/95 px-5 py-3">
-            <Button variant="outline" onClick={closePdfPreview}>
-              Batal
-            </Button>
-            <Button onClick={confirmDownload}>
-              <Download className="mr-2 size-4" />
-              Ya, Download PDF
-            </Button>
+            <Button variant="outline" onClick={closePdfPreview}>Batal</Button>
+            <Button onClick={confirmDownload}><Download className="mr-2 size-4" />Ya, Download PDF</Button>
           </div>
         </div>
       ) : null}
 
-      {/* PREVIEW DETAIL MODAL */}
       {preview ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) tutupPreview();
-          }}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) tutupPreview(); }}>
           <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-border bg-background shadow-2xl">
             <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-background/95 px-5 py-4 backdrop-blur">
               <div>
                 <p className="text-lg font-semibold">Detail Laporan</p>
-                <p className="text-xs text-muted-foreground">
-                  {formatTanggalPanjang(preview.tanggal_kegiatan)}
-                </p>
+                <p className="text-xs text-muted-foreground">{formatTanggalPanjang(preview.tanggal_kegiatan)}</p>
               </div>
-              <Button size="icon" variant="outline" onClick={tutupPreview}>
-                <XCircle className="size-4" />
-              </Button>
+              <Button size="icon" variant="outline" onClick={tutupPreview}><XCircle className="size-4" /></Button>
             </div>
-
             <div className="space-y-5 p-5">
               <div className="grid gap-3 sm:grid-cols-2">
-                <DetailItem
-                  label="Trainer"
-                  value={preview.trainers?.nama_lengkap || "—"}
-                />
-                <DetailItem
-                  label="ID Trainer"
-                  value={preview.trainers?.nomor_id_trainer || "—"}
-                />
-                <DetailItem
-                  label="Jabatan"
-                  value={preview.trainers?.jabatan || "—"}
-                />
+                <DetailItem label="Trainer" value={preview.trainers?.nama_lengkap || "—"} />
+                <DetailItem label="ID Trainer" value={preview.trainers?.nomor_id_trainer || "—"} />
+                <DetailItem label="Jabatan" value={preview.trainers?.jabatan || "—"} />
                 <DetailItem label="Departemen" value={DEPARTEMEN_LABEL} />
-                <DetailItem
-                  label="Tanggal"
-                  value={formatTanggalPanjang(preview.tanggal_kegiatan)}
-                />
-                <DetailItem
-                  label="Jam"
-                  value={
-                    preview.jam_mulai && preview.jam_selesai
-                      ? `${preview.jam_mulai.slice(0, 5)} – ${preview.jam_selesai.slice(0, 5)}`
-                      : "Belum lengkap"
-                  }
-                />
-                <DetailItem
-                  label="Jenis Kegiatan"
-                  value={preview.jenis_kegiatan || "—"}
-                />
-                <DetailItem
-                  label="Materi / Kegiatan"
-                  value={preview.materi || "—"}
-                />
+                <DetailItem label="Tanggal" value={formatTanggalPanjang(preview.tanggal_kegiatan)} />
+                <DetailItem label="Jam" value={preview.jam_mulai && preview.jam_selesai ? `${preview.jam_mulai.slice(0, 5)} – ${preview.jam_selesai.slice(0, 5)}` : "Belum lengkap"} />
+                <DetailItem label="Jenis Kegiatan" value={preview.jenis_kegiatan || "—"} />
+                <DetailItem label="Materi / Kegiatan" value={preview.materi || "—"} />
                 <DetailItem label="Kelas" value={preview.kelas || "—"} />
                 <DetailItem label="Lokasi" value={preview.lokasi || "—"} />
-                <DetailItem
-                  label="Penanggung Jawab"
-                  value={preview.penanggung_jawab || "—"}
-                />
+                <DetailItem label="Penanggung Jawab" value={preview.penanggung_jawab || "—"} />
               </div>
-
               <div className="rounded-xl border border-border bg-muted/20 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Data Peserta
-                </p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Data Peserta</p>
                 <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <DetailNumber label="Peserta" value={preview.jumlah_peserta} />
                   <DetailNumber label="Hadir" value={preview.jumlah_hadir} />
-                  <DetailNumber
-                    label="Tidak Hadir"
-                    value={preview.jumlah_tidak_hadir}
-                  />
-                  <DetailNumber
-                    label="Tambahan"
-                    value={preview.jumlah_tambahan}
-                  />
+                  <DetailNumber label="Tidak Hadir" value={preview.jumlah_tidak_hadir} />
+                  <DetailNumber label="Tambahan" value={preview.jumlah_tambahan} />
                 </div>
               </div>
-
               <div className="rounded-xl border border-border p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <ImageIcon className="size-4 text-primary" />
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Dokumentasi Foto
-                    </p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dokumentasi Foto</p>
                   </div>
-                  {!previewLoadingPhotos && previewPhotos.length > 0 && (
-                    <span className="text-[11px] text-muted-foreground">
-                      {previewPhotos.length} foto
-                    </span>
-                  )}
+                  {!previewLoadingPhotos && previewPhotos.length > 0 && <span className="text-[11px] text-muted-foreground">{previewPhotos.length} foto</span>}
                 </div>
-
                 {previewLoadingPhotos ? (
-                  <p className="py-6 text-center text-xs text-muted-foreground">
-                    Memuat foto…
-                  </p>
+                  <p className="py-6 text-center text-xs text-muted-foreground">Memuat foto…</p>
                 ) : previewPhotos.length === 0 ? (
                   <div className="grid place-items-center rounded-lg border border-dashed border-border py-8">
                     <ImageIcon className="size-6 text-muted-foreground/50" />
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Belum ada foto dokumentasi
-                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">Belum ada foto dokumentasi</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-                    {previewPhotos
-                      .filter((p) => p.url)
-                      .map((photo, i) => (
-                        <button
-                          key={photo.id ?? i}
-                          type="button"
-                          onClick={() =>
-                            setLightbox({
-                              url: photo.url!,
-                              nama: photo.nama_file || `Foto ${i + 1}`,
-                            })
-                          }
-                          className="group relative aspect-4/3 overflow-hidden rounded-lg border border-border bg-muted"
-                        >
-                          <img
-                            src={photo.url!}
-                            alt={photo.nama_file || `Foto ${i + 1}`}
-                            className="size-full object-cover transition-transform group-hover:scale-105"
-                          />
-                        </button>
-                      ))}
+                    {previewPhotos.filter((p) => p.url).map((photo, i) => (
+                      <button key={photo.id ?? i} type="button" onClick={() => setLightbox({ url: photo.url!, nama: photo.nama_file || `Foto ${i + 1}` })} className="group relative aspect-4/3 overflow-hidden rounded-lg border border-border bg-muted">
+                        <img src={photo.url!} alt={photo.nama_file || `Foto ${i + 1}`} className="size-full object-cover transition-transform group-hover:scale-105" />
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
-
               {preview.keterangan ? (
                 <div className="rounded-xl border border-border p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Keterangan
-                  </p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm">
-                    {preview.keterangan}
-                  </p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Keterangan</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm">{preview.keterangan}</p>
                 </div>
               ) : null}
-
               {preview.catatan_revisi ? (
                 <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-destructive">
-                    Catatan Revisi
-                  </p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm">
-                    {preview.catatan_revisi}
-                  </p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-destructive">Catatan Revisi</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm">{preview.catatan_revisi}</p>
                 </div>
               ) : null}
-
               <div className="rounded-xl border border-border p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Status Laporan
-                  </p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status Laporan</p>
                   <StatusPill status={preview.status_laporan} />
                 </div>
               </div>
-
               {isStaff ? (
                 <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Aksi Verifikasi
-                  </p>
-
-                  {preview.status_laporan === "terkirim" ||
-                  preview.status_laporan === "menunggu_verifikasi" ? (
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Aksi Verifikasi</p>
+                  {preview.status_laporan === "terkirim" || preview.status_laporan === "menunggu_verifikasi" ? (
                     <div className="flex flex-wrap gap-2">
-                      <Button
-                        onClick={() => bukaVerifAction(preview, "verifikasi")}
-                        className="bg-status-verified text-white hover:bg-status-verified/90"
-                      >
-                        <CheckCircle2 className="mr-2 size-4" />
-                        Verifikasi
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => bukaVerifAction(preview, "revisi")}
-                        className="border-destructive/30 text-destructive hover:bg-destructive/10"
-                      >
-                        <RotateCcw className="mr-2 size-4" />
-                        Minta Revisi
-                      </Button>
+                      <Button onClick={() => bukaVerifAction(preview, "verifikasi")} className="bg-status-verified text-white hover:bg-status-verified/90"><CheckCircle2 className="mr-2 size-4" />Verifikasi</Button>
+                      <Button variant="outline" onClick={() => bukaVerifAction(preview, "revisi")} className="border-destructive/30 text-destructive hover:bg-destructive/10"><RotateCcw className="mr-2 size-4" />Minta Revisi</Button>
                     </div>
                   ) : preview.status_laporan === "terverifikasi" ? (
                     <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => bukaVerifAction(preview, "batalkan")}
-                      >
-                        <RotateCcw className="mr-2 size-4" />
-                        Kembalikan ke Revisi
-                      </Button>
+                      <Button variant="outline" onClick={() => bukaVerifAction(preview, "batalkan")}><RotateCcw className="mr-2 size-4" />Kembalikan ke Revisi</Button>
                     </div>
                   ) : preview.status_laporan === "perlu_revisi" ? (
-                    <p className="text-sm text-muted-foreground">
-                      Laporan ini sedang menunggu perbaikan dari trainer.
-                    </p>
+                    <p className="text-sm text-muted-foreground">Laporan ini sedang menunggu perbaikan dari trainer.</p>
                   ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Tidak ada aksi untuk status ini.
-                    </p>
+                    <p className="text-sm text-muted-foreground">Tidak ada aksi untuk status ini.</p>
                   )}
                 </div>
               ) : null}
             </div>
-
             <div className="flex justify-end border-t border-border px-5 py-4">
               <Button onClick={tutupPreview}>Tutup</Button>
             </div>
@@ -2327,211 +1706,67 @@ function MonitoringLaporanPage() {
         </div>
       ) : null}
 
-      {/* MODAL KONFIRMASI VERIFIKASI */}
       {verifAction ? (
-        <Dialog
-          open
-          onOpenChange={(o) => {
-            if (!o) {
-              setVerifAction(null);
-              setCatatanInput("");
-            }
-          }}
-        >
+        <Dialog open onOpenChange={(o) => { if (!o) { setVerifAction(null); setCatatanInput(""); } }}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>
-                {verifAction.action === "verifikasi"
-                  ? "Verifikasi Laporan?"
-                  : verifAction.action === "revisi"
-                    ? "Minta Revisi Laporan?"
-                    : "Kembalikan Laporan ke Revisi?"}
-              </DialogTitle>
-              <DialogDescription>
-                {verifAction.action === "verifikasi"
-                  ? "Laporan akan ditandai sebagai terverifikasi. Tindakan ini bisa dibatalkan nanti."
-                  : verifAction.action === "revisi"
-                    ? "Laporan akan dikembalikan ke trainer untuk diperbaiki. Wajib isi catatan."
-                    : "Verifikasi akan dibatalkan dan laporan dikembalikan ke trainer untuk revisi. Wajib isi catatan."}
-              </DialogDescription>
+              <DialogTitle>{verifAction.action === "verifikasi" ? "Verifikasi Laporan?" : verifAction.action === "revisi" ? "Minta Revisi Laporan?" : "Kembalikan Laporan ke Revisi?"}</DialogTitle>
+              <DialogDescription>{verifAction.action === "verifikasi" ? "Laporan akan ditandai sebagai terverifikasi. Tindakan ini bisa dibatalkan nanti." : verifAction.action === "revisi" ? "Laporan akan dikembalikan ke trainer untuk diperbaiki. Wajib isi catatan." : "Verifikasi akan dibatalkan dan laporan dikembalikan ke trainer untuk revisi. Wajib isi catatan."}</DialogDescription>
             </DialogHeader>
-
             <div className="space-y-3">
               <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
-                <p className="font-medium">
-                  {verifAction.report.trainers?.nama_lengkap || "Trainer"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {verifAction.report.materi || "Tanpa materi"} ·{" "}
-                  {formatTanggal(verifAction.report.tanggal_kegiatan)}
-                </p>
+                <p className="font-medium">{verifAction.report.trainers?.nama_lengkap || "Trainer"}</p>
+                <p className="text-xs text-muted-foreground">{verifAction.report.materi || "Tanpa materi"} · {formatTanggal(verifAction.report.tanggal_kegiatan)}</p>
               </div>
-
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">
-                  Catatan{" "}
-                  {verifAction.action !== "verifikasi" ? (
-                    <span className="text-destructive">*</span>
-                  ) : (
-                    <span className="text-muted-foreground">(opsional)</span>
-                  )}
-                </label>
-                <textarea
-                  rows={3}
-                  value={catatanInput}
-                  onChange={(e) => setCatatanInput(e.target.value)}
-                  placeholder={
-                    verifAction.action === "verifikasi"
-                      ? "Catatan tambahan (opsional)…"
-                      : "Tulis catatan untuk trainer…"
-                  }
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                />
+                <label className="text-sm font-medium">Catatan {verifAction.action !== "verifikasi" ? <span className="text-destructive">*</span> : <span className="text-muted-foreground">(opsional)</span>}</label>
+                <textarea rows={3} value={catatanInput} onChange={(e) => setCatatanInput(e.target.value)} placeholder={verifAction.action === "verifikasi" ? "Catatan tambahan (opsional)…" : "Tulis catatan untuk trainer…"} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
               </div>
             </div>
-
             <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setVerifAction(null);
-                  setCatatanInput("");
-                }}
-              >
-                Batal
-              </Button>
-              <Button
-                disabled={
-                  verifikasiMutation.isPending ||
-                  (verifAction.action !== "verifikasi" &&
-                    !catatanInput.trim())
-                }
-                onClick={() =>
-                  verifikasiMutation.mutate({
-                    report: verifAction.report,
-                    action: verifAction.action,
-                    catatan: catatanInput,
-                  })
-                }
-                className={
-                  verifAction.action === "verifikasi"
-                    ? "bg-status-verified text-white hover:bg-status-verified/90"
-                    : "bg-destructive text-white hover:bg-destructive/90"
-                }
-              >
-                {verifikasiMutation.isPending
-                  ? "Memproses…"
-                  : verifAction.action === "verifikasi"
-                    ? "Ya, Verifikasi"
-                    : verifAction.action === "revisi"
-                      ? "Kirim ke Revisi"
-                      : "Kembalikan ke Revisi"}
+              <Button variant="outline" onClick={() => { setVerifAction(null); setCatatanInput(""); }}>Batal</Button>
+              <Button disabled={verifikasiMutation.isPending || (verifAction.action !== "verifikasi" && !catatanInput.trim())} onClick={() => verifikasiMutation.mutate({ report: verifAction.report, action: verifAction.action, catatan: catatanInput })} className={verifAction.action === "verifikasi" ? "bg-status-verified text-white hover:bg-status-verified/90" : "bg-destructive text-white hover:bg-destructive/90"}>
+                {verifikasiMutation.isPending ? "Memproses…" : verifAction.action === "verifikasi" ? "Ya, Verifikasi" : verifAction.action === "revisi" ? "Kirim ke Revisi" : "Kembalikan ke Revisi"}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       ) : null}
 
-      {/* MODAL KONFIRMASI HAPUS PERMANENT */}
       {hapusAction ? (
-        <Dialog
-          open
-          onOpenChange={(o) => {
-            if (!o) {
-              setHapusAction(null);
-              setHapusConfirmText("");
-            }
-          }}
-        >
+        <Dialog open onOpenChange={(o) => { if (!o) { setHapusAction(null); setHapusConfirmText(""); } }}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle className="text-destructive">
-                ⚠️ Hapus Laporan Permanent?
-              </DialogTitle>
-              <DialogDescription>
-                Laporan ini akan <strong>dihapus selamanya</strong> dari
-                database, termasuk foto dokumentasi. Tindakan ini{" "}
-                <strong>tidak bisa dibatalkan</strong>.
-              </DialogDescription>
+              <DialogTitle className="text-destructive">⚠️ Hapus Laporan Permanent?</DialogTitle>
+              <DialogDescription>Laporan ini akan <strong>dihapus selamanya</strong> dari database, termasuk foto dokumentasi. Tindakan ini <strong>tidak bisa dibatalkan</strong>.</DialogDescription>
             </DialogHeader>
-
             <div className="space-y-3">
               <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
-                <p className="font-medium">
-                  {hapusAction.trainers?.nama_lengkap || "Trainer"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {hapusAction.materi || "Tanpa materi"} ·{" "}
-                  {formatTanggal(hapusAction.tanggal_kegiatan)}
-                </p>
+                <p className="font-medium">{hapusAction.trainers?.nama_lengkap || "Trainer"}</p>
+                <p className="text-xs text-muted-foreground">{hapusAction.materi || "Tanpa materi"} · {formatTanggal(hapusAction.tanggal_kegiatan)}</p>
               </div>
-
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">
-                  Ketik{" "}
-                  <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-bold">
-                    HAPUS
-                  </code>{" "}
-                  untuk konfirmasi:
-                </label>
-                <Input
-                  value={hapusConfirmText}
-                  onChange={(e) => setHapusConfirmText(e.target.value)}
-                  placeholder="Ketik: HAPUS"
-                  autoFocus
-                />
+                <label className="text-sm font-medium">Ketik <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-bold">HAPUS</code> untuk konfirmasi:</label>
+                <Input value={hapusConfirmText} onChange={(e) => setHapusConfirmText(e.target.value)} placeholder="Ketik: HAPUS" autoFocus />
               </div>
             </div>
-
             <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setHapusAction(null);
-                  setHapusConfirmText("");
-                }}
-              >
-                Batal
-              </Button>
-              <Button
-                variant="destructive"
-                disabled={
-                  hapusConfirmText !== "HAPUS" || hapusMutation.isPending
-                }
-                onClick={() => hapusMutation.mutate(hapusAction)}
-              >
-                <Trash2 className="mr-2 size-4" />
-                {hapusMutation.isPending ? "Menghapus..." : "Hapus Permanent"}
+              <Button variant="outline" onClick={() => { setHapusAction(null); setHapusConfirmText(""); }}>Batal</Button>
+              <Button variant="destructive" disabled={hapusConfirmText !== "HAPUS" || hapusMutation.isPending} onClick={() => hapusMutation.mutate(hapusAction)}>
+                <Trash2 className="mr-2 size-4" />{hapusMutation.isPending ? "Menghapus..." : "Hapus Permanent"}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       ) : null}
 
-      {/* LIGHTBOX */}
       {lightbox ? (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4"
-          onClick={() => setLightbox(null)}
-        >
-          <div
-            className="relative max-h-[90vh] max-w-[90vw]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <img
-              src={lightbox.url}
-              alt={lightbox.nama}
-              className="max-h-[85vh] rounded-lg object-contain"
-            />
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4" onClick={() => setLightbox(null)}>
+          <div className="relative max-h-[90vh] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
+            <img src={lightbox.url} alt={lightbox.nama} className="max-h-[85vh] rounded-lg object-contain" />
             <div className="mt-3 flex items-center justify-between gap-3 text-white">
               <p className="truncate text-sm">{lightbox.nama}</p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setLightbox(null)}
-              >
-                Tutup
-              </Button>
+              <Button size="sm" variant="outline" onClick={() => setLightbox(null)}>Tutup</Button>
             </div>
           </div>
         </div>
