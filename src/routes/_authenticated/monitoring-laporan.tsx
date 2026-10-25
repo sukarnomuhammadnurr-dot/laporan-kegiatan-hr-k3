@@ -947,9 +947,29 @@ function MonitoringLaporanPage() {
         }
         const tanggalList = [...byTanggal.entries()].sort(([a], [b]) => a.localeCompare(b));
 
-        let noUrut = 1;
+                let noUrut = 1;
         const tbodyHtml = tanggalList
           .map(([, tglList]) => {
+            // HITUNG HADIR GABUNGAN PER TANGGAL (A + B, atau AB)
+            const hadirPerKelas: Record<string, number> = {};
+            for (const l of tglList) {
+              const tipe = parseTipeKelas(l.kelas);
+              const hadir = Number(l.jumlah_hadir || 0);
+              if (!hadirPerKelas[tipe] || hadir > hadirPerKelas[tipe]) {
+                hadirPerKelas[tipe] = hadir;
+              }
+            }
+
+            let totalHadirTanggal = 0;
+            if (hadirPerKelas["AB"] !== undefined) {
+              totalHadirTanggal = hadirPerKelas["AB"];
+            } else {
+              const a = hadirPerKelas["A"] || 0;
+              const b = hadirPerKelas["B"] || 0;
+              const u = hadirPerKelas["UNKNOWN"] || 0;
+              totalHadirTanggal = a + b > 0 ? a + b : u;
+            }
+
             return tglList
               .map((item, idx) => {
                 const fotos = photoDataMap.get(item.id) ?? [];
@@ -957,8 +977,13 @@ function MonitoringLaporanPage() {
                 const isFirstRow = idx === 0;
                 const currentNo = noUrut++;
 
-                const tglSelesai = (item as any).tanggal_selesai as string | null | undefined;
-                const isRange = Boolean(tglSelesai && tglSelesai !== item.tanggal_kegiatan);
+                const tglSelesai = (item as any).tanggal_selesai as
+                  | string
+                  | null
+                  | undefined;
+                const isRange = Boolean(
+                  tglSelesai && tglSelesai !== item.tanggal_kegiatan,
+                );
 
                 let durasiHari = 0;
                 if (isRange && item.tanggal_kegiatan && tglSelesai) {
@@ -977,13 +1002,20 @@ function MonitoringLaporanPage() {
 
                 const materiText = [
                   escapeHtml(item.materi || "—"),
-                  item.jenis_kegiatan ? `<div class="materi-jenis">${escapeHtml(item.jenis_kegiatan)}</div>` : "",
-                  item.keterangan ? `<div class="materi-desc">${escapeHtml(item.keterangan)}</div>` : "",
+                  item.jenis_kegiatan
+                    ? `<div class="materi-jenis">${escapeHtml(item.jenis_kegiatan)}</div>`
+                    : "",
+                  item.keterangan
+                    ? `<div class="materi-desc">${escapeHtml(item.keterangan)}</div>`
+                    : "",
                 ].join("");
 
-                const fotoHtml = fotos.length === 0
+                const fotoHtml =
+                  fotos.length === 0
                     ? `<div class="no-photo">Tidak ada foto</div>`
-                    : `<div class="photo-grid">${fotos.map((src) => `<img src="${src}" class="photo" alt="Dokumentasi" />`).join("")}</div>`;
+                    : `<div class="photo-grid">${fotos
+                        .map((src) => `<img src="${src}" class="photo" alt="Dokumentasi" />`)
+                        .join("")}</div>`;
 
                 return `
                   <tr>
@@ -996,7 +1028,11 @@ function MonitoringLaporanPage() {
                     <td class="col-materi">${materiText}</td>
                     <td class="col-kelas">${escapeHtml(item.kelas || "-")}</td>
                     <td class="col-lokasi">${escapeHtml(item.lokasi || "-")}</td>
-                    ${idx === 0 ? `<td class="col-hadir" rowspan="${rowSpan}">${item.jumlah_hadir ?? 0}</td>` : ""}
+                    ${
+                      idx === 0
+                        ? `<td class="col-hadir" rowspan="${rowSpan}"><strong>${totalHadirTanggal}</strong></td>`
+                        : ""
+                    }
                     <td class="col-pj">Muhammad Halid (Superintendent)</td>
                     <td class="col-foto">${fotoHtml}</td>
                   </tr>
@@ -1005,7 +1041,6 @@ function MonitoringLaporanPage() {
               .join("");
           })
           .join("");
-
         const totalMenitTrainer = list.reduce((sum, r) => sum + hitungDurasiMenit(r.jam_mulai, r.jam_selesai), 0);
         const totalHadirTrainer = hitungTotalHadirPintar(list);
         const isFirst = trainerIdx === 0;
