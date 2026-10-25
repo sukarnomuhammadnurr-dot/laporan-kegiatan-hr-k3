@@ -163,14 +163,27 @@ function escapeHtml(value: string | number | null | undefined) {
 
 function parseTipeKelas(kelasInput: string | null | undefined): "A" | "B" | "AB" | "UNKNOWN" {
   if (!kelasInput) return "UNKNOWN";
-  const str = kelasInput.toUpperCase().replace(/\s+/g, "");
+  
+  // Bersihin teks: hapus spasi, strip, underscore, garis miring, koma, titik, dan tanda plus
+  const str = kelasInput.toUpperCase().replace(/[\s\-_/.,&+]/g, "");
 
-  if (str.includes("A&B") || str.includes("GABUNGAN") || str.includes("AB")) {
+  // 1. Prioritas Utama: Deteksi Gabungan
+  if (str.includes("GABUNGAN") || str.includes("AB") || str.includes("DAN")) {
     return "AB";
   }
-  if (str.includes("B")) return "B";
-  if (str.includes("A")) return "A";
 
+  // 2. Kalau ada huruf B, masuk Kelas B
+  // (Dicek duluan biar tulisan "KELAS" gak bikin salah masuk ke Kelas A)
+  if (str.includes("B")) {
+    return "B";
+  }
+
+  // 3. Kalau ada huruf A, masuk Kelas A
+  if (str.includes("A")) {
+    return "A";
+  }
+
+  // 4. Kalau cuma angka (0, 2, 1, dll), anggap tidak diketahui / manual
   return "UNKNOWN";
 }
 
