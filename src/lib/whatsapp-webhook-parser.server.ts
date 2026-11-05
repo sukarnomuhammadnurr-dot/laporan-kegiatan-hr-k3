@@ -1,5 +1,5 @@
 /**
- * WhatsApp Report Parser (v3 — support KELAS + schedule matching)
+ * WhatsApp Report Parser (v4 — support KELAS + schedule matching + materi baru)
  * ===============================================================
  * Dipakai di route: src/routes/api/public/whatsapp/webhook.ts
  */
@@ -8,7 +8,7 @@ export type ParsedWhatsAppReport = {
   trainerNama: string | null;
   materi: string[];
   kelas: string | null;
-  tanggalKegiatan: string | null;    // ← BARU (YYYY-MM-DD)
+  tanggalKegiatan: string | null;
   jumlahPeserta: number | null;
   jumlahHadir: number | null;
   jumlahTidakHadir: number | null;
@@ -76,7 +76,7 @@ export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
   let jumlahTidakHadir: number | null = null;
   let jumlahTambahan = 0;
 
-    // TRAINER
+  // TRAINER
   const trainerMatch = source.match(
     /\btrainer\s*:?\s*(.+?)(?=\s*(?:kelas|tanggal|jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan)\s*:?\s*|$)/i,
   );
@@ -84,11 +84,11 @@ export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
     trainerNama = removeTrailingPunctuation(normalizeText(trainerMatch[1]));
   }
 
-      // KELAS
+  // KELAS
   const kelasMatch = source.match(
     /\bkelas\s*:?\s*([A-Za-z0-9][A-Za-z0-9\s\-]*?)(?=\s*(?:tanggal|jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan|materi|trainer)\s*:?\s*|$)/i,
   );
-    if (kelasMatch?.[1]) {
+  if (kelasMatch?.[1]) {
     kelas = removeTrailingPunctuation(normalizeText(kelasMatch[1]));
   }
 
@@ -102,12 +102,10 @@ export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
     const month = Number(tanggalMatch[2]);
     let year = Number(tanggalMatch[3]);
 
-    // Kalau tahun 2 digit (26) → jadi 2026
     if (year < 100) {
       year = year < 50 ? 2000 + year : 1900 + year;
     }
 
-    // Validasi range
     if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 2000 && year <= 2100) {
       const pad = (n: number) => String(n).padStart(2, "0");
       tanggalKegiatan = `${year}-${pad(month)}-${pad(day)}`;
@@ -116,7 +114,7 @@ export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
     }
   }
 
-    // MATERI
+  // MATERI
   const materiMatch = source.match(
     /\bmateri\s*:?\s*(.+?)(?=\s*(?:trainer|kelas|tanggal|jumlah\s+peserta|total\s+peserta|hadir|tidak\s+hadir|tambahan)\s*:?\s*|$)/i,
   );
@@ -151,7 +149,7 @@ export function parseWhatsAppReport(text: string): ParsedWhatsAppReport {
     }
   }
 
-    return {
+  return {
     trainerNama,
     materi,
     kelas,
@@ -394,8 +392,136 @@ export function matchWhatsAppSchedule(
   return { schedule: null, matchedBy: null };
 }
 
+/* =========================================================
+   VALIDASI MENYELURUH (UPDATE: support materi baru)
+========================================================= */
+
+export type ValidasiLaporanResult = {
+  valid: boolean;
+  errors: string[];
+};
+
+/**
+ * Validasi menyeluruh sebelum laporan masuk database.
+ * Kalau valid → status "menunggu_verifikasi"
+ * Kalau invalid → status "perlu_review" + kirim WA balik
+ */
+export function validasiLaporanMenyeluruh(
+  parsed: ParsedWhatsAppReport,
+  jadwal: WhatsAppScheduleCandidate | null,
+  tanggalKirimWA: string,
+): ValidasiLaporanResult {
+  const errors: string[] = [];
+
+  // 1. Trainer wajib match
+  if (!parsed.trainerNama) {
+    errors.push("Nama trainer tidak disebutkan");
+  }
+
+  // 2. Materi wajib ada
+  if (parsed.materi.length === 0) {
+    errors.push("Materi tidak disebutkan");
+  }
+
+  // 3. Materi harus match ke Master Jadwal (dengan toleransi simbol)
+  if (!jadwal) {
+    errors.push(`Materi "${parsed.materi.join(", ")}" tidak ada di Master Jadwal`);
+  } else {
+    // Toleransi: cek kata kunci utama (buat materi yang ada simbol /, &, -)
+    const namaJadwal = jadwal.nama_kegiatan.toUpperCase();
+    const namaInput = parsed.materi.join(" ").toUpperCase();
+
+    // Kalau ada salah satu kata kunci yang cocok, lolos
+    const kataKunciPenting = [
+      "KONSELING", "PBB", "BPJS", "SOSIALISASI",
+      "APEL", "K3", "SAFETY", "P2D", "PERATURAN",
+      "COMPANY PROFILE", "CODE OF CONDUCT", "POSTES", "POST TEST",
+      "MAKAN", "SMART SALARY", "MEDIA SOSIAL", "KETINGGIAN", "PENGELASAN",
+    ];
+
+    const adaKataKunci = kataKunciPenting.some(
+      (k) => namaJadwal.includes(k) && namaInput.includes(k),
+    );
+
+    if (!adaKataKunci) {
+      errors.push(
+        `Materi "${parsed.materi.join(", ")}" tidak cocok dengan "${jadwal.nama_kegiatan}" di Master Jadwal`,
+      );
+    }
+  }
+
+  // 4. Jumlah peserta wajib ada
+  if (parsed.jumlahPeserta === null) {
+    errors.push("Jumlah peserta tidak disebutkan");
+  }
+
+  // 5. Hadir + Tidak Hadir harus = Jumlah Peserta
+  if (
+    parsed.jumlahPeserta !== null &&
+    parsed.jumlahHadir !== null &&
+    parsed.jumlahTidakHadir !== null
+  ) {
+    const total = parsed.jumlahHadir + parsed.jumlahTidakHadir;
+    if (total !== parsed.jumlahPeserta) {
+      errors.push(
+        `Hadir (${parsed.jumlahHadir}) + Tidak Hadir (${parsed.jumlahTidakHadir}) = ${total}, tidak sama dengan Jumlah Peserta (${parsed.jumlahPeserta})`,
+      );
+    }
+  }
+
+  // 6. Hadir gak boleh negatif
+  if (parsed.jumlahHadir !== null && parsed.jumlahHadir < 0) {
+    errors.push("Jumlah hadir tidak boleh negatif");
+  }
+
+  // 7. Tanggal kegiatan gak boleh di masa depan
+  if (parsed.tanggalKegiatan) {
+    const tglKegiatan = new Date(`${parsed.tanggalKegiatan}T00:00:00`);
+    const tglKirim = new Date(`${tanggalKirimWA}T00:00:00`);
+    if (tglKegiatan > tglKirim) {
+      errors.push(
+        `Tanggal kegiatan (${parsed.tanggalKegiatan}) tidak boleh di masa depan`,
+      );
+    }
+  }
+
+  // 8. Kelas wajib disebut
+  if (!parsed.kelas) {
+    errors.push("Kelas tidak disebutkan");
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+/**
+ * Format pesan WA balik ke trainer kalau laporan salah.
+ */
+export function formatPesanError(errors: string[]): string {
+  return [
+    "⚠️ *Laporan Anda Ditolak*",
+    "",
+    "Alasan:",
+    ...errors.map((e) => `• ${e}`),
+    "",
+    "Tolong perbaiki dan kirim ulang ya.",
+    "",
+    "Format yang benar:",
+    "Materi: [nama materi]",
+    "Trainer: [nama lengkap]",
+    "Tanggal: DD-MM-YYYY (opsional kalau hari ini)",
+    "Kelas: [kelas]",
+    "Jumlah peserta: [angka]",
+    "Hadir: [angka]",
+    "Tidak Hadir: [angka]",
+    "Tambahan: [angka/-]",
+  ].join("\n");
+}
+
 /* =========================
-   VALIDASI
+   VALIDASI DASAR (untuk webhook)
 ========================= */
 
 export function validateParsedWhatsAppReport(report: ParsedWhatsAppReport) {
