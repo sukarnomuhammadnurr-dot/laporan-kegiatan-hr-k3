@@ -173,11 +173,7 @@ function parseTipeKelas(kelasInput: string | null | undefined): "A" | "B" | "AB"
   return "UNKNOWN";
 }
 
-/**
- * Hitung total hadir per trainer dengan logika deduplikasi kelas.
- */
 function hitungTotalHadirPintar(laporanPeriode: ReportWithTrainer[]): number {
-  // 1. Group by tanggal
   const byTanggal = new Map<string, ReportWithTrainer[]>();
   for (const r of laporanPeriode) {
     const tgl = r.tanggal_kegiatan || "tanpa-tanggal";
@@ -187,29 +183,21 @@ function hitungTotalHadirPintar(laporanPeriode: ReportWithTrainer[]): number {
 
   let totalHadir = 0;
 
-  // 2. Iterasi tiap tanggal
   for (const [, tglList] of byTanggal.entries()) {
-    const maxHadirPerKelas: Record<string, number> = {}; 
-    // maxHadirPerKelas fungsinya nyimpen nilai hadir tertinggi per kelas di tanggal itu.
-    // Jadi kalau 1A ada 3 materi (42, 42, 42), dia cuma nyimpen 42.
+    const maxHadirPerKelas: Record<string, number> = {};
 
     for (const l of tglList) {
       const tipe = parseTipeKelas(l.kelas);
       const hadir = Number(l.jumlah_hadir || 0);
       
-      // Simpan nilai hadir tertinggi aja per tipe kelas
       if (!maxHadirPerKelas[tipe] || hadir > maxHadirPerKelas[tipe]) {
         maxHadirPerKelas[tipe] = hadir;
       }
     }
 
-    // 3. Hitung total untuk tanggal ini
     if (maxHadirPerKelas["AB"] !== undefined) {
-      // Kalau ada gabungan A&B, pake angka gabungan aja.
-      // Kelas A dan B individu di tanggal itu diabaikan (gak dijumlahin lagi).
       totalHadir += maxHadirPerKelas["AB"];
     } else {
-      // Kalau gak ada gabungan, jumlahkan Kelas A dan Kelas B
       const totalA = maxHadirPerKelas["A"] || 0;
       const totalB = maxHadirPerKelas["B"] || 0;
       const totalUnknown = maxHadirPerKelas["UNKNOWN"] || 0;
@@ -1104,6 +1092,26 @@ function LaporanBulananPage() {
     let noUrut = 1;
     const tbodyHtml = tanggalList
       .map(([, tglList]) => {
+        // HITUNG HADIR GABUNGAN PER TANGGAL (A + B, atau AB)
+        const hadirPerKelas: Record<string, number> = {};
+        for (const l of tglList) {
+          const tipe = parseTipeKelas(l.kelas);
+          const hadir = Number(l.jumlah_hadir || 0);
+          if (!hadirPerKelas[tipe] || hadir > hadirPerKelas[tipe]) {
+            hadirPerKelas[tipe] = hadir;
+          }
+        }
+
+        let totalHadirTanggal = 0;
+        if (hadirPerKelas["AB"] !== undefined) {
+          totalHadirTanggal = hadirPerKelas["AB"];
+        } else {
+          const a = hadirPerKelas["A"] || 0;
+          const b = hadirPerKelas["B"] || 0;
+          const u = hadirPerKelas["UNKNOWN"] || 0;
+          totalHadirTanggal = a + b > 0 ? a + b : u;
+        }
+
         return tglList
           .map((item, idx) => {
             const fotos = photoDataMap.get(item.id) ?? [];
@@ -1169,9 +1177,7 @@ function LaporanBulananPage() {
                 <td class="col-lokasi">${escapeHtml(item.lokasi || "-")}</td>
                 ${
                   idx === 0
-                    ? `<td class="col-hadir" rowspan="${rowSpan}">${
-                        item.jumlah_hadir ?? 0
-                      }</td>`
+                    ? `<td class="col-hadir" rowspan="${rowSpan}"><strong>${totalHadirTanggal}</strong></td>`
                     : ""
                 }
                 <td class="col-pj">Muhammad Halid (Superintendent)</td>
