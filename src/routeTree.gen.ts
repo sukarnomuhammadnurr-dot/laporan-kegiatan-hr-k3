@@ -25,6 +25,7 @@ import { Route as AuthenticatedMonitoringLaporanRouteImport } from './routes/_au
 import { Route as AuthenticatedPengaturanSistemRouteImport } from './routes/_authenticated/pengaturan-sistem'
 import { Route as AuthenticatedPesanWhatsappRouteImport } from './routes/_authenticated/pesan-whatsapp'
 import { Route as AuthenticatedUbahPasswordRouteImport } from './routes/_authenticated/ubah-password'
+import { Route as ApiPublicUploadKurirInRouteImport } from './routes/api/public/upload-kurir-in'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp/webhook'
 
 const IndexRoute = IndexRouteImport.update({
@@ -115,6 +116,11 @@ const AuthenticatedUbahPasswordRoute =
     path: '/ubah-password',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const ApiPublicUploadKurirInRoute = ApiPublicUploadKurirInRouteImport.update({
+  id: '/api/public/upload-kurir-in',
+  path: '/api/public/upload-kurir-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicWhatsappWebhookRoute =
   ApiPublicWhatsappWebhookRouteImport.update({
     id: '/api/public/whatsapp/webhook',
@@ -138,6 +144,7 @@ export interface FileRoutesByFullPath {
   '/pengaturan-sistem': typeof AuthenticatedPengaturanSistemRoute
   '/pesan-whatsapp': typeof AuthenticatedPesanWhatsappRoute
   '/ubah-password': typeof AuthenticatedUbahPasswordRoute
+  '/api/public/upload-kurir-in': typeof ApiPublicUploadKurirInRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
 export interface FileRoutesByTo {
@@ -156,6 +163,7 @@ export interface FileRoutesByTo {
   '/pengaturan-sistem': typeof AuthenticatedPengaturanSistemRoute
   '/pesan-whatsapp': typeof AuthenticatedPesanWhatsappRoute
   '/ubah-password': typeof AuthenticatedUbahPasswordRoute
+  '/api/public/upload-kurir-in': typeof ApiPublicUploadKurirInRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
 export interface FileRoutesById {
@@ -176,6 +184,7 @@ export interface FileRoutesById {
   '/_authenticated/pengaturan-sistem': typeof AuthenticatedPengaturanSistemRoute
   '/_authenticated/pesan-whatsapp': typeof AuthenticatedPesanWhatsappRoute
   '/_authenticated/ubah-password': typeof AuthenticatedUbahPasswordRoute
+  '/api/public/upload-kurir-in': typeof ApiPublicUploadKurirInRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
 }
 export interface FileRouteTypes {
@@ -196,6 +205,7 @@ export interface FileRouteTypes {
     | '/pengaturan-sistem'
     | '/pesan-whatsapp'
     | '/ubah-password'
+    | '/api/public/upload-kurir-in'
     | '/api/public/whatsapp/webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -214,6 +224,7 @@ export interface FileRouteTypes {
     | '/pengaturan-sistem'
     | '/pesan-whatsapp'
     | '/ubah-password'
+    | '/api/public/upload-kurir-in'
     | '/api/public/whatsapp/webhook'
   id:
     | '__root__'
@@ -233,6 +244,7 @@ export interface FileRouteTypes {
     | '/_authenticated/pengaturan-sistem'
     | '/_authenticated/pesan-whatsapp'
     | '/_authenticated/ubah-password'
+    | '/api/public/upload-kurir-in'
     | '/api/public/whatsapp/webhook'
   fileRoutesById: FileRoutesById
 }
@@ -242,6 +254,7 @@ export interface RootRouteChildren {
   LupaPasswordRoute: typeof LupaPasswordRoute
   MasukRoute: typeof MasukRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  ApiPublicUploadKurirInRoute: typeof ApiPublicUploadKurirInRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
 }
 
@@ -359,6 +372,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUbahPasswordRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/api/public/upload-kurir-in': {
+      id: '/api/public/upload-kurir-in'
+      path: '/api/public/upload-kurir-in'
+      fullPath: '/api/public/upload-kurir-in'
+      preLoaderRoute: typeof ApiPublicUploadKurirInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/whatsapp/webhook': {
       id: '/api/public/whatsapp/webhook'
       path: '/api/public/whatsapp/webhook'
@@ -406,6 +426,7 @@ const rootRouteChildren: RootRouteChildren = {
   LupaPasswordRoute: LupaPasswordRoute,
   MasukRoute: MasukRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  ApiPublicUploadKurirInRoute: ApiPublicUploadKurirInRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
 }
 export const routeTree = rootRouteImport
