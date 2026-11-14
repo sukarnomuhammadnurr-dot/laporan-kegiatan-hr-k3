@@ -1369,7 +1369,15 @@ function MonitoringLaporanPage() {
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-7">
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">Bulan</p>
-            <Select value={bulan} onValueChange={(v) => { setBulan(v); setHalaman(1); }}>
+            <Select 
+  value={bulan} 
+  onValueChange={(v) => { 
+    setBulan(v); 
+    setDari("");       // ← Reset tanggal dari
+    setSampai("");     // ← Reset tanggal sampai
+    setHalaman(1); 
+  }}
+>
               <SelectTrigger><SelectValue placeholder="Pilih bulan" /></SelectTrigger>
               <SelectContent>{daftarBulan.map((b) => (<SelectItem key={b} value={b}>{labelBulan(b)}</SelectItem>))}</SelectContent>
             </Select>
