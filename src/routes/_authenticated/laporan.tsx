@@ -927,6 +927,7 @@ async function downloadLaporan(
         : "Gagal menyiapkan laporan harian.",
     );
   }
+}   /* <-- INI YANG KURANG: penutup function downloadLaporan */
 
 /* =========================================================
    ESCAPE HTML
