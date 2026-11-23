@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   Check,
   ChevronLeft,
@@ -890,9 +891,9 @@ async function downloadLaporan(
 
     const win = window.open("", "_blank", "width=1200,height=850");
     if (!win) {
-      alert(
-        "Popup diblokir browser. Silakan izinkan popup untuk membuka Preview PDF.",
-      );
+      toast.error("Popup diblokir browser.", {
+        description: "Izinkan popup untuk membuka Preview PDF.",
+      });
       return;
     }
 
@@ -920,14 +921,12 @@ async function downloadLaporan(
       win.print();
     }, 500);
   } catch (error) {
-    console.error("Gagal menyiapkan Daily Training Activity Report:", error);
-    alert(
+    toast.error(
       error instanceof Error
         ? error.message
         : "Gagal menyiapkan laporan harian.",
     );
   }
-}
 
 /* =========================================================
    ESCAPE HTML
@@ -1044,110 +1043,108 @@ function LaporanPage() {
     window.location.href = `/buat-laporan?edit=${encodeURIComponent(report.id)}`;
   }
 
-  async function handleVerifikasi(report: ReportWithTrainer) {
+  function handleVerifikasi(report: ReportWithTrainer) {
     if (!user?.id) {
-      alert("User tidak ditemukan.");
+      toast.error("User tidak ditemukan.");
       return;
     }
 
-    const yakin = window.confirm(
-      `Verifikasi laporan ${report.materi || "ini"}?`,
-    );
-    if (!yakin) return;
-
-    try {
-      setProcessingId(report.id);
-      await verifikasiLaporan(report, user.id);
-      alert("Laporan berhasil diverifikasi.");
-      setPreview(null);
-      await refreshReports();
-    } catch (error) {
-      console.error("Gagal verifikasi:", error);
-      alert(
-        error instanceof Error ? error.message : "Gagal memverifikasi laporan.",
-      );
-    } finally {
-      setProcessingId(null);
-    }
+    toast(`Verifikasi laporan ${report.materi || "ini"}?`, {
+      description: "Laporan akan ditandai sebagai terverifikasi.",
+      action: {
+        label: "Ya, Verifikasi",
+        onClick: async () => {
+          try {
+            setProcessingId(report.id);
+            await verifikasiLaporan(report, user.id);
+            toast.success("Laporan berhasil diverifikasi.");
+            setPreview(null);
+            await refreshReports();
+          } catch (error) {
+            toast.error(
+              error instanceof Error ? error.message : "Gagal memverifikasi laporan.",
+            );
+          } finally {
+            setProcessingId(null);
+          }
+        },
+      },
+    });
   }
 
-  async function handleMintaRevisi() {
+  function handleMintaRevisi() {
     if (!revisiReport) return;
     if (!user?.id) {
-      alert("User tidak ditemukan.");
+      toast.error("User tidak ditemukan.");
       return;
     }
     if (!catatanRevisi.trim()) {
-      alert("Catatan revisi wajib diisi.");
+      toast.error("Catatan revisi wajib diisi.");
       return;
     }
 
-    try {
-      setProcessingId(revisiReport.id);
-      await mintaRevisiLaporan(revisiReport, user.id, catatanRevisi);
-      alert("Laporan dikembalikan untuk revisi.");
-      setRevisiReport(null);
-      setCatatanRevisi("");
-      setPreview(null);
-      await refreshReports();
-    } catch (error) {
-      console.error("Gagal meminta revisi:", error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Gagal mengirim permintaan revisi.",
-      );
-    } finally {
-      setProcessingId(null);
-    }
+    (async () => {
+      try {
+        setProcessingId(revisiReport.id);
+        await mintaRevisiLaporan(revisiReport, user.id, catatanRevisi);
+        toast.success("Laporan dikembalikan untuk revisi.");
+        setRevisiReport(null);
+        setCatatanRevisi("");
+        setPreview(null);
+        await refreshReports();
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Gagal mengirim permintaan revisi.",
+        );
+      } finally {
+        setProcessingId(null);
+      }
+    })();
   }
 
-  async function handleKembalikanKeRevisi() {
+   function handleKembalikanKeRevisi() {
     if (!kembalikanReport) return;
     if (!user?.id) {
-      alert("User tidak ditemukan.");
+      toast.error("User tidak ditemukan.");
       return;
     }
     if (!catatanRevisi.trim()) {
-      alert("Catatan revisi wajib diisi.");
+      toast.error("Catatan revisi wajib diisi.");
       return;
     }
 
-    try {
-      setProcessingId(kembalikanReport.id);
-      await kembalikanKeRevisiLaporan(kembalikanReport, user.id, catatanRevisi);
-      alert("Laporan berhasil dikembalikan ke status revisi.");
-      setKembalikanReport(null);
-      setCatatanRevisi("");
-      setPreview(null);
-      await refreshReports();
-    } catch (error) {
-      console.error("Gagal mengembalikan laporan:", error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Gagal mengembalikan laporan ke revisi.",
-      );
-    } finally {
-      setProcessingId(null);
-    }
+    (async () => {
+      try {
+        setProcessingId(kembalikanReport.id);
+        await kembalikanKeRevisiLaporan(kembalikanReport, user.id, catatanRevisi);
+        toast.success("Laporan berhasil dikembalikan ke status revisi.");
+        setKembalikanReport(null);
+        setCatatanRevisi("");
+        setPreview(null);
+        await refreshReports();
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Gagal mengembalikan laporan ke revisi.",
+        );
+      } finally {
+        setProcessingId(null);
+      }
+    })();
   }
 
-   async function handleHapus() {
+  async function handleHapus() {
     if (!hapusAction) return;
     try {
       await hapusLaporanPermanent(hapusAction.id);
-      alert("Laporan berhasil dihapus permanent.");
+      toast.success("Laporan berhasil dihapus permanen.");
       setHapusAction(null);
       setHapusConfirmText("");
       setPreview(null);
       await refreshReports();
     } catch (error) {
-      console.error("Gagal hapus:", error);
-      const msg =
-        error instanceof Error ? error.message : "Gagal menghapus laporan.";
-      // Tampilin error detail biar keliatan penyebabnya
-      alert(`GAGAL HAPUS: ${msg}`);
+      toast.error(
+        error instanceof Error ? error.message : "Gagal menghapus laporan.",
+      );
     }
   }
 
